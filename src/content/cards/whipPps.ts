@@ -3,6 +3,67 @@ import { DecisionCard } from '../../types/content';
 /** Tier 1-2: PPS bag-carrying and whips' office enforcement. */
 export const WHIP_PPS_CARDS: DecisionCard[] = [
   {
+    id: 'wp_ministers_diary',
+    title: 'The minister\'s shadow',
+    body: 'As PPS you are the minister\'s eyes and ears on the backbenches. Tonight they ask you, casually, who among your intake is "sound" and who is trouble. It is a test, and an opportunity, and a small betrayal.',
+    speaker: 'leader',
+    tags: ['party', 'westminster'],
+    weight: 12, cooldownDays: 280,
+    requires: { minTier: 1, maxTier: 1 },
+    choices: [
+      {
+        label: 'Give an honest, useful read',
+        effects: { relationships: [{ kind: 'leader', delta: 6 }], stats: { partyStanding: 3, integrity: -2 } },
+        outcomeText: 'You deliver a shrewd, fair assessment of the intake. The minister is impressed by your antennae and files you under "useful". Your colleagues would be less delighted to know how closely you watch them.',
+      },
+      {
+        label: 'Protect your colleagues, stay vague',
+        effects: { relationships: [{ kind: 'ally', delta: 5 }, { kind: 'leader', delta: -3 }], stats: { integrity: 3 } },
+        outcomeText: '"Honestly, a good bunch." The minister knows a non-answer when they hear one, and notes that you will not inform on friends — a trait they find admirable and inconvenient in equal measure.',
+      },
+    ],
+  },
+  {
+    id: 'wp_three_line_enforcer',
+    title: 'On the door',
+    body: 'You are the whip on the door tonight, and a colleague is wavering on a three-line whip over a genuine constituency conscience issue. The numbers are tight. They look at you, hoping for mercy.',
+    tags: ['party', 'serious'],
+    weight: 12, cooldownDays: 260,
+    requires: { minTier: 2, maxTier: 2 },
+    choices: [
+      {
+        label: 'Lean on them — the line is the line',
+        effects: { relationships: [{ kind: 'chiefWhip', delta: 6 }, { kind: 'ally', delta: -4 }], stats: { competence: 2 } },
+        outcomeText: 'You remind them, warmly, of the favours owed and the careers made and ended on nights like this. They vote with the party. The Chief Whip notices an enforcer in the making.',
+      },
+      {
+        label: 'Quietly grant them a pass',
+        effects: { relationships: [{ kind: 'ally', delta: 6 }, { kind: 'chiefWhip', delta: -5 }], stats: { integrity: 3 } },
+        outcomeText: 'You find them an unobtrusive way to abstain and square it later. They will remember the kindness. The Chief Whip, when the numbers come up one short, will also remember.',
+      },
+    ],
+  },
+  {
+    id: 'wp_pps_resign_temptation',
+    title: 'The bag or the cause',
+    body: 'The government is about to do something your conscience cannot abide — and as a PPS, the most junior rung of the payroll vote, you are expected to support it without a word. Resigning the unpaid role would be a tiny gesture that makes a surprising amount of noise.',
+    tags: ['party', 'serious'],
+    weight: 9, cooldownDays: 500,
+    requires: { minTier: 1, maxTier: 2 },
+    choices: [
+      {
+        label: 'Resign the role on principle',
+        effects: { trigger: 'resignOffice' },
+        outcomeText: 'You hand back the bag and your conscience with it. A small resignation, but the first rung is the easiest to jump from — and people remember who jumped first.',
+      },
+      {
+        label: 'Swallow it — you are just starting out',
+        effects: { stats: { integrity: -4, partyStanding: 3 }, relationships: [{ kind: 'leader', delta: 3 }] },
+        outcomeText: 'You stay loyal and tell yourself the bigger fights are still ahead. The leadership marks you as reliable; the mirror is less complimentary for a week or so.',
+      },
+    ],
+  },
+  {
     id: 'wp_carry_the_bag',
     title: 'The bag',
     body: 'As PPS you carry the folder, fetch the water, and sit behind your minister radiating loyalty for the cameras. Today the minister is about to give a wrong answer to a select committee — you know, because you wrote the brief they ignored.',

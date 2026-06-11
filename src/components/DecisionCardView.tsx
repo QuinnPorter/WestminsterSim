@@ -1,6 +1,7 @@
 import { DrawnCard, GameState } from '../types/game';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES } from '../data/parties';
+import { isKeyMoment, keyMomentLabel } from '../engine/cardEngine';
 import './DecisionCardView.css';
 
 interface DecisionCardViewProps {
@@ -12,9 +13,19 @@ interface DecisionCardViewProps {
 
 export function DecisionCardView({ game, card, onChoose, onContinue }: DecisionCardViewProps) {
   const speaker = card.speakerId ? game.characters[card.speakerId] : undefined;
+  const keyMoment = isKeyMoment(card);
 
   return (
-    <div className="dcard card fade-in" key={card.cardId + (card.outcome ? '-outcome' : '')}>
+    <div
+      className={`dcard card fade-in${keyMoment ? ' dcard-key' : ''}`}
+      key={card.cardId + (card.outcome ? '-outcome' : '')}
+    >
+      {keyMoment && (
+        <div className="dcard-keybanner">
+          <span className="dcard-keymark">!</span>
+          {keyMomentLabel(card)}
+        </div>
+      )}
       {speaker && (
         <div className="dcard-speaker">
           <Avatar

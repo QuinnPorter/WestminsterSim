@@ -5,9 +5,8 @@ import { Avatar } from '../avatar/Avatar';
 import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { BACKGROUNDS } from '../data/backgrounds';
-import { officeTitle } from '../data/offices';
 import { STAT_LABELS } from '../engine/effects';
-import { governingPartyAt, playerOfficeTitle, playerIsLeader } from '../engine/career';
+import { playerOfficeLabel, playerOfficeTitle, playerIsLeader } from '../engine/career';
 import { formatMonthYear, yearsBetween } from '../engine/clock';
 
 interface OfficeSpan {
@@ -43,8 +42,7 @@ function officeSpans(game: GameState): OfficeSpan[] {
 
 function spanTitle(game: GameState, span: OfficeSpan): string {
   if (span.becamePM) return 'Prime Minister';
-  const inGov = governingPartyAt(game, span.start) === game.player.partyId;
-  return officeTitle(span.officeId, inGov);
+  return playerOfficeLabel(game, span.officeId, span.start);
 }
 
 export function ProfileScreen({ game }: { game: GameState }) {

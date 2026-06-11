@@ -1,4 +1,6 @@
 import { useUiStore, TabId } from '../store/uiStore';
+import { useGameStore } from '../store/gameStore';
+import { isKeyMoment } from '../engine/cardEngine';
 import './TabBar.css';
 
 const ICONS: Record<TabId, JSX.Element> = {
@@ -52,6 +54,13 @@ const TABS: TabId[] = ['play', 'history', 'cabinet', 'parliament', 'profile'];
 export function TabBar() {
   const activeTab = useUiStore((s) => s.activeTab);
   const setTab = useUiStore((s) => s.setTab);
+  const game = useGameStore((s) => s.game);
+  // flag the Play tab when a high-stakes decision (or an election to acknowledge)
+  // is waiting and the player is looking elsewhere
+  const playAlert =
+    activeTab !== 'play' &&
+    (isKeyMoment(game?.currentCard) || !!game?.pendingElectionId);
+
   return (
     <nav className="tabbar">
       {TABS.map((tab) => (
@@ -61,7 +70,10 @@ export function TabBar() {
           onClick={() => setTab(tab)}
           aria-label={LABELS[tab]}
         >
-          {ICONS[tab]}
+          <span className="tabbar-icon">
+            {ICONS[tab]}
+            {tab === 'play' && playAlert && <span className="tabbar-badge">!</span>}
+          </span>
           <span>{LABELS[tab]}</span>
         </button>
       ))}

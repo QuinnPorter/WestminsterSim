@@ -5,6 +5,35 @@
   padding: 18px;
 }
 
+.dcard-key {
+  border: 2px solid var(--danger);
+  box-shadow: 0 0 0 4px rgba(192, 57, 43, 0.12), var(--shadow);
+}
+
+.dcard-keybanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
+.dcard-keymark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 900;
+  font-size: 0.8rem;
+}
+
 .dcard-speaker {
   display: flex;
   align-items: center;

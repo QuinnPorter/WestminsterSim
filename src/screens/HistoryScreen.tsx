@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { GameState, HistoryEntry, PartyId } from '../types/game';
-import { officeTitle } from '../data/offices';
 import { PARTIES } from '../data/parties';
 import { yearOf, formatMonthYear } from '../engine/clock';
-import { governingPartyAt } from '../engine/career';
+import { playerOfficeLabel } from '../engine/career';
 import { ResultBar } from '../components/ResultBar';
 
 export function HistoryScreen({ game }: { game: GameState }) {
@@ -68,9 +67,6 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
   let icon = '•';
   let text = '';
   if (entry.kind === 'roleChange') {
-    // use the government as it stood when the entry happened, so historical
-    // titles keep the right gov/shadow label after power later changes hands
-    const inGov = governingPartyAt(game, entry.date) === game.player.partyId;
     if (entry.how === 'becamePM') { icon = '👑'; text = 'Became Prime Minister'; }
     else if (entry.how === 'electedLeader') { icon = '🏆'; text = 'Elected party leader'; }
     else if (entry.officeId) {
@@ -78,7 +74,8 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
       const verb = entry.how === 'promoted' ? 'Promoted to'
         : entry.how === 'continued' ? 'Continued as'
         : 'Appointed';
-      text = `${verb} ${officeTitle(entry.officeId, inGov)}`;
+      // party-aware, and historically correct for gov/shadow at that date
+      text = `${verb} ${playerOfficeLabel(game, entry.officeId, entry.date)}`;
     } else {
       icon = entry.how === 'dismissed' ? '✂️' : entry.how === 'resigned' ? '✉️' : '↩️';
       text = entry.how === 'dismissed' ? 'Dismissed in a reshuffle'

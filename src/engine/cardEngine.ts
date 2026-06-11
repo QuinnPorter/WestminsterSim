@@ -6,6 +6,27 @@ import { getRelationship, relationshipName } from './relationships';
 import { playerInGovernment, playerTier, playerIsLeader } from './career';
 import { Rng } from './rng';
 
+// ---------- key moments ----------
+
+/** cards that represent a high-stakes, attention-worthy event */
+export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
+  if (!card) return false;
+  return (
+    card.kind === 'campaign' ||
+    card.kind === 'leadershipStand' ||
+    card.kind === 'leadershipBallot' ||
+    card.kind === 'pmPressure'
+  );
+}
+
+/** short label for the key-moment banner */
+export function keyMomentLabel(card: DrawnCard): string {
+  if (card.kind === 'campaign') return 'General election';
+  if (card.kind === 'leadershipStand' || card.kind === 'leadershipBallot') return 'Leadership contest';
+  if (card.kind === 'pmPressure') return 'Crisis in Number 10';
+  return 'Key moment';
+}
+
 // ---------- tokens ----------
 
 export function resolveTokens(state: GameState, text: string): string {

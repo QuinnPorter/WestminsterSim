@@ -2,6 +2,135 @@ import { DecisionCard } from '../../types/content';
 
 /** Tier 5: party leader — PM or Leader of the Opposition. */
 export const LEADERSHIP_CARDS: DecisionCard[] = [
+  // ----- Prime Minister: the burdens of office -----
+  {
+    id: 'pm_rival_resigns_radio',
+    title: 'A resignation on the morning round',
+    body: 'Your most senior cabinet rival has resigned live on the radio, citing "a failure of leadership at the top". The studio lights are still warm and the lobby is already writing your obituary. You have an hour to respond.',
+    speaker: 'rival',
+    tags: ['crisis', 'party', 'serious'],
+    weight: 11, cooldownDays: 420,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Statesmanlike: thank them, move on fast',
+        effects: { stats: { profile: 3, integrity: 2 }, pollingShock: { party: 'own', delta: -0.3 } },
+        outcomeText: 'You praise their service through gritted teeth, name a successor by lunchtime, and deny the drama oxygen. The wound is real but you have closed it before it could bleed all day.',
+      },
+      {
+        label: 'Hit back: brief against them hard',
+        effects: { stats: { profile: 2, integrity: -4 }, relationships: [{ kind: 'rival', delta: -10 }], trigger: 'rebel' },
+        outcomeText: 'Your operation guts them in the next edition. Satisfying — but it confirms the "chaos at the top" story, and a few more of their friends quietly join the awkward squad.',
+      },
+    ],
+  },
+  {
+    id: 'pm_confidence_motion',
+    title: 'They have the numbers — almost',
+    body: 'The whips bring grim arithmetic: a chunk of your own side will abstain on tomorrow\'s flagship vote to send you a message. Lose it and your authority may not recover. The rebels want concessions; the press wants blood.',
+    tags: ['party', 'crisis', 'serious'],
+    weight: 11, cooldownDays: 400,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Make it a confidence issue — dare them',
+        effects: { stats: { profile: 3 }, relationships: [{ kind: 'chiefWhip', delta: 4 }], trigger: 'rebel' },
+        outcomeText: 'You stake your job on the vote and dare the rebels to bring you down. Most blink. You win — but the knowledge that you had to threaten them hangs in the air like cordite.',
+      },
+      {
+        label: 'Concede enough to win the vote',
+        effects: { stats: { integrity: -3, partyStanding: 3 }, pollingShock: { party: 'own', delta: -0.2 } },
+        outcomeText: 'You water down the bill until the rebels can swallow it. The vote passes; the policy is a shadow of itself, and everyone now knows the price of a few dozen letters.',
+      },
+    ],
+  },
+  {
+    id: 'pm_intelligence_briefing',
+    title: 'The red folder at dawn',
+    body: 'The intelligence chiefs wake you at 5am: a credible threat, a narrow window, and a choice only you can make. The advice is balanced, which is another way of saying the call is yours alone.',
+    tags: ['crisis', 'serious'],
+    weight: 9, cooldownDays: 500,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Authorise the operation',
+        effects: { stats: { profile: 3, competence: 2 } },
+        outcomeText: [
+          { weight: 2, text: 'It works. The public never learns how close it came; only the handful in the room know what you carried that morning. You age a year by breakfast and tell no one.' },
+          { weight: 1, text: 'It half-works, and the fallout is days of difficult statements. You defend the call because it was the right call on the information you had — the loneliest sentence in government.', extra: { stats: { profile: -2 }, pollingShock: { party: 'own', delta: -0.4 } } },
+        ],
+      },
+      {
+        label: 'Hold — gather more, act later',
+        effects: { stats: { competence: 2, integrity: 2 } },
+        outcomeText: 'You choose patience over the dramatic option. The window narrows but does not close, and the slower path holds. No medals for the disasters that never happen.',
+      },
+    ],
+  },
+  // ----- Leader of the Opposition: the long game -----
+  {
+    id: 'lo_government_in_waiting',
+    title: 'A government in waiting',
+    body: 'A think tank wants you to publish detailed costed plans — to look "ready for office". Your shadow chancellor is terrified: every promise becomes a target, every number a hostage. But vagueness invites the charge that you stand for nothing.',
+    tags: ['policy', 'media'],
+    weight: 12, cooldownDays: 360,
+    requires: { minTier: 5, inGovernment: false },
+    choices: [
+      {
+        label: 'Publish bold, costed plans',
+        effects: { stats: { competence: 4, integrity: 3 }, pollingShock: { party: 'own', delta: 0.4 } },
+        outcomeText: 'You put real numbers on the table and dare them to attack. Some land badly; most make you look like a government in waiting. Swing voters start picturing you behind the famous door.',
+      },
+      {
+        label: 'Stay flexible — small target',
+        effects: { stats: { partyStanding: 2, integrity: -2 } },
+        outcomeText: 'You keep your powder dry and your options open. Harder to attack, easier to caricature as an empty suit. The election will decide whether the caution was wisdom or cowardice.',
+      },
+    ],
+  },
+  {
+    id: 'lo_opposition_day_ambush',
+    title: 'The opposition day trap',
+    body: 'You can use your opposition day debate to lay a parliamentary trap — a motion crafted to split the government benches and tempt their rebels into the wrong lobby. It is procedural chess, and it could embarrass them or backfire as a gimmick.',
+    tags: ['westminster', 'party'],
+    weight: 12, cooldownDays: 320,
+    requires: { minTier: 5, inGovernment: false },
+    choices: [
+      {
+        label: 'Spring the trap',
+        effects: { stats: { profile: 3, competence: 2 }, pollingShock: { party: 'own', delta: 0.3 } },
+        outcomeText: [
+          { weight: 2, text: 'The motion is irresistible to the government\'s rebels, and a dozen troop through your lobby. The "split party" footage runs for two days. Textbook opposition.' },
+          { weight: 1, text: 'The whips see it coming and impose iron discipline. Your clever motion falls flat and the sketch writers call it a stunt. Cleverness, unrewarded.', extra: { stats: { profile: -1 } } },
+        ],
+      },
+      {
+        label: 'Use the day on a real issue instead',
+        effects: { stats: { integrity: 3, competence: 1 } },
+        outcomeText: 'You spend the day on something that actually matters to people rather than a Westminster game. Less drama, more substance — the campaigners, at least, remember who gave them a hearing.',
+      },
+    ],
+  },
+  {
+    id: 'lo_unite_the_party',
+    title: 'The faction summit',
+    body: 'Your own party\'s factions are at each other\'s throats again, briefing the papers instead of fighting the government. As Leader of the Opposition you can knock heads together — or let them tire themselves out.',
+    tags: ['party', 'serious'],
+    weight: 11, cooldownDays: 360,
+    requires: { minTier: 5, inGovernment: false },
+    choices: [
+      {
+        label: 'Bang heads together personally',
+        effects: { stats: { partyStanding: 4, competence: 2 }, relationships: [{ kind: 'rival', delta: 4 }] },
+        outcomeText: 'You lock the warring factions in a room and do not let them leave without a truce. Exhausting, but a disciplined opposition is an electable one, and the briefing — for now — stops.',
+      },
+      {
+        label: 'Impose your will — purge the troublemakers',
+        effects: { stats: { profile: 3, partyStanding: -2 }, relationships: [{ kind: 'rival', delta: -8 }], trigger: 'rebel' },
+        outcomeText: 'You withdraw the whip from the worst offenders and dare the rest to complain. The party looks decisive and frightened in equal measure; the purged become a permanent, plotting rump.',
+      },
+    ],
+  },
   {
     id: 'pm_first_pmqs',
     title: 'Your despatch box now',

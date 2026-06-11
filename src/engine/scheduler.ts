@@ -4,7 +4,7 @@ import { PARTIES } from '../data/parties';
 import { drawCard, makeDrawnCard, resolveTokens } from './cardEngine';
 import {
   applyElectionAftermath, materializeForced, playerIsPM, runReshuffle,
-  openLeadershipVacancy, playerIsLeader, onFrontbenchTrack,
+  openLeadershipVacancy, playerIsLeader, onFrontbenchTrack, onMinorPartyTrack,
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS,
   npcReshuffle, npcFrontbencherRetires,
 } from './career';
@@ -178,7 +178,9 @@ const NPC_LEADER_SCANDAL = 0.0025;      // an NPC leader felled by scandal
 const NPC_RESHUFFLE_HAZARD = 0.04;      // an NPC-led front bench reshuffles itself
 const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
 const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
-const MINISTER_RUNG_HAZARD = 0.12;      // accelerated path from PPS/whip to a ministry
+const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
+const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
+const MINOR_LEADER_CHURN = 0.012;       // a minor party changes its own leader
 
 // ---------- the brain ----------
 
@@ -278,6 +280,28 @@ export function nextStep(state: GameState, rng: Rng): void {
     return;
   }
 
+  // the pressures of Number 10: a PM under fire from poor polling, scandal,
+  // their own rebellious backbenches or sheer longevity faces an authority
+  // crisis — usually survivable, occasionally fatal to the premiership
+  if (playerIsPM(state)) {
+    const polls = partyPolling(state, state.player.partyId);
+    const tenureYears = (state.day - state.government.pmSinceDay) / 365;
+    let pressure = 0;
+    if (polls < 30) pressure += (30 - polls) * 0.7;
+    if (state.player.flags.scandal) pressure += 12;
+    pressure += state.player.rebellionCount * 4;
+    if (tenureYears > 4) pressure += (tenureYears - 4) * 3;
+    const hazard = Math.min(0.1, pressure / 300);
+    if (hazard > 0 && rng.chance(hazard)) {
+      // most authority crises are survivable; a rare "brutal" one can topple
+      // even a strong PM
+      const severe = rng.chance(0.15);
+      state.forcedQueue.push({ kind: 'pmPressure', payload: { severe } });
+      nextStep(state, rng);
+      return;
+    }
+  }
+
   // reshuffles — the player-leader runs their own; everyone else is subject to them
   if (onFrontbenchTrack(state) && playerIsLeader(state) && rng.chance(PM_RESHUFFLE_HAZARD)) {
     state.forcedQueue.push({ kind: 'pmReshuffle' });
@@ -329,6 +353,34 @@ export function nextStep(state: GameState, rng: Rng): void {
         state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: target } });
         nextStep(state, rng);
         return;
+      }
+    }
+  }
+
+  // minor-party career: spokesperson offers (frequent — the bench is thin) and
+  // the occasional leadership vacancy the player can contest
+  if (onMinorPartyTrack(state) && !playerIsLeader(state)) {
+    const party = state.player.partyId;
+    // the party changes its own leader: scandal or a flat, rare churn
+    if (rng.chance(NPC_LEADER_SCANDAL) || rng.chance(MINOR_LEADER_CHURN)) {
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `The ${PARTIES[party].name} leadership falls vacant`,
+      });
+      openLeadershipVacancy(state, rng, party);
+      nextStep(state, rng);
+      return;
+    }
+    // a spokesperson/critic offer — a gentler bar than the main parties
+    if (rng.chance(MINOR_CRITIC_HAZARD)) {
+      const target = nextOfficeFor(state, rng);
+      if (target) {
+        const score = eligibilityScore(state, target) + rng.normal(0, 6);
+        if (score >= (OFFER_THRESHOLDS[OFFICES[target].tier] ?? 60) - 8) {
+          state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: target } });
+          nextStep(state, rng);
+          return;
+        }
       }
     }
   }

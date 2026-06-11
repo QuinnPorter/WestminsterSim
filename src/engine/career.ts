@@ -2,7 +2,7 @@ import {
   Character, DrawnCard, ElectionResult, ForcedEvent, GameState, OfficeId,
   PartyId, StatDelta,
 } from '../types/game';
-import { CABINET_OFFICES, DEPARTMENTS, OFFICES, officeTitle } from '../data/offices';
+import { CABINET_OFFICES, DEPARTMENTS, OFFICES, officeTitle, officeTitleFor } from '../data/offices';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { PARTIES } from '../data/parties';
 import { PARLIAMENTS } from '../data/parliaments';
@@ -40,8 +40,35 @@ export function playerIsPM(state: GameState): boolean {
   return playerIsLeader(state) && playerInGovernment(state);
 }
 
+/** the player sits with a minor party — neither government nor official
+ *  opposition — so they follow the lightweight spokesperson/critic track */
+export function onMinorPartyTrack(state: GameState): boolean {
+  return state.player.hasSeat && !onFrontbenchTrack(state);
+}
+
+/** the full party name, when the player is on the minor-party track */
+function minorPartyNameOf(state: GameState): string | undefined {
+  return onMinorPartyTrack(state) ? PARTIES[state.player.partyId].name : undefined;
+}
+
 export function playerOfficeTitle(state: GameState): string {
-  return officeTitle(state.player.officeId, playerInGovernment(state));
+  return officeTitleFor(state.player.officeId, {
+    inGovernment: playerInGovernment(state),
+    minorPartyName: minorPartyNameOf(state),
+  });
+}
+
+/** label an office the player held, for the history/career timeline. Uses the
+ *  governing party at `date` for the gov/shadow distinction; minor-party
+ *  spokesperson naming is applied when the player currently sits with one. */
+export function playerOfficeLabel(state: GameState, officeId: OfficeId | null, date: number): string {
+  if (onMinorPartyTrack(state)) {
+    return officeTitleFor(officeId, {
+      inGovernment: false,
+      minorPartyName: PARTIES[state.player.partyId].name,
+    });
+  }
+  return officeTitle(officeId, governingPartyAt(state, date) === state.player.partyId);
 }
 
 function usedNamesOf(state: GameState): Set<string> {
@@ -104,7 +131,7 @@ export function eligibilityScore(state: GameState, targetOffice: OfficeId): numb
   );
 }
 
-export const OFFER_THRESHOLDS: Record<number, number> = { 1: 46, 2: 52, 3: 58, 4: 66 };
+export const OFFER_THRESHOLDS: Record<number, number> = { 1: 41, 2: 47, 3: 52, 4: 59 };
 
 function deptOfficeId(rng: Rng, bg: typeof BACKGROUNDS[keyof typeof BACKGROUNDS], tier: 3 | 4): OfficeId {
   const prefix = tier === 4 ? 'sos' : 'min';
@@ -118,6 +145,16 @@ function deptOfficeId(rng: Rng, bg: typeof BACKGROUNDS[keyof typeof BACKGROUNDS]
 export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
   const tier = playerTier(state);
   const bg = BACKGROUNDS[state.player.background];
+
+  // minor parties have a slim front bench: a backbencher is made a spokesperson
+  // (min_*), a spokesperson is occasionally promoted to lead spokesperson (sos_*).
+  if (onMinorPartyTrack(state)) {
+    if (tier >= 4) return null; // next step up is the leadership, via a contest
+    if (tier === 3) {
+      return rng.chance(0.4) ? deptOfficeId(rng, bg, 4) : deptOfficeId(rng, bg, 3);
+    }
+    return deptOfficeId(rng, bg, 3); // tier 0/1/2 → a spokesperson brief
+  }
 
   // career memory: a returning ex-minister on the backbenches isn't sent back
   // to PPS — bring them in near their peak (peak tier, or one below).
@@ -137,7 +174,18 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
     return `min_${dept}`;
   }
   if (tier === 3) {
+    // "new ministerial role" (a lateral move to a fresh brief) is the common
+    // offer; an actual promotion to Secretary of State is the rarer ~40%.
     const current = state.player.officeId ? OFFICES[state.player.officeId].department : undefined;
+    if (rng.chance(0.6)) {
+      // lateral: a different department at the same (minister) rank
+      const others = (Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[])
+        .filter((d) => d !== current);
+      const dept = bg.deptAffinity.length > 0 && rng.chance(0.4)
+        ? rng.pick(bg.deptAffinity)
+        : rng.pick(others);
+      return `min_${dept}`;
+    }
     const dept = current && rng.chance(0.45)
       ? current
       : bg.deptAffinity.length > 0 && rng.chance(0.4)
@@ -162,7 +210,9 @@ export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = officeId;
   recordPeakTier(state);
-  if (CABINET_OFFICES.includes(officeId)) {
+  // only government/opposition players occupy a tracked cabinet seat; minor-party
+  // spokesperson roles are not part of any NPC bench
+  if (onFrontbenchTrack(state) && CABINET_OFFICES.includes(officeId)) {
     // displace the NPC holder
     setFrontbenchPost(state, frontbenchSide(state), officeId, 'player');
   }
@@ -171,7 +221,7 @@ export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 
 
 function removePlayerFromFrontbench(state: GameState, rng: Rng): void {
   const prev = state.player.officeId;
-  if (prev && CABINET_OFFICES.includes(prev)) {
+  if (onFrontbenchTrack(state) && prev && CABINET_OFFICES.includes(prev)) {
     const replacement = newFrontbencher(state, rng, state.player.partyId, prev);
     setFrontbenchPost(state, frontbenchSide(state), prev, replacement.id);
   }
@@ -246,9 +296,11 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
     }
   }
 
-  // not promotable — perhaps a sideways move to a fresh department
+  // not promotable — perhaps a sideways move to a fresh department.
+  // Secretaries of State are moved around less often than junior ministers.
   const currentOffice = state.player.officeId ? OFFICES[state.player.officeId] : null;
-  if (currentOffice?.department && rng.chance(0.25)) {
+  const sidewaysChance = currentOffice?.tier === 4 ? 0.15 : 0.3;
+  if (currentOffice?.department && rng.chance(sidewaysChance)) {
     const prefix = currentOffice.tier === 4 ? 'sos' : 'min';
     const otherDepts = (Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[])
       .filter((d) => d !== currentOffice.department);
@@ -326,21 +378,13 @@ function leadershipBaseSupport(state: GameState): number {
   );
 }
 
-const LEADERSHIP_WIN_THRESHOLD = 66;
-/** a beaten candidate can't credibly stand again straight away */
-const CONTEST_LOSS_COOLDOWN_DAYS = 1200;
+const LEADERSHIP_WIN_THRESHOLD = 59;
 
+/** Any sitting MP may put their name forward when the leadership falls vacant —
+ *  even a backbencher. Whether they get anywhere is decided by support in the
+ *  ballots (a long-shot is usually eliminated in the early rounds), not here. */
 export function playerCanStandForLeader(state: GameState): boolean {
-  const s = state.player.stats;
-  const lastLoss = state.player.flags._contestLossDay as number | undefined;
-  if (lastLoss !== undefined && state.day - lastLoss < CONTEST_LOSS_COOLDOWN_DAYS) {
-    return false;
-  }
-  return (
-    state.player.hasSeat &&
-    !playerIsLeader(state) &&
-    ((s.partyStanding >= 60 && s.profile >= 55) || playerTier(state) >= 4)
-  );
+  return state.player.hasSeat && !playerIsLeader(state);
 }
 
 /** assemble the named field for a leadership contest: 3-6 heavyweight rivals */
@@ -488,8 +532,10 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
       kind: 'event', date: state.day,
       headline: `${state.player.name} enters Number 10`,
     });
-  } else if (party === state.government.oppositionParty) {
-    state.government.loId = 'player';
+  } else {
+    // official opposition or a minor party — either way, "leader of the party"
+    state.government.loId = party === state.government.oppositionParty
+      ? 'player' : state.government.loId;
     state.history.push({
       kind: 'event', date: state.day,
       headline: `${state.player.name} elected leader of the ${PARTIES[party].name}`,
@@ -658,8 +704,13 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     case 'reshuffleOffer': {
       const officeId = ev.payload?.officeId as OfficeId;
       const sideways = ev.payload?.sideways === true;
-      const title = officeTitle(officeId, playerInGovernment(state));
-      const from = playerInGovernment(state) ? 'Number 10' : "the Leader's office";
+      const title = officeTitleFor(officeId, {
+        inGovernment: playerInGovernment(state),
+        minorPartyName: minorPartyNameOf(state),
+      });
+      const from = onMinorPartyTrack(state)
+        ? `the ${PARTIES[state.player.partyId].shortName} leader's office`
+        : playerInGovernment(state) ? 'Number 10' : "the Leader's office";
       return {
         cardId: `forced_offer_${state.day}`,
         kind: 'reshuffleOffer',
@@ -819,6 +870,23 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         payload: { weakestId: weakest?.id, advance: rng.int(7, 14) },
       };
     }
+    case 'pmPressure': {
+      const severe = ev.payload?.severe === true;
+      return {
+        cardId: `forced_pmpressure_${state.day}`,
+        kind: 'pmPressure',
+        title: severe ? 'A vote of no confidence' : 'Your authority is questioned',
+        body: severe
+          ? 'It has come to this. Enough of your own MPs have put in letters to force a confidence vote, and the men and women in grey suits have been to see you. Tonight the parliamentary party decides whether you go on — and the numbers are genuinely too close to call.'
+          : 'The mood has soured. The backbenches are restive, the papers scent blood, and a delegation of the awkward squad wants "a frank conversation". Your grip on the party needs reasserting, and quickly.',
+        choices: [
+          { label: 'Face down the rebels head-on' },
+          { label: 'Reshuffle to reassert your grip' },
+          { label: 'Offer concessions to buy peace' },
+        ],
+        payload: { severe, advance: rng.int(7, 14) },
+      };
+    }
     case 'campaign': {
       const step = (ev.payload?.step as number) ?? 1;
       const isLeader = ev.payload?.leader === true;
@@ -931,7 +999,10 @@ export function resolveForcedChoice(
         giveOffice(state, rng, officeId, promoted ? 'promoted' : 'appointed');
         gain('partyStanding', 6, 'Standing');
         gain('profile', 8, 'Profile');
-        const title = officeTitle(officeId, playerInGovernment(state));
+        const title = officeTitleFor(officeId, {
+          inGovernment: playerInGovernment(state),
+          minorPartyName: minorPartyNameOf(state),
+        });
         state.history.push({
           kind: 'event', date: state.day,
           headline: `${state.player.name} appointed ${title}`,
@@ -1055,7 +1126,13 @@ export function resolveForcedChoice(
         });
         const finalistId = finalist?.id;
         const finalistStrength = finalist?.strength ?? 35;
-        const base = { candidateIds, finalistId, finalistStrength, fieldSize: candidateIds.length };
+        const avgRivalStrength = ranked.length
+          ? ranked.reduce((a, r) => a + r.strength, 0) / ranked.length
+          : 40;
+        const base = {
+          candidateIds, finalistId, finalistStrength,
+          fieldSize: candidateIds.length, avgRivalStrength,
+        };
         state.forcedQueue.unshift(
           { kind: 'leadershipBallot', payload: { ...base, round: 1, eliminatedIds: elim[0] } },
           { kind: 'leadershipBallot', payload: { ...base, round: 2, eliminatedIds: elim[1] } },
@@ -1087,13 +1164,40 @@ export function resolveForcedChoice(
         if (n !== 0) push('Support', Math.round(n));
       };
 
+      // In each field-thinning ballot (rounds 1-3) the lowest-polling candidate
+      // is knocked out. A long-shot (a backbencher who stood on a whim) is
+      // usually that candidate — the bar rises each round toward the field's
+      // average strength. Returns an elimination outcome, or null to continue.
+      const checkEliminated = (preface: string): { text: string; deltas: StatDelta[] } | null => {
+        const avg = (card.payload?.avgRivalStrength as number) ?? 40;
+        const bar = avg * [0.5, 0.7, 0.9][round - 1] + rng.normal(0, 4);
+        const current = (state.player.flags._ldrSupport as number) ?? support;
+        if (current >= bar) return null;
+        // eliminated — the strongest survivor (the finalist) goes on to win
+        delete state.player.flags._ldrSupport;
+        state.forcedQueue = state.forcedQueue.filter((e) => e.kind !== 'leadershipBallot');
+        state.history.push({
+          kind: 'leadershipContest', date: state.day, won: false, partyId: state.player.partyId,
+        });
+        state.player.flags._contestLossDay = state.day;
+        state.player.flags._contestLosses =
+          (((state.player.flags._contestLosses as number) ?? 0) + 1);
+        resolveNpcLeadership(state, rng, state.player.partyId, card.payload?.finalistId as string);
+        gain('profile', 2, 'Profile');
+        const winner = characterName(state, getRelationship(state, 'leader')?.characterId);
+        return {
+          text: `${preface} It is not enough: you are eliminated in round ${round}, your support draining to stronger names. ${winner} goes on to take the crown. You return to the benches, your moment noted if not seized.`,
+          deltas,
+        };
+      };
+
       if (round === 1) {
         let change = 0; let flavour = '';
         if (choiceIndex === 0) { change = 5 + rng.int(0, 4); flavour = 'The unity pitch lands well with weary colleagues.'; }
         if (choiceIndex === 1) { change = rng.int(-7, 13); flavour = change > 3 ? 'The radical pitch electrifies the contest.' : 'The radical pitch alarms the cautious middle.'; }
         if (choiceIndex === 2) { change = 3 + rng.int(0, 7); flavour = 'The members love you; MPs grumble about populism.'; }
         addSupport(change);
-        return { text: `${flavour} You clear the first ballot and the field thins.`, deltas };
+        return checkEliminated(flavour) ?? { text: `${flavour} You clear the first ballot and the field thins.`, deltas };
       }
 
       if (round === 2) {
@@ -1102,7 +1206,7 @@ export function resolveForcedChoice(
         if (choiceIndex === 1) { change = rng.int(-2, 10); flavour = change > 4 ? 'The membership halls are rapturous.' : 'The membership is warm but the MPs you skipped notice.'; }
         if (choiceIndex === 2) { change = rng.int(-4, 12); flavour = change > 4 ? 'A commanding media week — you look like the frontrunner.' : 'The relentless media blitz tips into overexposure.'; }
         addSupport(change);
-        return { text: `${flavour} The second ballot narrows it further.`, deltas };
+        return checkEliminated(flavour) ?? { text: `${flavour} The second ballot narrows it further.`, deltas };
       }
 
       if (round === 3) {
@@ -1123,7 +1227,7 @@ export function resolveForcedChoice(
             : `The attack on ${finalistName} backfires — they look gracious, you look desperate.`;
         }
         addSupport(change);
-        return { text: `${text} It is down to you and ${finalistName}.`, deltas };
+        return checkEliminated(text) ?? { text: `${text} It is down to you and ${finalistName}.`, deltas };
       }
 
       if (round === 4) {
@@ -1273,22 +1377,74 @@ export function resolveForcedChoice(
       };
     }
 
+    case 'pmPressure': {
+      const severe = card.payload?.severe === true;
+      const s = state.player.stats;
+      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.integrity;
+      let text = '';
+      if (choiceIndex === 0) {
+        // face them down — high variance, the brave/foolish move
+        strength += rng.chance(0.5) ? 13 : -9;
+        gain('profile', 3, 'Profile');
+        text = 'You walk into the committee corridor with no notes and dare them to move against you in person.';
+      } else if (choiceIndex === 1) {
+        // reshuffle to reassert grip — steady
+        strength += 6;
+        gain('partyStanding', 2, 'Standing');
+        text = 'You move the deckchairs with conviction, handing jobs to the wavering and the dangerous alike.';
+      } else {
+        // concessions — reliable but costly to your standing as a conviction PM
+        strength += 10;
+        gain('integrity', -4, 'Integrity');
+        gain('partyStanding', 3, 'Standing');
+        text = 'You give ground: a U-turn here, a select-committee chair there. Unlovely, and effective.';
+      }
+      const bar = (severe ? 80 : 58) + rng.normal(0, 6);
+      if (strength + rng.normal(0, 6) >= bar) {
+        applyPollingShock(state, state.player.partyId, severe ? 0.3 : 0.5);
+        state.player.rebellionCount = Math.max(0, state.player.rebellionCount - 1);
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: severe
+            ? `${state.player.name} survives a confidence vote`
+            : `${state.player.name} faces down a party revolt`,
+        });
+        return { text: `${text} You survive — bruised and diminished, but still in Number 10.`, deltas };
+      }
+      // forced out: the party turns and an NPC successor takes over
+      const party = state.player.partyId;
+      state.player.officeId = null;
+      state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how: 'resigned' });
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} is forced out as Prime Minister`,
+      });
+      gain('profile', 4, 'Profile');
+      resolveNpcLeadership(state, rng, party);
+      return {
+        text: `${text} It is not enough. The numbers are against you; you resign at the despatch box rather than be dragged out, and watch a colleague take the keys to Number 10.`,
+        deltas,
+      };
+    }
+
     case 'campaign': {
       if (card.payload?.leader === true) {
         return resolveLeaderCampaignChoice(state, rng, card, choiceIndex, deltas, push);
       }
+      // an MP's campaign runs ~5% harder: the gains that protect a seat are
+      // shaved a little, so a marginal is marginally harder to hold.
       if (choiceIndex === 0) {
-        gain('constituencyApproval', 5, 'Approval');
+        gain('constituencyApproval', 5 * 0.95, 'Approval');
         return { text: 'Doorstep by doorstep, you shore up the home vote. Your agent stops looking quite so haunted.', deltas };
       }
       if (choiceIndex === 1) {
-        gain('profile', 4, 'Profile');
-        gain('partyStanding', 3, 'Standing');
+        gain('profile', 4 * 0.95, 'Profile');
+        gain('partyStanding', 3 * 0.95, 'Standing');
         gain('constituencyApproval', -2, 'Approval');
-        applyPollingShock(state, state.player.partyId, 0.4);
+        applyPollingShock(state, state.player.partyId, 0.4 * 0.95);
         return { text: 'You become a fixture of the morning rounds. The party is grateful; your constituency notices your absence.', deltas };
       }
-      gain('competence', 2, 'Competence');
+      gain('competence', 2 * 0.95, 'Competence');
       return { text: 'You sleep, you fundraise, you plan. Unfashionable, effective.', deltas };
     }
 
@@ -1442,9 +1598,13 @@ function resolveLeaderCampaignChoice(
 ): { text: string; deltas: StatDelta[] } {
   const step = (card.payload?.step as number) ?? 1;
   const party = state.player.partyId;
+  // leader campaigns run ~10% harder: good days help a little less, bad days
+  // hurt a little more, so a strong campaign can rescue a close race but a
+  // careless one is punished.
   const shock = (pts: number) => {
-    applyPollingShock(state, party, pts);
-    push('National polls', Math.round(pts * 10) / 10);
+    const adjusted = pts >= 0 ? pts * 0.9 : pts * 1.1;
+    applyPollingShock(state, party, adjusted);
+    push('National polls', Math.round(adjusted * 10) / 10);
   };
   const stat = (k: keyof GameState['player']['stats'], d: number, label: string) => {
     const applied = gainStat(state, k, d);

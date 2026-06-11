@@ -3,6 +3,97 @@ import { DecisionCard } from '../../types/content';
 /** Backbench Westminster life — tiers 0-2, both sides of the House. */
 export const BACKBENCHER_CARDS: DecisionCard[] = [
   {
+    id: 'bb_appg',
+    title: 'The all-party group',
+    body: 'A lobbyist offers to fund the secretariat of a new All-Party Parliamentary Group you would chair. Free research, foreign trips, a platform — and a quiet expectation about whose interests the group will champion.',
+    tags: ['westminster', 'party'],
+    weight: 11, cooldownDays: 360,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Chair it — declare everything',
+        effects: { stats: { profile: 5, integrity: -2 } },
+        outcomeText: 'You take the platform and the trips, and you register every penny. A useful profile-raiser that stays just the right side of the line — which is, after all, where the line is for.',
+      },
+      {
+        label: 'Set one up with charity backing instead',
+        effects: { stats: { integrity: 4, profile: 2, competence: 1 } },
+        outcomeText: 'You find a charity to fund it with no strings. Slower to build, but it is genuinely yours, and the cause is real. The lobbyist moves on to a more biddable colleague.',
+      },
+      {
+        label: 'Steer well clear',
+        effects: { stats: { integrity: 2 } },
+        outcomeText: 'You decline. One fewer line on the CV, one fewer entry in the register that a journalist might one day enjoy. A quiet, defensible nothing.',
+      },
+    ],
+  },
+  {
+    id: 'bb_rebellion_letter',
+    title: 'The round-robin letter',
+    body: 'A knot of colleagues is circulating a letter demanding the leadership drop an unpopular policy. It is a soft rebellion — names on a page, not votes against — but names are remembered. Yours is requested.',
+    speaker: 'rival',
+    tags: ['party', 'serious'],
+    weight: 12, cooldownDays: 300,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Sign it',
+        effects: { stats: { profile: 3, integrity: 2 }, relationships: [{ kind: 'leader', delta: -5 }, { kind: 'chiefWhip', delta: -4 }] },
+        outcomeText: 'Your name is on the letter the papers print. Backbench colleagues nod approvingly; the leader\'s office adds a small black mark by your name, in ink that takes years to fade.',
+      },
+      {
+        label: 'Refuse, and tip off the whips',
+        effects: { relationships: [{ kind: 'chiefWhip', delta: 6 }, { kind: 'ally', delta: -5 }], stats: { integrity: -3 } },
+        outcomeText: 'You hand the whips the list before it lands. Loyalty banked at the cost of friendships; the organisers never quite work out who talked, but they have suspicions, and the suspicions are correct.',
+      },
+      {
+        label: 'Stay out of it entirely',
+        effects: {},
+        outcomeText: 'You develop a sudden, pressing interest in constituency casework and let the storm pass overhead. Neither hero nor villain — just absent, which is its own kind of choice.',
+      },
+    ],
+  },
+  {
+    id: 'bb_viral_moment',
+    title: 'Ninety seconds of fame',
+    body: 'A clip of you skewering a minister in a half-empty chamber has, inexplicably, gone viral overnight. Two million views and counting. Your phone will not stop. Strike while it is hot, or let it cool?',
+    tags: ['media'],
+    weight: 10, cooldownDays: 320,
+    requires: { maxTier: 3 },
+    choices: [
+      {
+        label: 'Ride the wave — every studio, today',
+        effects: { stats: { profile: 7, competence: -2 } },
+        outcomeText: 'You do six interviews before lunch. Your follower count rockets and your name recognition with it. Somewhere in the blur you say one slightly silly thing, but the wave carries you over it.',
+      },
+      {
+        label: 'One careful follow-up, then back to work',
+        effects: { stats: { profile: 4, competence: 1 } },
+        outcomeText: 'A single, well-judged piece to camera and then a return to the day job. The moment is banked without the overexposure. Disciplined — the kind of thing that gets noticed upstairs.',
+      },
+    ],
+  },
+  {
+    id: 'bb_private_members_bill',
+    title: 'Top of the ballot',
+    body: 'You have drawn high in the Private Members\' Bill ballot — a genuine, once-in-a-parliament chance to put something on the statute book. Charities, campaigners and one persistent government whip all have suggestions.',
+    tags: ['westminster', 'policy'],
+    weight: 9, cooldownDays: 600,
+    requires: { maxTier: 3 },
+    choices: [
+      {
+        label: 'A bold reform of your own',
+        effects: { stats: { profile: 4, integrity: 4 }, relationships: [{ kind: 'chiefWhip', delta: -3 }] },
+        outcomeText: 'You pick a cause that matters and dare the government to block it on the floor. It may not pass — most don\'t — but the campaign rallies behind you, and the issue now has your name welded to it.',
+      },
+      {
+        label: 'A safe, government-friendly tidy-up',
+        effects: { stats: { competence: 3 }, relationships: [{ kind: 'leader', delta: 3 }, { kind: 'chiefWhip', delta: 3 }] },
+        outcomeText: 'You take the bill the whips quietly suggested: worthy, technical, certain to pass. No headlines, but a real change in the law with your name on it — and a favour banked with the people who write lists.',
+      },
+    ],
+  },
+  {
     id: 'bb_maiden_speech',
     title: 'The maiden speech',
     body: 'Your maiden speech is scheduled for Thursday. Convention demands warmth about {constituency} and kindness about your predecessor. Ambition suggests something quotable.',

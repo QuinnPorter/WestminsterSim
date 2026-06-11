@@ -67,6 +67,18 @@ export const BACKGROUNDS: Record<BackgroundId, BackgroundInfo> = {
     statMods: { integrity: 6, constituencyApproval: 5, competence: 2 },
     deptAffinity: ['defence'], deptBonus: 10,
   },
+  councillor: {
+    id: 'councillor', name: 'Local Councillor',
+    blurb: 'Years of bins, planning rows and ward surgeries. You know what people actually want.',
+    statMods: { constituencyApproval: 8, competence: 3, partyStanding: 2 },
+    deptAffinity: ['dwp', 'transport'], deptBonus: 6,
+  },
+  mayor: {
+    id: 'mayor', name: 'Big City Mayor',
+    blurb: 'You ran a city the size of a small country. Westminster feels oddly junior.',
+    statMods: { profile: 8, competence: 5, constituencyApproval: 6, partyStanding: 4 },
+    deptAffinity: ['business', 'transport'], deptBonus: 8,
+  },
 };
 
 export const BACKGROUND_IDS = Object.keys(BACKGROUNDS) as BackgroundId[];

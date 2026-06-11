@@ -92,6 +92,31 @@ export function officeTitle(officeId: OfficeId | null, inGovernment: boolean): s
   return inGovernment ? office.title : office.shadowTitle;
 }
 
+/** Title for an office, aware of minor-party spokesperson naming. Pass
+ *  `minorPartyName` (the full party name) when the holder's party is neither
+ *  the government nor the official opposition. */
+export function officeTitleFor(
+  officeId: OfficeId | null,
+  opts: { inGovernment: boolean; minorPartyName?: string }
+): string {
+  if (!officeId) return 'Backbench MP';
+  const { inGovernment, minorPartyName } = opts;
+  if (!minorPartyName) return officeTitle(officeId, inGovernment);
+
+  const office = OFFICES[officeId];
+  if (office.id === 'leader') return `Leader of the ${minorPartyName}`;
+  if (office.id === 'chiefWhip') return `${minorPartyName} Chief Whip`;
+  if (office.id === 'whip') return `${minorPartyName} Whip`;
+  if (office.id === 'pps') return `Aide to the ${minorPartyName} Leader`;
+  if (office.department) {
+    const dept = DEPARTMENTS[office.department].casual;
+    return office.tier === 4
+      ? `${minorPartyName} Lead Spokesperson for ${dept}`
+      : `${minorPartyName} Spokesperson for ${dept}`;
+  }
+  return officeTitle(officeId, inGovernment);
+}
+
 export function officeTier(officeId: OfficeId | null): number {
   return officeId ? OFFICES[officeId].tier : 0;
 }

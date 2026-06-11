@@ -112,7 +112,7 @@ export interface Relationship {
 
 export type BackgroundId =
   | 'advisor' | 'lawyer' | 'business' | 'foreignService' | 'manualLabour'
-  | 'teacher' | 'doctor' | 'journalist' | 'military';
+  | 'teacher' | 'doctor' | 'journalist' | 'military' | 'councillor' | 'mayor';
 
 export interface PlayerStats {
   /** public/media profile */
@@ -232,7 +232,7 @@ export interface StatDelta {
 export type ForcedKind =
   | 'reshuffleOffer' | 'dismissal' | 'resignPrompt'
   | 'campaign' | 'electionNight' | 'lostSeat' | 'wilderness'
-  | 'leadershipStand' | 'leadershipBallot' | 'pmReshuffle'
+  | 'leadershipStand' | 'leadershipBallot' | 'pmReshuffle' | 'pmPressure'
   | 'calendar';
 
 export interface DrawnCard {
