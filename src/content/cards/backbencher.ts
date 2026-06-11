@@ -203,4 +203,196 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'bb_early_day_motion',
+    title: 'The Early Day Motion',
+    body: 'A campaign group wants you to table an Early Day Motion — a parliamentary sticky-note that changes nothing but signals everything. The cause is popular at home and faintly embarrassing to your front bench.',
+    tags: ['westminster', 'party'],
+    weight: 11, cooldownDays: 220,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Table it proudly',
+        effects: { stats: { constituencyApproval: 3, partyStanding: -2 } },
+        outcomeText: 'Forty colleagues sign within a week. The cause group sends a hamper; the whips send a look. A cheap win with a small invoice.',
+      },
+      {
+        label: 'Quietly let it drop',
+        effects: { stats: { partyStanding: 2, constituencyApproval: -1 } },
+        outcomeText: 'You explain, gently, that EDMs are parliamentary confetti. The group is disappointed but the front bench is spared. Sensible; forgettable.',
+      },
+    ],
+  },
+  {
+    id: 'bb_apsg_junket',
+    title: 'The all-party group trip',
+    body: 'An all-party parliamentary group offers a "fact-finding visit" somewhere sunny, funded by an industry with an obvious interest. It would be genuinely educational. It would also appear on a register.',
+    tags: ['westminster', 'media'],
+    weight: 10, cooldownDays: 300,
+    choices: [
+      {
+        label: 'Go, and declare it fully',
+        effects: { stats: { competence: 4, profile: 2, integrity: -3 } },
+        outcomeText: 'You learn a great deal and register every penny. Months later a journalist lists it anyway under "MPs\' freebies" — accurately, and without context. Worth it, mostly.',
+      },
+      {
+        label: 'Decline on principle',
+        effects: { stats: { integrity: 4, competence: -1 } },
+        outcomeText: 'You stay home and read the briefing pack instead. Less suntan, less knowledge, zero register entries. Your conscience is the only thing that travelled.',
+      },
+    ],
+  },
+  {
+    id: 'bb_rebel_amendment',
+    title: 'Your name on the amendment',
+    body: '{ally} is gathering signatures for a backbench amendment that would genuinely improve a government bill — and genuinely embarrass the minister. They need a few brave names at the top of the list.',
+    speaker: 'ally',
+    tags: ['westminster', 'policy', 'party'],
+    weight: 12, cooldownDays: 200,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Put your name to it',
+        effects: { stats: { profile: 4, integrity: 3, partyStanding: -3 }, relationships: [{ kind: 'ally', delta: 6 }, { kind: 'chiefWhip', delta: -4 }] },
+        outcomeText: 'The amendment forces a concession; the policy is better for it. Your name is now associated with "independent-minded", a phrase the whips file under "watch".',
+      },
+      {
+        label: 'Sign only if it\'s winnable',
+        effects: { stats: { competence: 2 } },
+        outcomeText: 'You do the maths first. It isn\'t winnable, so you stay off — but you slip {ally} the procedural trick that wins a smaller concession later. Quiet craft.',
+      },
+      {
+        label: 'Stay well clear',
+        effects: { relationships: [{ kind: 'chiefWhip', delta: 3 }, { kind: 'ally', delta: -4 }] },
+        outcomeText: 'You like your name where it is: off lists. The whips notice the loyalty; {ally} notices the absence.',
+      },
+    ],
+  },
+  {
+    id: 'bb_viral_clip',
+    title: 'The accidental viral moment',
+    body: 'A thirty-second clip of you patiently dismantling a pompous witness in committee has, overnight and inexplicably, gone viral. Eight million views. Your inbox is chaos and a producer wants you on the sofa tomorrow.',
+    tags: ['media', 'westminster', 'funny'],
+    weight: 10, cooldownDays: 350,
+    requires: { maxTier: 3 },
+    choices: [
+      {
+        label: 'Ride the wave — do the rounds',
+        effects: { stats: { profile: 7, competence: -1, constituencyApproval: -2 } },
+        outcomeText: 'You become, for nine days, A Person From The Internet. The profile boost is real; so is the faint sense that you are now famous for a meme rather than a record.',
+      },
+      {
+        label: 'Stay measured, decline the sofas',
+        effects: { stats: { profile: 2, integrity: 2 } },
+        outcomeText: 'You let the clip speak for itself and keep your head down. The serious people respect it; the algorithm moves on to a cat. A small, dignified bump.',
+      },
+    ],
+  },
+  {
+    id: 'bb_whip_favour',
+    title: 'A favour banked',
+    body: '{whip} catches you after a vote with a rare warm smile. "You\'ve been solid. Anything you need — a debate slot, a committee, a word in the right ear — you ask." A favour from the whips\' office is a currency that doesn\'t inflate.',
+    speaker: 'chiefWhip',
+    tags: ['party', 'westminster'],
+    weight: 9, cooldownDays: 400,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Cash it for a committee seat',
+        effects: { stats: { competence: 4, profile: 1 }, relationships: [{ kind: 'chiefWhip', delta: -1 }] },
+        outcomeText: 'You take the select committee seat you wanted. The work is meaty and visible. The favour is spent — but well.',
+      },
+      {
+        label: 'Save it for a rainy day',
+        effects: { relationships: [{ kind: 'chiefWhip', delta: 4 }] },
+        outcomeText: 'You thank them and bank it. An unspent favour with the Chief Whip is worth more in the having than the using — and they respect a colleague who understands that.',
+      },
+    ],
+  },
+  {
+    id: 'bb_maiden_rebellion_regret',
+    title: 'The morning after',
+    body: 'You rebelled last night, and it felt righteous at 10pm. At 7am, {mentor} calls: "Good for the soul, bad for the career. Now — do you want it to mean something, or just to have happened?"',
+    speaker: 'mentor',
+    tags: ['party', 'personal'],
+    weight: 9, cooldownDays: 300,
+    requires: { maxTier: 3, flags: {} },
+    choices: [
+      {
+        label: 'Build a cause around it',
+        effects: { stats: { profile: 4, integrity: 2, partyStanding: -2 } },
+        outcomeText: 'You turn one vote into a campaign — op-eds, a backbench group, a clear ask. Rebellion with a purpose reads as conviction, not petulance. Mostly.',
+      },
+      {
+        label: 'Mend fences fast',
+        effects: { stats: { partyStanding: 3 }, relationships: [{ kind: 'leader', delta: 3 }, { kind: 'chiefWhip', delta: 3 }] },
+        outcomeText: 'You take the leader\'s PPS for coffee and make conciliatory noises. The breach heals. {mentor} approves; your principles file a quiet complaint.',
+      },
+    ],
+  },
+  {
+    id: 'bb_constituency_vs_conscience',
+    title: 'Whipped against your patch',
+    body: 'The party line on this bill is actively unpopular in {constituency} — a local industry, specifically, will be hurt. The whip is on. Your inbox and your conscience are, for once, on the same side; the leadership is not.',
+    tags: ['westminster', 'constituency', 'serious'],
+    weight: 11, cooldownDays: 240,
+    requires: { maxTier: 3 },
+    choices: [
+      {
+        label: 'Vote for the constituency',
+        effects: { stats: { constituencyApproval: 5, integrity: 3, partyStanding: -4 }, relationships: [{ kind: 'chiefWhip', delta: -5 }], trigger: 'rebel' },
+        outcomeText: 'You tell the whips you cannot look the workers in the eye and vote the other way. They\'ve heard it before, but the local paper\'s headline — "OUR MP STANDS UP" — is not nothing.',
+      },
+      {
+        label: 'Win an exemption behind the scenes',
+        effects: { stats: { competence: 4, constituencyApproval: 2 } },
+        outcomeText: 'You vote with the party — but only after extracting a transition fund for the affected industry in a quiet ministerial corridor. Nobody gets a headline. The workers get a cushion.',
+      },
+      {
+        label: 'Hold the line, explain later',
+        effects: { stats: { partyStanding: 3, constituencyApproval: -4 }, relationships: [{ kind: 'leader', delta: 2 }] },
+        outcomeText: 'You vote the line and send a carefully-worded letter to every affected business. Some understand. Some put it on the noticeboard with your name circled in red.',
+      },
+    ],
+  },
+  {
+    id: 'bb_thinktank_pamphlet',
+    title: 'The pamphlet',
+    body: 'A think tank invites you to co-author a pamphlet setting out a bold new direction for the party. It would mark you as a thinker — or as someone with ideas above their station, depending on who reads it.',
+    tags: ['policy', 'party', 'media'],
+    weight: 9, cooldownDays: 400,
+    requires: { maxTier: 3 },
+    choices: [
+      {
+        label: 'Write something genuinely bold',
+        effects: { stats: { profile: 5, competence: 2, partyStanding: -2 } },
+        outcomeText: 'The pamphlet gets reviewed, argued over, and cited. You are now A Person With A Tendency. Leadership-watchers add your name to a list you didn\'t ask to be on.',
+      },
+      {
+        label: 'Co-sign something safe',
+        effects: { stats: { competence: 2 } },
+        outcomeText: 'You lend your name to a worthy, careful document about productivity. It is praised by three economists and read by none. No enemies made.',
+      },
+    ],
+  },
+  {
+    id: 'bb_new_intake_mentor',
+    title: 'The new intake look up to you',
+    body: 'A by-election has brought in a nervous new colleague who has, alarmingly, started treating you as a wise old hand. They want advice, a drink, and possibly a faction to belong to.',
+    tags: ['party', 'personal'],
+    weight: 8, cooldownDays: 350,
+    requires: { minTier: 1 },
+    choices: [
+      {
+        label: 'Take them under your wing',
+        effects: { stats: { partyStanding: 4 }, relationships: [{ kind: 'ally', delta: 4 }] },
+        outcomeText: 'You become the gravitational centre of a small, loyal group of newer members. Building a base is how backbenchers become contenders. It starts with buying the drinks.',
+      },
+      {
+        label: 'Be kind but keep your distance',
+        effects: { stats: { integrity: 1 } },
+        outcomeText: 'You give them good, honest advice and no factional pitch. They are grateful and slightly adrift. Not everyone wants to run a court; some just want an early night.',
+      },
+    ],
+  },
 ];

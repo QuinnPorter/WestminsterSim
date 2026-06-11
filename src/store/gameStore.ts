@@ -6,8 +6,9 @@ import { initCalendar, nextStep } from '../engine/scheduler';
 import {
   acknowledgeElectionCore, continueCore, resolveChoiceCore,
 } from '../engine/turn';
-import { buildLegacy, changeParty } from '../engine/career';
-import { PartyId } from '../types/game';
+import { buildLegacy, changeParty, resignOfficeCore, sackMinisterCore } from '../engine/career';
+import { OFFICES } from '../data/offices';
+import { OfficeId, PartyId } from '../types/game';
 import { Rng } from '../engine/rng';
 
 interface GameStore {
@@ -17,6 +18,8 @@ interface GameStore {
   continueAfterOutcome: () => void;
   acknowledgeElection: () => void;
   crossFloor: (partyId: PartyId) => void;
+  resignOffice: () => void;
+  sackMinister: (officeId: OfficeId) => void;
   retire: () => void;
   abandonGame: () => void;
   /** debug helper (used by the ?debug menu) */
@@ -65,6 +68,12 @@ export const useGameStore = create<GameStore>()(
       crossFloor: (partyId) =>
         mutateGame(get, set, (game, rng) => changeParty(game, rng, partyId)),
 
+      resignOffice: () =>
+        mutateGame(get, set, (game, rng) => resignOfficeCore(game, rng)),
+
+      sackMinister: (officeId) =>
+        mutateGame(get, set, (game, rng) => sackMinisterCore(game, rng, officeId)),
+
       retire: () =>
         mutateGame(get, set, (game) => {
           if (game.gameOver) return;
@@ -81,9 +90,28 @@ export const useGameStore = create<GameStore>()(
       version: SAVE_VERSION,
       migrate: (persisted, version) => {
         const store = persisted as GameStore;
-        if (version < 2 && store.game) {
-          // v1 saves predate PM-tenure tracking
-          store.game.government.pmSinceDay = store.game.parliamentStart;
+        const game = store.game;
+        if (game) {
+          if (version < 2) {
+            // v1 saves predate PM-tenure tracking
+            game.government.pmSinceDay = game.parliamentStart;
+          }
+          if (version < 3) {
+            // v3 adds the polling tracker and peak-tier career memory
+            if (!game.pollHistory) {
+              game.pollHistory = [{ day: game.parliamentStart, shares: { ...game.polling.shares } }];
+            }
+            if (game.player.flags._peakTier === undefined) {
+              let peak = 0;
+              for (const h of game.history) {
+                if (h.kind === 'roleChange' && h.officeId) {
+                  const t = OFFICES[h.officeId]?.tier ?? 0;
+                  if (t > peak) peak = t;
+                }
+              }
+              game.player.flags._peakTier = peak;
+            }
+          }
         }
         return store;
       },

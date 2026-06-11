@@ -69,3 +69,62 @@ describe('leadership contest calibration', () => {
     expect(wins / runs).toBeLessThan(0.4);
   });
 });
+
+describe('leadership contest structure', () => {
+  it('always assembles a named field of 3-6 rivals', () => {
+    for (let i = 0; i < 20; i++) {
+      const game = makeGame(2000 + i);
+      const rng = new Rng(i + 1);
+      game.player.officeId = 'sos_home';
+      game.player.stats = { profile: 80, partyStanding: 80, competence: 70, constituencyApproval: 60, integrity: 60 };
+      openLeadershipVacancy(game, rng, 'con');
+      const stand = game.forcedQueue.find((e) => e.kind === 'leadershipStand');
+      expect(stand).toBeDefined();
+      const ids = stand!.payload?.candidateIds as string[];
+      expect(ids.length).toBeGreaterThanOrEqual(3);
+      expect(ids.length).toBeLessThanOrEqual(6);
+      // every rival resolves to a real, named character
+      for (const id of ids) expect(game.characters[id]?.name).toBeTruthy();
+      // the materialised declaration card names them (regression: was "heavyweights are circling")
+      const card = materializeForced(game, rng, stand!);
+      expect(card.body).toContain(game.characters[ids[0]].name);
+    }
+  });
+
+  it('runs a full six-stage contest (declaration + five ballots) with named rounds', () => {
+    const game = makeGame(4321);
+    const rng = new Rng(99);
+    game.player.officeId = 'sos_treasury';
+    game.player.stats = { profile: 85, partyStanding: 85, competence: 85, constituencyApproval: 70, integrity: 65 };
+    openLeadershipVacancy(game, rng, 'con');
+    const titles: string[] = [];
+    let stage = 0;
+    while (game.forcedQueue.length > 0 && stage < 8) {
+      const ev = game.forcedQueue.shift()!;
+      const card = materializeForced(game, rng, ev);
+      titles.push(card.title);
+      resolveForcedChoice(game, rng, card, 0);
+      stage++;
+    }
+    // declaration + 5 ballot stages = 6 cards
+    expect(titles.length).toBe(6);
+    expect(titles[0]).toMatch(/leadership is vacant/i);
+    // the final ballot names the finalist
+    expect(titles[titles.length - 1]).toMatch(/Final ballot — you vs /);
+  });
+
+  it('a post-election vacancy (settleNpcLeaderships path) also names opponents', () => {
+    // openLeadershipVacancy is what settleNpcLeaderships now calls — the old bug
+    // was a bare leadershipStand with no candidateIds. Guarantee names here.
+    const game = makeGame(777);
+    const rng = new Rng(5);
+    game.player.officeId = 'sos_foreign';
+    game.player.stats = { profile: 80, partyStanding: 80, competence: 75, constituencyApproval: 60, integrity: 60 };
+    openLeadershipVacancy(game, rng, game.player.partyId);
+    const stand = game.forcedQueue.find((e) => e.kind === 'leadershipStand');
+    const ids = (stand?.payload?.candidateIds as string[]) ?? [];
+    expect(ids.length).toBeGreaterThanOrEqual(3);
+    const card = materializeForced(game, rng, stand!);
+    expect(card.body).not.toContain('Several heavyweights are circling');
+  });
+});

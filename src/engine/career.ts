@@ -11,7 +11,7 @@ import {
   adjustRelationship, averageColleagueWarmth, characterName, getRelationship,
   relationshipValue, replaceLeader,
 } from './relationships';
-import { applyPollingShock } from './effects';
+import { applyPollingShock, gainStat } from './effects';
 import { Rng, clamp } from './rng';
 
 // ---------- basic queries ----------
@@ -104,12 +104,31 @@ export function eligibilityScore(state: GameState, targetOffice: OfficeId): numb
   );
 }
 
-const OFFER_THRESHOLDS: Record<number, number> = { 1: 46, 2: 52, 3: 58, 4: 66 };
+export const OFFER_THRESHOLDS: Record<number, number> = { 1: 46, 2: 52, 3: 58, 4: 66 };
+
+function deptOfficeId(rng: Rng, bg: typeof BACKGROUNDS[keyof typeof BACKGROUNDS], tier: 3 | 4): OfficeId {
+  const prefix = tier === 4 ? 'sos' : 'min';
+  const dept = bg.deptAffinity.length > 0 && rng.chance(0.5)
+    ? rng.pick(bg.deptAffinity)
+    : rng.pick(Object.keys(DEPARTMENTS)) as keyof typeof DEPARTMENTS;
+  return `${prefix}_${dept}`;
+}
 
 /** the next rung the player would plausibly be offered */
 export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
   const tier = playerTier(state);
   const bg = BACKGROUNDS[state.player.background];
+
+  // career memory: a returning ex-minister on the backbenches isn't sent back
+  // to PPS — bring them in near their peak (peak tier, or one below).
+  const peak = (state.player.flags._peakTier as number) ?? 0;
+  if (tier === 0 && peak >= 3) {
+    const comebackTier = rng.chance(0.6) ? peak : peak - 1;
+    if (comebackTier >= 4) return deptOfficeId(rng, bg, 4);
+    if (comebackTier === 3) return deptOfficeId(rng, bg, 3);
+    // peak was a whip/PPS — fall through to the normal ladder
+  }
+
   if (tier === 0) return rng.chance(0.55) ? 'pps' : 'whip';
   if (tier === 1 || tier === 2) {
     const dept = bg.deptAffinity.length > 0 && rng.chance(0.5)
@@ -131,10 +150,18 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
 
 // ---------- office changes ----------
 
+/** remember the highest tier the player has ever held, for comebacks */
+export function recordPeakTier(state: GameState): void {
+  const tier = playerTier(state);
+  const peak = (state.player.flags._peakTier as number) ?? 0;
+  if (tier > peak) state.player.flags._peakTier = tier;
+}
+
 export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 'appointed' | 'promoted'): void {
   // vacate any cabinet-level post the player held
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = officeId;
+  recordPeakTier(state);
   if (CABINET_OFFICES.includes(officeId)) {
     // displace the NPC holder
     setFrontbenchPost(state, frontbenchSide(state), officeId, 'player');
@@ -232,6 +259,56 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
   }
 }
 
+/** an NPC-led party reshuffles its own front bench (texture for a living world) */
+export function npcReshuffle(state: GameState, rng: Rng, party: PartyId): void {
+  const side =
+    party === state.government.governingParty ? 'cabinet'
+    : party === state.government.oppositionParty ? 'shadowCabinet'
+    : null;
+  if (!side) return;
+  const inGov = side === 'cabinet';
+  const leaderName = characterName(
+    state, inGov ? state.government.pmId : state.government.loId
+  );
+  const posts = state.government[side].filter((p) => p.characterId !== 'player');
+  const changed = rng.shuffle(posts).slice(0, rng.int(1, 2));
+  if (changed.length === 0) return;
+  for (const post of changed) {
+    const old = state.characters[post.characterId];
+    if (old) old.officeId = null;
+    const fresh = newFrontbencher(state, rng, party, post.officeId);
+    post.characterId = fresh.id;
+  }
+  const first = changed[0];
+  const title = inGov ? OFFICES[first.officeId].title : OFFICES[first.officeId].shadowTitle;
+  const newName = state.characters[first.characterId]?.name ?? 'a new face';
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${leaderName} reshuffles the ${inGov ? PARTIES[party].shortName + ' cabinet' : PARTIES[party].shortName + ' front bench'}; ${newName} appointed ${title}`,
+  });
+}
+
+/** very rare: an NPC frontbencher steps back from public life */
+export function npcFrontbencherRetires(state: GameState, rng: Rng, party: PartyId): void {
+  const side =
+    party === state.government.governingParty ? 'cabinet'
+    : party === state.government.oppositionParty ? 'shadowCabinet'
+    : null;
+  if (!side) return;
+  const inGov = side === 'cabinet';
+  const post = rng.pick(state.government[side].filter((p) => p.characterId !== 'player'));
+  if (!post) return;
+  const old = state.characters[post.characterId];
+  if (old) { old.officeId = null; old.active = false; }
+  const fresh = newFrontbencher(state, rng, party, post.officeId);
+  post.characterId = fresh.id;
+  const title = inGov ? OFFICES[post.officeId].title : OFFICES[post.officeId].shadowTitle;
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${old?.name ?? 'A senior figure'} steps down from front-line politics; ${fresh.name} takes over as ${title}`,
+  });
+}
+
 // ---------- leadership ----------
 
 function leadershipBaseSupport(state: GameState): number {
@@ -266,13 +343,14 @@ export function playerCanStandForLeader(state: GameState): boolean {
   );
 }
 
-/** assemble the named field for a leadership contest: 2-3 heavyweight rivals */
+/** assemble the named field for a leadership contest: 3-6 heavyweight rivals */
 function pickContestCandidates(state: GameState, rng: Rng, party: PartyId): string[] {
+  const fieldSize = rng.int(3, 6);
   const pool = Object.values(state.characters)
     .filter((c) => c.active && c.partyId === party && c.officeId && OFFICES[c.officeId].tier === 4)
     .sort((a, b) => b.competence - a.competence);
-  const ids = pool.slice(0, rng.chance(0.5) ? 3 : 2).map((c) => c.id);
-  while (ids.length < 2) {
+  const ids = pool.slice(0, fieldSize).map((c) => c.id);
+  while (ids.length < fieldSize) {
     const c = generateCharacter(rng, usedNamesOf(state), {
       partyId: party, minAge: 40, maxAge: 60,
       competenceMean: 60, traitBias: ['ambitious'],
@@ -281,6 +359,17 @@ function pickContestCandidates(state: GameState, rng: Rng, party: PartyId): stri
     ids.push(c.id);
   }
   return ids;
+}
+
+/** a rival's contest strength: competence-led, trait-flavoured, seeded once */
+function rivalStrengthOf(c: Character, rng: Rng): number {
+  const traitBonus =
+    (c.traits.includes('ambitious') ? 4 : 0) +
+    (c.traits.includes('ruthless') ? 4 : 0) +
+    (c.traits.includes('charming') ? 3 : 0) +
+    (c.traits.includes('fixer') ? 2 : 0) -
+    (c.traits.includes('dull') ? 5 : 0);
+  return 0.6 * c.competence + traitBonus + rng.normal(0, 5);
 }
 
 /** a leadership vacancy has opened in `party` */
@@ -376,6 +465,7 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
   const party = state.player.partyId;
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = 'leader';
+  recordPeakTier(state);
   state.history.push({
     kind: 'roleChange', date: state.day, officeId: 'leader', how: 'electedLeader',
   });
@@ -482,6 +572,8 @@ export function applyElectionAftermath(
   state.player.rebellionCount = 0;
   // a defection has now been tested at the ballot box
   delete state.player.flags.defected;
+  // start a fresh polling tracker for the new parliament
+  state.pollHistory = [{ day: state.day, shares: { ...state.polling.shares } }];
 
   // ---- player seat lost? ----
   if (!playerWonSeat) {
@@ -524,21 +616,15 @@ function settleNpcLeaderships(
   newGov: PartyId,
   prevOpp: PartyId
 ): void {
-  // outgoing governing party that lost: leader resigns 85% of the time
+  // outgoing governing party that lost: leader resigns 85% of the time.
+  // opposition that failed to gain ground: leader resigns 25% of the time.
+  // openLeadershipVacancy builds a named field and lets the player stand if
+  // it's their party (fixes the old bug where post-election contests had no
+  // named opponents).
   if (newGov !== prevGov && state.government.loId !== 'player' && rng.chance(0.85)) {
-    if (prevGov === state.player.partyId && playerCanStandForLeader(state)) {
-      state.forcedQueue.push({ kind: 'leadershipStand' });
-    } else {
-      resolveNpcLeadership(state, rng, prevGov);
-    }
-  }
-  // opposition that failed to gain ground: leader resigns 25% of the time
-  else if (newGov === prevGov && state.government.loId !== 'player' && rng.chance(0.25)) {
-    if (prevOpp === state.player.partyId && playerCanStandForLeader(state)) {
-      state.forcedQueue.push({ kind: 'leadershipStand' });
-    } else {
-      resolveNpcLeadership(state, rng, prevOpp);
-    }
+    openLeadershipVacancy(state, rng, prevGov);
+  } else if (newGov === prevGov && state.government.loId !== 'player' && rng.chance(0.25)) {
+    openLeadershipVacancy(state, rng, prevOpp);
   }
 }
 
@@ -620,51 +706,74 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     }
     case 'leadershipBallot': {
       const round = (ev.payload?.round as number) ?? 1;
+      const pass = { ...ev.payload, advance: rng.int(8, 14) };
       const candidateIds = (ev.payload?.candidateIds as string[]) ?? [];
+      const finalistName = characterName(state, ev.payload?.finalistId as string);
+      const elimNames = ((ev.payload?.eliminatedIds as string[]) ?? [])
+        .map((id) => characterName(state, id)).join(' and ');
       if (round === 1) {
         const rivals = candidateIds.map((id) => characterName(state, id)).join(', ');
         return {
-          cardId: `forced_ballot1_${state.day}`,
-          kind: 'leadershipBallot',
+          cardId: `forced_ballot1_${state.day}`, kind: 'leadershipBallot',
           title: 'First ballot',
-          body: `The field is set: you against ${rivals}. Your campaign launch is tonight — lecterns polished, journalists fed and watered. What is your pitch?`,
+          body: `The field is set: you against ${rivals}. Your launch is tonight — lecterns polished, journalists fed and watered. What is your pitch?`,
           choices: [
             { label: 'Unity — heal the party' },
             { label: 'Bold change — rip up the script' },
             { label: 'Court the grassroots' },
           ],
-          payload: { round: 1, candidateIds, advance: rng.int(8, 14) },
+          payload: pass,
         };
       }
       if (round === 2) {
-        const eliminatedIds = (ev.payload?.eliminatedIds as string[]) ?? [];
-        const eliminatedNames = eliminatedIds.map((id) => characterName(state, id)).join(' and ');
-        const finalistName = characterName(state, ev.payload?.finalistId as string);
         return {
-          cardId: `forced_ballot2_${state.day}`,
-          kind: 'leadershipBallot',
-          title: 'The endorsement round',
-          body: `${eliminatedNames || 'The weakest candidate'} ${eliminatedIds.length > 1 ? 'are' : 'is'} out of the race, and their backers are suddenly the most popular MPs in the building. It is you against ${finalistName} now — and the eliminated camp's votes will decide it.`,
+          cardId: `forced_ballot2_${state.day}`, kind: 'leadershipBallot',
+          title: 'Second ballot',
+          body: `${elimNames ? `${elimNames} fell at the first ballot. ` : ''}The field narrows and the arithmetic sharpens. Where do you put your energy this week?`,
           choices: [
-            { label: 'Offer their champion a big job' },
+            { label: 'Work the parliamentary party' },
+            { label: 'Tour the membership' },
+            { label: 'Dominate the airwaves' },
+          ],
+          payload: pass,
+        };
+      }
+      if (round === 3) {
+        return {
+          cardId: `forced_ballot3_${state.day}`, kind: 'leadershipBallot',
+          title: 'The hustings',
+          body: `${elimNames ? `${elimNames} now eliminated. ` : ''}The set-piece hustings is tonight, the hall packed, the cameras live. ${finalistName} is the one to beat. How do you play it?`,
+          choices: [
+            { label: 'A barnstorming, emotional speech' },
+            { label: 'Sober, detailed, prime-ministerial' },
+            { label: 'Take the fight straight to ' + finalistName },
+          ],
+          payload: pass,
+        };
+      }
+      if (round === 4) {
+        return {
+          cardId: `forced_ballot4_${state.day}`, kind: 'leadershipBallot',
+          title: 'The endorsement round',
+          body: `It is down to you and ${finalistName}. The eliminated candidates' backers are suddenly the most courted MPs in the building, and their votes will decide this.`,
+          choices: [
+            { label: 'Offer the kingmakers big jobs' },
             { label: 'Win them over on the argument' },
             { label: 'No deals — run on your own terms' },
           ],
-          payload: { round: 2, candidateIds, eliminatedIds, finalistId: ev.payload?.finalistId, advance: rng.int(8, 14) },
+          payload: pass,
         };
       }
-      const finalistName = characterName(state, ev.payload?.finalistId as string);
       return {
-        cardId: `forced_ballot3_${state.day}`,
-        kind: 'leadershipBallot',
+        cardId: `forced_ballot5_${state.day}`, kind: 'leadershipBallot',
         title: `Final ballot — you vs ${finalistName}`,
-        body: `The last hustings is brutal: ${finalistName} is good, and tonight everyone can see it. The polls are within the margin of error and your campaign manager wants a decision on the closing strategy.`,
+        body: `The membership ballot closes at noon. ${finalistName} has run a serious campaign and the polls are within the margin of error. Your closing move?`,
         choices: [
           { label: 'Go for the jugular' },
           { label: 'Stay relentlessly positive' },
           { label: 'Quietly promise jobs to waverers' },
         ],
-        payload: { round: 3, candidateIds, finalistId: ev.payload?.finalistId, advance: rng.int(8, 14) },
+        payload: pass,
       };
     }
     case 'pmReshuffle': {
@@ -694,8 +803,13 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         const defending = playerInGovernment(state);
         const stages: { title: string; body: string; choices: string[] }[] = [
           {
+            title: 'The campaign grid',
+            body: `Parliament is dissolved and this election is yours to win or lose — ${defending ? 'your record, your government, your name on the door' : 'your one shot at the door of Number 10'}. Your strategists want the shape of the whole campaign decided tonight. What is the grid?`,
+            choices: ['A relentless message discipline', 'Big rallies and momentum', 'Rapid rebuttal — fight every story'],
+          },
+          {
             title: 'The manifesto launch',
-            body: `Parliament is dissolved. This election is yours to win or lose — ${defending ? 'your record, your government, your name on the door' : 'your one shot at the door of Number 10'}. First decision: what kind of manifesto goes to the printers tonight?`,
+            body: 'Launch day. The cameras are set and the manifesto goes to the printers tonight. What kind of offer are you putting to the country?',
             choices: ['A bold, transformative offer', 'Safety first — small targets, no hostages', "Steal the other side's best clothes"],
           },
           {
@@ -714,9 +828,14 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
             choices: ['Shore up the heartlands', 'Raid their marginals', 'Gamble on the unlikely new coalition'],
           },
           {
-            title: 'The final pitch',
-            body: 'Election eve. One last broadcast, one last message the country sleeps on before it votes. Everything you have done has led to this single piece of communication.',
+            title: 'The final broadcast',
+            body: 'Election eve. One last party broadcast, one last message the country sleeps on before it votes. Everything you have done has led to this single piece of communication.',
             choices: ['Fear — the other lot will ruin everything', 'Hope — paint the better morning', 'Competence — boring, reliable, ready'],
+          },
+          {
+            title: 'Get out the vote',
+            body: 'Polling day. The campaign is over; now it is logistics and nerve. Where do you throw the final hours of activist energy?',
+            choices: ['Knock every door in the marginals', 'A dawn-to-dusk media blitz', 'Trust the machine and project calm'],
           },
         ];
         const stage = stages[step - 1] ?? stages[0];
@@ -774,6 +893,12 @@ export function resolveForcedChoice(
 ): { text: string; deltas: StatDelta[] } {
   const deltas: StatDelta[] = [];
   const push = (label: string, delta: number) => deltas.push({ label, delta });
+  // apply a stat change through the diminishing-returns curve and report the
+  // effective amount (positives shrink near the ceiling; negatives apply in full)
+  const gain = (key: keyof GameState['player']['stats'], delta: number, label: string) => {
+    const applied = gainStat(state, key, delta);
+    if (applied !== 0) push(label, applied);
+  };
 
   switch (card.kind) {
     case 'reshuffleOffer': {
@@ -781,10 +906,8 @@ export function resolveForcedChoice(
       if (choiceIndex === 0) {
         const promoted = OFFICES[officeId].tier > playerTier(state);
         giveOffice(state, rng, officeId, promoted ? 'promoted' : 'appointed');
-        state.player.stats.partyStanding = clamp(state.player.stats.partyStanding + 6, 0, 100);
-        state.player.stats.profile = clamp(state.player.stats.profile + 8, 0, 100);
-        push('Standing', 6);
-        push('Profile', 8);
+        gain('partyStanding', 6, 'Standing');
+        gain('profile', 8, 'Profile');
         const title = officeTitle(officeId, playerInGovernment(state));
         state.history.push({
           kind: 'event', date: state.day,
@@ -796,9 +919,8 @@ export function resolveForcedChoice(
         };
       }
       adjustRelationship(state, 'leader', -8);
-      state.player.stats.integrity = clamp(state.player.stats.integrity + 3, 0, 100);
       push('Leader', -8);
-      push('Integrity', 3);
+      gain('integrity', 3, 'Integrity');
       return {
         text: 'You decline, claiming family reasons. The silence on the line lasts a beat too long. Some colleagues call it principled; the leader\'s office calls it something else.',
         deltas,
@@ -809,20 +931,17 @@ export function resolveForcedChoice(
       stripOffice(state, rng, 'dismissed');
       if (choiceIndex === 0) {
         adjustRelationship(state, 'leader', 6);
-        state.player.stats.partyStanding = clamp(state.player.stats.partyStanding + 3, 0, 100);
         push('Leader', 6);
-        push('Standing', 3);
+        gain('partyStanding', 3, 'Standing');
         return {
           text: 'You thank them for the opportunity and wish your successor well. The graceful exit is noted in the right places. There is always another reshuffle.',
           deltas,
         };
       }
       adjustRelationship(state, 'leader', -12);
-      state.player.stats.profile = clamp(state.player.stats.profile + 7, 0, 100);
-      state.player.stats.partyStanding = clamp(state.player.stats.partyStanding - 4, 0, 100);
-      push('Profile', 7);
       push('Leader', -12);
-      push('Standing', -4);
+      gain('profile', 7, 'Profile');
+      gain('partyStanding', -4, 'Standing');
       return {
         text: 'Your "friends" brief every lobby journalist in the building by lunchtime. The story runs for three days. The leadership will remember — but so will the public.',
         deltas,
@@ -837,17 +956,15 @@ export function resolveForcedChoice(
           state.history.push({
             kind: 'roleChange', date: state.day, officeId: null, how: 'resigned',
           });
-          state.player.stats.integrity = clamp(state.player.stats.integrity + 5, 0, 100);
-          push('Integrity', 5);
+          gain('integrity', 5, 'Integrity');
           resolveNpcLeadership(state, rng, state.player.partyId);
           return {
             text: 'You resign at a lectern in the rain, as tradition demands. History will be kinder than this morning\'s front pages.',
             deltas,
           };
         }
-        state.player.stats.partyStanding = clamp(state.player.stats.partyStanding - 12, 0, 100);
+        gain('partyStanding', -12, 'Standing');
         adjustRelationship(state, 'rival', -10);
-        push('Standing', -12);
         return {
           text: 'You fight on. Half the party admires the steel; the other half begins counting letters of no confidence.',
           deltas,
@@ -856,12 +973,10 @@ export function resolveForcedChoice(
       // principle
       if (choiceIndex === 0) {
         stripOffice(state, rng, 'resigned');
-        state.player.stats.integrity = clamp(state.player.stats.integrity + 8, 0, 100);
-        state.player.stats.profile = clamp(state.player.stats.profile + 6, 0, 100);
         adjustRelationship(state, 'leader', -10);
-        push('Integrity', 8);
-        push('Profile', 6);
         push('Leader', -10);
+        gain('integrity', 8, 'Integrity');
+        gain('profile', 6, 'Profile');
         state.history.push({
           kind: 'event', date: state.day,
           headline: `${state.player.name} resigns on principle`,
@@ -871,9 +986,8 @@ export function resolveForcedChoice(
           deltas,
         };
       }
-      state.player.stats.integrity = clamp(state.player.stats.integrity - 6, 0, 100);
+      gain('integrity', -6, 'Integrity');
       adjustRelationship(state, 'leader', 4);
-      push('Integrity', -6);
       push('Leader', 4);
       return {
         text: 'You stay. The policy passes. You avoid mirrors for a few days, but the leader notices the loyalty.',
@@ -901,21 +1015,39 @@ export function resolveForcedChoice(
       const candidateIds = (card.payload?.candidateIds as string[]) ?? [];
       if (choiceIndex === 0) {
         state.player.flags._ldrSupport = Math.round(leadershipBaseSupport(state));
+        // rank the field by seeded strength (weakest first); strongest is the finalist
+        const ranked = candidateIds
+          .map((id) => ({ id, strength: rivalStrengthOf(state.characters[id], rng) }))
+          .filter((r) => state.characters[r.id])
+          .sort((a, b) => a.strength - b.strength);
+        const finalist = ranked[ranked.length - 1];
+        const challengers = ranked.slice(0, -1); // everyone but the finalist
+        // split the challengers across the three ballot rounds (weakest go first)
+        const elim: string[][] = [[], [], []];
+        challengers.forEach((c, i) => {
+          const bucket = challengers.length > 0
+            ? Math.min(2, Math.floor((i * 3) / challengers.length))
+            : 0;
+          elim[bucket].push(c.id);
+        });
+        const finalistId = finalist?.id;
+        const finalistStrength = finalist?.strength ?? 35;
+        const base = { candidateIds, finalistId, finalistStrength, fieldSize: candidateIds.length };
         state.forcedQueue.unshift(
-          { kind: 'leadershipBallot', payload: { round: 1, candidateIds } },
-          { kind: 'leadershipBallot', payload: { round: 2, candidateIds } },
-          { kind: 'leadershipBallot', payload: { round: 3, candidateIds } }
+          { kind: 'leadershipBallot', payload: { ...base, round: 1, eliminatedIds: elim[0] } },
+          { kind: 'leadershipBallot', payload: { ...base, round: 2, eliminatedIds: elim[1] } },
+          { kind: 'leadershipBallot', payload: { ...base, round: 3, eliminatedIds: elim[2] } },
+          { kind: 'leadershipBallot', payload: { ...base, round: 4 } },
+          { kind: 'leadershipBallot', payload: { ...base, round: 5 } }
         );
-        state.player.stats.profile = clamp(state.player.stats.profile + 6, 0, 100);
-        push('Profile', 6);
+        gain('profile', 6, 'Profile');
         return {
-          text: 'You declare outside Parliament with your allies arranged behind you like a protective wall. The contest is on.',
+          text: 'You declare outside Parliament with your allies arranged behind you like a protective wall. The longest fortnight in politics begins.',
           deltas,
         };
       }
       resolveNpcLeadership(state, rng, state.player.partyId);
-      state.player.stats.partyStanding = clamp(state.player.stats.partyStanding + 2, 0, 100);
-      push('Standing', 2);
+      gain('partyStanding', 2, 'Standing');
       const newLeader = characterName(state, getRelationship(state, 'leader')?.characterId);
       return {
         text: `You stay out of it and quietly back the winner. ${newLeader} takes the crown — and notes who was helpful.`,
@@ -926,105 +1058,99 @@ export function resolveForcedChoice(
     case 'leadershipBallot': {
       const round = (card.payload?.round as number) ?? 1;
       const support = (state.player.flags._ldrSupport as number) ?? 50;
-      const candidateIds = (card.payload?.candidateIds as string[]) ?? [];
+      const finalistName = characterName(state, card.payload?.finalistId as string);
+      const addSupport = (n: number) => {
+        state.player.flags._ldrSupport = support + n;
+        if (n !== 0) push('Support', Math.round(n));
+      };
 
       if (round === 1) {
-        let change = 0;
-        let flavour = '';
-        if (choiceIndex === 0) { change = 6 + rng.int(0, 4); flavour = 'The unity pitch lands well with weary colleagues.'; }
-        if (choiceIndex === 1) { change = rng.int(-6, 14); flavour = change > 4 ? 'The radical pitch electrifies the contest.' : 'The radical pitch alarms the cautious middle.'; }
-        if (choiceIndex === 2) { change = 4 + rng.int(0, 8); flavour = 'The members love you; MPs grumble about populism.'; }
-        state.player.flags._ldrSupport = support + change;
-        push('Support', change);
-
-        // count the ballots: the strongest rival goes through, the rest fall
-        const field = candidateIds
-          .map((id) => state.characters[id])
-          .filter((c): c is Character => Boolean(c))
-          .sort((a, b) => (b.competence + rng.normal(0, 6)) - (a.competence + rng.normal(0, 6)));
-        const finalist = field[0];
-        const eliminated = field.slice(1);
-        // thread the result into the queued endorsement + final rounds
-        for (const ev of state.forcedQueue) {
-          if (ev.kind === 'leadershipBallot' && ev.payload) {
-            ev.payload.finalistId = finalist?.id;
-            ev.payload.eliminatedIds = eliminated.map((c) => c.id);
-          }
-        }
-        const playerShare = Math.round(clamp(support + change, 10, 70) / 2 + 10);
-        const finalistShare = Math.round(((finalist?.competence ?? 55) / 2) + rng.int(2, 10));
-        const tally = `You: ${playerShare} votes. ${finalist?.name ?? 'Your rival'}: ${finalistShare}. ${eliminated.map((c) => c.name).join(' and ') || 'The rest'}: eliminated.`;
-        return { text: `${flavour} The first ballot is counted in a committee room that smells of history and instant coffee. ${tally} It goes to a final round.`, deltas };
+        let change = 0; let flavour = '';
+        if (choiceIndex === 0) { change = 5 + rng.int(0, 4); flavour = 'The unity pitch lands well with weary colleagues.'; }
+        if (choiceIndex === 1) { change = rng.int(-7, 13); flavour = change > 3 ? 'The radical pitch electrifies the contest.' : 'The radical pitch alarms the cautious middle.'; }
+        if (choiceIndex === 2) { change = 3 + rng.int(0, 7); flavour = 'The members love you; MPs grumble about populism.'; }
+        addSupport(change);
+        return { text: `${flavour} You clear the first ballot and the field thins.`, deltas };
       }
 
       if (round === 2) {
-        const eliminatedIds = (card.payload?.eliminatedIds as string[]) ?? [];
-        const champion = characterName(state, eliminatedIds[0]);
-        let change = 0;
-        let text = '';
+        let change = 0; let flavour = '';
+        if (choiceIndex === 0) { change = 4 + rng.int(0, 6); flavour = 'You spend the week in Portcullis House tea rooms; colleagues feel courted.'; }
+        if (choiceIndex === 1) { change = rng.int(-2, 10); flavour = change > 4 ? 'The membership halls are rapturous.' : 'The membership is warm but the MPs you skipped notice.'; }
+        if (choiceIndex === 2) { change = rng.int(-4, 12); flavour = change > 4 ? 'A commanding media week — you look like the frontrunner.' : 'The relentless media blitz tips into overexposure.'; }
+        addSupport(change);
+        return { text: `${flavour} The second ballot narrows it further.`, deltas };
+      }
+
+      if (round === 3) {
+        // the hustings: a performance with a real chance of a great or poor night
+        let change = 0; let text = '';
         if (choiceIndex === 0) {
-          change = 8 + rng.int(0, 4);
-          state.player.stats.integrity = clamp(state.player.stats.integrity - 4, 0, 100);
-          push('Integrity', -4);
-          text = `Over a discreet breakfast you offer ${champion} a great office of state in exchange for their endorsement. By noon they are on camera calling you "the unity candidate". Politics is a market; you just paid the asking price.`;
+          change = rng.chance(0.55) ? 8 + rng.int(0, 6) : -4 - rng.int(0, 4);
+          text = change > 0
+            ? 'The barnstormer brings the hall to its feet — the clip leads every bulletin.'
+            : 'The big swing reads as bluster on television; the panel is unkind.';
         } else if (choiceIndex === 1) {
-          change = rng.int(-3, 12);
-          text = change > 5
-            ? `You make the argument to ${champion}'s camp on its merits — and it works. Half their backers break your way, persuaded rather than purchased. Those are the durable kind.`
-            : `You make the argument on its merits. ${champion}'s camp listens politely and splits down the middle. Persuasion is slower than purchase, and the clock is unkind.`;
+          change = 3 + rng.int(0, 5);
+          text = 'Measured and detailed: no fireworks, but you look ready for Number 10.';
         } else {
-          change = rng.int(0, 5);
-          state.player.stats.integrity = clamp(state.player.stats.integrity + 3, 0, 100);
-          push('Integrity', 3);
-          text = `"No deals" becomes your campaign's defining line. Some of ${champion}'s backers drift to you anyway, drawn by the novelty of a politician who won't trade. The rest call it arrogance.`;
+          change = rng.chance(0.5) ? 7 + rng.int(0, 6) : -6 - rng.int(0, 4);
+          text = change > 0
+            ? `You best ${finalistName} in a head-on clash and the room knows it.`
+            : `The attack on ${finalistName} backfires — they look gracious, you look desperate.`;
         }
-        state.player.flags._ldrSupport = support + change;
-        push('Support', change);
+        addSupport(change);
+        return { text: `${text} It is down to you and ${finalistName}.`, deltas };
+      }
+
+      if (round === 4) {
+        let change = 0; let text = '';
+        if (choiceIndex === 0) {
+          change = 7 + rng.int(0, 5);
+          gain('integrity', -4, 'Integrity');
+          text = 'Over discreet breakfasts you promise the great offices around. By noon the kingmakers are calling you "the unity candidate". Politics is a market; you paid the asking price.';
+        } else if (choiceIndex === 1) {
+          change = rng.int(-2, 11);
+          text = change > 5
+            ? 'You win the eliminated camps on the merits — persuaded, not purchased. Those votes are the durable kind.'
+            : 'You make the case on merit; the kingmakers listen politely and split down the middle.';
+        } else {
+          change = rng.int(-1, 5);
+          gain('integrity', 3, 'Integrity');
+          text = '"No deals" becomes your defining line. Some backers drift to you on principle; the rest call it arrogance.';
+        }
+        addSupport(change);
         return { text, deltas };
       }
 
-      // final round — resolve against the named finalist
+      // round 5 — the final head-to-head
       let change = 0;
       if (choiceIndex === 0) change = rng.int(-8, 14);
       if (choiceIndex === 1) change = rng.int(0, 8);
-      if (choiceIndex === 2) { change = rng.int(4, 12); state.player.stats.integrity = clamp(state.player.stats.integrity - 4, 0, 100); push('Integrity', -4); }
-
-      const finalist = state.characters[card.payload?.finalistId as string];
-      const traitBonus = finalist
-        ? (finalist.traits.includes('ambitious') ? 3 : 0) +
-          (finalist.traits.includes('ruthless') ? 3 : 0) +
-          (finalist.traits.includes('charming') ? 2 : 0) -
-          (finalist.traits.includes('dull') ? 4 : 0)
-        : 0;
-      // a strong frontrunner attracts an anyone-but-them coalition: the
-      // finalist's effective strength scales with the player's own support
-      const rivalStrength = clamp(
-        0.3 * (support + change) +
-          ((finalist?.competence ?? 55) - 50) * 0.25 +
-          traitBonus +
-          rng.normal(0, 4),
-        8, 34
-      );
-      const finalSupport = support + change + rng.normal(0, 5) - rivalStrength;
+      if (choiceIndex === 2) { change = rng.int(4, 12); gain('integrity', -4, 'Integrity'); }
       delete state.player.flags._ldrSupport;
 
-      if (finalSupport >= LEADERSHIP_WIN_THRESHOLD - 12) {
+      const finalist = state.characters[card.payload?.finalistId as string];
+      const baseStrength = (card.payload?.finalistStrength as number) ?? 35;
+      const fieldSize = (card.payload?.fieldSize as number) ?? 3;
+      // a bigger field means a more fractured, unpredictable membership ballot,
+      // and the runner-up gathers an "anyone-but-the-frontrunner" coalition that
+      // grows with how strong the player looks — so contests stay hard to win
+      const finalistFinal =
+        baseStrength + (fieldSize - 3) * 2 + 0.38 * support + rng.normal(0, 7);
+      const playerFinal = support + change + rng.normal(0, 6);
+
+      if (playerFinal >= finalistFinal && support + change >= LEADERSHIP_WIN_THRESHOLD - 21) {
         makePlayerLeader(state, rng);
-        push('Profile', 15);
-        push('Standing', 10);
-        state.player.stats.profile = clamp(state.player.stats.profile + 15, 0, 100);
-        state.player.stats.partyStanding = clamp(state.player.stats.partyStanding + 10, 0, 100);
-        // the defeated finalist becomes your most dangerous colleague
+        gain('profile', 15, 'Profile');
+        gain('partyStanding', 10, 'Standing');
         if (finalist) {
           const rivalRel = state.relationships.find((r) => r.kind === 'rival');
-          if (rivalRel) {
-            rivalRel.characterId = finalist.id;
-            rivalRel.value = -15;
-          }
+          if (rivalRel) { rivalRel.characterId = finalist.id; rivalRel.value = -15; }
         }
         const office = playerInGovernment(state) ? 'Prime Minister' : 'Leader of the Opposition';
         return {
-          text: `The returning officer reads the numbers${finalist ? ` — and ${finalist.name}'s face tells the room before the words do` : ''}. You have won. You are the leader of the party — and ${office}.${finalist ? ` ${finalist.name} congratulates you with a handshake like a closing door.` : ''}`,
+          text: `The returning officer reads the numbers${finalist ? ` — and ${finalist.name}'s face tells the room before the words do` : ''}. You have won. You are the leader of the party — and ${office}.`,
           deltas,
         };
       }
@@ -1035,10 +1161,8 @@ export function resolveForcedChoice(
       state.player.flags._contestLosses =
         (((state.player.flags._contestLosses as number) ?? 0) + 1);
       resolveNpcLeadership(state, rng, state.player.partyId, finalist?.id);
-      state.player.stats.profile = clamp(state.player.stats.profile + 8, 0, 100);
-      state.player.stats.partyStanding = clamp(state.player.stats.partyStanding - 6, 0, 100);
-      push('Profile', 8);
-      push('Standing', -6);
+      gain('profile', 8, 'Profile');
+      gain('partyStanding', -6, 'Standing');
       const winner = characterName(state, getRelationship(state, 'leader')?.characterId);
       return {
         text: `So close. ${winner} edges it on the final ballot. You give a generous concession speech that everyone agrees was leadership material — which stings.`,
@@ -1069,10 +1193,9 @@ export function resolveForcedChoice(
         }
         adjustRelationship(state, 'ally', 8);
         adjustRelationship(state, 'rival', -6);
-        state.player.stats.partyStanding = clamp(state.player.stats.partyStanding + 3, 0, 100);
         push('Ally', 8);
         push('Rival', -6);
-        push('Standing', 3);
+        gain('partyStanding', 3, 'Standing');
         applyPollingShock(state, party, -0.2);
         return {
           text: 'The team around the table is now unmistakably yours — government by people who answer your texts. The sketch writers reach for "chumocracy"; the excluded factions retreat to the tearoom to begin the long, patient work of resenting you.',
@@ -1092,9 +1215,8 @@ export function resolveForcedChoice(
           headline(`${critic.name}, a prominent internal critic, brought into the fold as ${titleOf(post.officeId)}`);
         }
         adjustRelationship(state, 'rival', 8);
-        state.player.stats.integrity = clamp(state.player.stats.integrity + 3, 0, 100);
         push('Rival', 8);
-        push('Integrity', 3);
+        gain('integrity', 3, 'Integrity');
         applyPollingShock(state, party, 0.2);
         return {
           text: 'You hand your critics serious jobs, on the ancient theory about tents and the direction of urination. The commentariat calls it confident; the appointees, disarmed and slightly suspicious, start being useful.',
@@ -1113,8 +1235,7 @@ export function resolveForcedChoice(
       }
       const backfire = rng.chance(0.3);
       applyPollingShock(state, party, backfire ? -0.2 : 0.35);
-      state.player.stats.competence = clamp(state.player.stats.competence + 2, 0, 100);
-      push('Competence', 2);
+      gain('competence', 2, 'Competence');
       if (backfire) {
         adjustRelationship(state, 'rival', -4);
         push('Rival', -4);
@@ -1134,41 +1255,78 @@ export function resolveForcedChoice(
         return resolveLeaderCampaignChoice(state, rng, card, choiceIndex, deltas, push);
       }
       if (choiceIndex === 0) {
-        state.player.stats.constituencyApproval = clamp(state.player.stats.constituencyApproval + 5, 0, 100);
-        push('Approval', 5);
+        gain('constituencyApproval', 5, 'Approval');
         return { text: 'Doorstep by doorstep, you shore up the home vote. Your agent stops looking quite so haunted.', deltas };
       }
       if (choiceIndex === 1) {
-        state.player.stats.profile = clamp(state.player.stats.profile + 4, 0, 100);
-        state.player.stats.partyStanding = clamp(state.player.stats.partyStanding + 3, 0, 100);
-        state.player.stats.constituencyApproval = clamp(state.player.stats.constituencyApproval - 2, 0, 100);
-        push('Profile', 4);
-        push('Standing', 3);
-        push('Approval', -2);
-        const shock = 0.4;
-        state.polling.shares[state.player.partyId] =
-          (state.polling.shares[state.player.partyId] ?? 0.02) + shock / 100;
+        gain('profile', 4, 'Profile');
+        gain('partyStanding', 3, 'Standing');
+        gain('constituencyApproval', -2, 'Approval');
+        applyPollingShock(state, state.player.partyId, 0.4);
         return { text: 'You become a fixture of the morning rounds. The party is grateful; your constituency notices your absence.', deltas };
       }
-      state.player.stats.competence = clamp(state.player.stats.competence + 2, 0, 100);
-      push('Competence', 2);
+      gain('competence', 2, 'Competence');
       return { text: 'You sleep, you fundraise, you plan. Unfashionable, effective.', deltas };
     }
 
     case 'wilderness': {
       if (choiceIndex === 0) {
-        state.player.stats.constituencyApproval = clamp(state.player.stats.constituencyApproval + 4, 0, 100);
-        push('Approval', 4);
+        gain('constituencyApproval', 4, 'Approval');
         return { text: 'Fetes, food banks, and the local radio breakfast show. People remember who shows up.', deltas };
       }
-      state.player.stats.profile = clamp(state.player.stats.profile - 2, 0, 100);
-      push('Profile', -2);
+      gain('profile', -2, 'Profile');
       return { text: 'Consultancy pays better than Parliament ever did. You bank it and bide your time.', deltas };
     }
 
     default:
       return { text: 'Time passes.', deltas };
   }
+}
+
+// ---------- resign office / sack ministers (player-initiated, from the UI) ----------
+
+/** the player resigns their current office and returns to the backbenches.
+ *  As leader/PM this opens a succession (an NPC takes over). */
+export function resignOfficeCore(state: GameState, rng: Rng): void {
+  if (!state.player.officeId) return;
+  if (playerIsLeader(state)) {
+    const party = state.player.partyId;
+    state.player.officeId = null;
+    state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how: 'resigned' });
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${state.player.name} resigns the leadership of the ${PARTIES[party].name}`,
+    });
+    gainStat(state, 'integrity', 3);
+    resolveNpcLeadership(state, rng, party);
+    return;
+  }
+  stripOffice(state, rng, 'resigned');
+  gainStat(state, 'integrity', 3);
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} returns to the backbenches`,
+  });
+}
+
+/** the player (as PM or LO) sacks the NPC holding a given cabinet/shadow post */
+export function sackMinisterCore(state: GameState, rng: Rng, officeId: OfficeId): void {
+  if (!playerIsLeader(state)) return;
+  const side = playerInGovernment(state) ? 'cabinet' : 'shadowCabinet';
+  const post = state.government[side].find((p) => p.officeId === officeId);
+  if (!post || post.characterId === 'player') return;
+  const old = state.characters[post.characterId];
+  if (old) { old.officeId = null; old.active = true; }
+  const fresh = newFrontbencher(state, rng, state.player.partyId, officeId);
+  post.characterId = fresh.id;
+  const title = playerInGovernment(state) ? OFFICES[officeId].title : OFFICES[officeId].shadowTitle;
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} sacks ${old?.name ?? 'a minister'}; ${fresh.name} appointed ${title}`,
+  });
+  // a sacking spends capital: the sacked camp resents you, a small polling cost
+  adjustRelationship(state, 'rival', -3);
+  applyPollingShock(state, state.player.partyId, -0.15);
 }
 
 // ---------- crossing the floor ----------
@@ -1216,8 +1374,8 @@ export function changeParty(state: GameState, rng: Rng, newParty: PartyId): void
 
   // a defector starts near the bottom of the new pecking order
   state.player.stats.partyStanding = clamp(30 + rng.int(-4, 4), 0, 100);
-  state.player.stats.constituencyApproval = clamp(state.player.stats.constituencyApproval - 8, 0, 100);
-  state.player.stats.integrity = clamp(state.player.stats.integrity - 4, 0, 100);
+  gainStat(state, 'constituencyApproval', -8);
+  gainStat(state, 'integrity', -4);
 
   // old friendships cool; old rivals gloat
   adjustRelationship(state, 'mentor', -15);
@@ -1266,108 +1424,138 @@ function resolveLeaderCampaignChoice(
     push('National polls', Math.round(pts * 10) / 10);
   };
   const stat = (k: keyof GameState['player']['stats'], d: number, label: string) => {
-    state.player.stats[k] = clamp(state.player.stats[k] + d, 0, 100);
-    push(label, d);
+    const applied = gainStat(state, k, d);
+    if (applied !== 0) push(label, applied);
   };
 
   switch (step) {
-    case 1: // manifesto
+    case 1: // the grid
       if (choiceIndex === 0) {
-        if (rng.chance(0.5)) {
-          shock(0.9);
-          return { text: 'The bold offer detonates across the front pages — and, against the strategists\' every instinct, it lands. "Finally, something to vote FOR," says the vox pop that gets replayed all week.', deltas };
-        }
-        shock(-0.7);
-        return { text: 'Bold, yes. Costed? The IFS has questions by lunchtime and your shadow Treasury team has answers by — well, they\'re still working on it. The launch week is spent defending arithmetic.', deltas };
+        shock(0.6);
+        return { text: 'Message discipline it is: three words, repeated until your own team begs for mercy and the public starts finishing your sentences. Dull, proven, effective.', deltas };
       }
       if (choiceIndex === 1) {
-        shock(0.2);
-        return { text: 'A manifesto with no hostages to fortune: every promise pre-tested, every number triple-checked. The launch is bulletproof and slightly beige. Nobody is excited; nobody is alarmed. You can work with that.', deltas };
+        if (rng.chance(0.5)) {
+          shock(1.6);
+          stat('profile', 3, 'Profile');
+          return { text: 'The rallies are enormous from day one. The footage of crowds spilling out of halls reframes the whole contest as a movement. Momentum is a real and dangerous thing, and right now it is yours.', deltas };
+        }
+        shock(-1.2);
+        return { text: 'The rallies look great and move nothing: you are talking to people who already agree with you while the swing voters watch someone else. "Vanity campaign," mutters a strategist, off the record but loudly.', deltas };
       }
-      shock(0.5);
-      stat('integrity', -3, 'Integrity');
-      return { text: 'You lift the other side\'s most popular policy wholesale and dare them to complain about it. They do, at length, which means a full week of coverage explaining that you now own their best idea.', deltas };
+      shock(rng.chance(0.55) ? 0.9 : -0.6);
+      return { text: 'Rapid rebuttal: a war room that never sleeps and a leader who is always, exhaustingly, on. Some days you set the agenda; some days you only chase it.', deltas };
 
-    case 2: // tv debate
+    case 2: // manifesto
+      if (choiceIndex === 0) {
+        if (rng.chance(0.5)) {
+          shock(1.4);
+          return { text: 'The bold offer detonates across the front pages — and, against the strategists\' every instinct, it lands. "Finally, something to vote FOR," says the vox pop that gets replayed all week.', deltas };
+        }
+        shock(-1.1);
+        return { text: 'Bold, yes. Costed? The IFS has questions by lunchtime and your Treasury team has answers by — well, they\'re still working on it. The launch week is spent defending arithmetic.', deltas };
+      }
+      if (choiceIndex === 1) {
+        shock(0.3);
+        return { text: 'A manifesto with no hostages to fortune: every promise pre-tested, every number triple-checked. Bulletproof and slightly beige. Nobody is excited; nobody is alarmed. You can work with that.', deltas };
+      }
+      shock(0.8);
+      stat('integrity', -3, 'Integrity');
+      return { text: 'You lift the other side\'s most popular policy wholesale and dare them to complain. They do, at length, which means a week of coverage explaining that you now own their best idea.', deltas };
+
+    case 3: // tv debate
       if (choiceIndex === 0) {
         if (rng.chance(0.45)) {
-          shock(1.2);
+          shock(1.9);
           stat('profile', 3, 'Profile');
-          return { text: 'You go for them from the opening answer and never let go. By the third exchange they are visibly rattled; by the close, the snap poll gives it to you by twenty points. Campaigns turn on nights like this. This one just did.', deltas };
+          return { text: 'You go for them from the opening answer and never let go. By the third exchange they are visibly rattled; the snap poll gives the night to you by twenty points. Campaigns turn on nights like this. This one just did.', deltas };
         }
-        shock(-1);
+        shock(-1.5);
         return { text: 'The aggression reads as desperation under the studio lights. Their calm, sad shake of the head — rehearsed, obviously, but effective — becomes the clip. The snap poll stings.', deltas };
       }
       if (choiceIndex === 1) {
-        shock(0.4);
+        shock(0.6);
         return { text: 'You rise above the bait, answer the questions, and talk to the camera like an adult addressing adults. No fireworks, no disasters. The pundits score it a draw; the focus groups quietly score it to you.', deltas };
       }
-      if (rng.chance(0.6)) {
-        shock(1.1);
+      if (rng.chance(0.55)) {
+        shock(1.7);
         stat('profile', 3, 'Profile');
         return { text: 'The zinger lands so perfectly the studio audience breaks the no-applause rule. It is the headline, the meme, and the moment. Your team watches it seventeen times on the bus home.', deltas };
       }
-      shock(-0.8);
+      shock(-1.3);
       return { text: 'You deploy the rehearsed line a beat too early, into the wrong context, and it dies in the silence. Their counter — clearly also rehearsed — does not. The internet is unkind.', deltas };
 
-    case 3: // the wobble
+    case 4: // the wobble
       if (choiceIndex === 0) {
-        shock(0.5);
+        shock(0.7);
         stat('integrity', 2, 'Integrity');
         return { text: 'Candidate suspended by 8am, corrected costings by noon, and you take every question until the room runs dry. "Grip" is the word in the write-ups. The wobble becomes a footnote.', deltas };
       }
       if (choiceIndex === 1) {
         if (rng.chance(0.5)) {
-          shock(0.3);
+          shock(0.4);
           return { text: 'You announce something enormous and shiny at 9am and the press pack, magpies all, chases it. By Thursday nobody remembers the wobble. Cynical, effective, noted.', deltas };
         }
-        shock(-1);
+        shock(-1.6);
         return { text: 'The dead cat fails to bounce. Now there are two stories: the wobble, and the transparent attempt to bury it. The campaign loses three days it did not have.', deltas };
       }
       stat('integrity', -3, 'Integrity');
       if (rng.chance(0.5)) {
-        shock(0.7);
+        shock(1.0);
         return { text: 'Your opposition research lands like a depth charge — suddenly it is their candidates, their costings, their crisis. Brutal stuff. The gap moves your way while everyone\'s hands get dirty.', deltas };
       }
-      shock(-0.6);
+      shock(-1.0);
       return { text: 'The counter-attack misfires: your dossier has a factual error in paragraph two, and the story becomes your campaign\'s methods. The phrase "gutter politics" attaches itself to your lapel.', deltas };
 
-    case 4: // battleground blitz
+    case 5: // battleground blitz
       if (choiceIndex === 0) {
-        shock(0.3);
+        shock(0.5);
         stat('partyStanding', 2, 'Standing');
         return { text: 'You spend the week in the heartlands, shoring up the wall. Less glamorous than raiding enemy territory, but the candidates there will remember who came when it mattered — and their seats hold the line.', deltas };
       }
       if (choiceIndex === 1) {
         if (rng.chance(0.5)) {
-          shock(0.9);
+          shock(1.3);
           return { text: 'The raid into their marginals is audacious and the local coverage is rapturous — a leader who turns up where they\'re "not supposed to win" makes everyone recalculate the map.', deltas };
         }
-        shock(-0.4);
+        shock(-0.7);
         return { text: 'The marginals raid stretches the machine thin, and the heartland candidates mutter to journalists about being abandoned. The map was a gamble; the gamble was noticed.', deltas };
       }
       if (rng.chance(0.35)) {
-        shock(1.4);
+        shock(2.0);
         stat('profile', 3, 'Profile');
         return { text: 'The unlikely coalition turns out to exist. The rallies swell, the registration numbers spike, and the pollsters start muttering about turnout models being wrong. Something is happening out there.', deltas };
       }
-      shock(-0.6);
+      shock(-1.0);
       return { text: 'The new coalition fails to materialise where it counts. The rallies were real; the votes, the data people gently explain, were not where the bus went. A week the campaign won\'t get back.', deltas };
 
-    default: // final pitch
+    case 6: // final broadcast
       if (choiceIndex === 0) {
-        shock(0.5);
+        shock(0.8);
         stat('integrity', -2, 'Integrity');
         return { text: 'Fear works — it always has. The final broadcast paints the other morning in convincing grey, and the late deciders break the way frightened people break. You sleep badly and poll well.', deltas };
       }
       if (choiceIndex === 1) {
-        shock(0.4);
+        shock(0.6);
         stat('profile', 2, 'Profile');
-        return { text: 'You close on hope: the better country, the morning after. Whatever happens tomorrow, it is the broadcast people will quote when they talk about this campaign. Now the country decides.', deltas };
+        return { text: 'You close on hope: the better country, the morning after. Whatever happens tomorrow, it is the broadcast people will quote when they talk about this campaign.', deltas };
       }
-      shock(0.3);
+      shock(0.5);
       stat('competence', 2, 'Competence');
       return { text: 'Boring, reliable, ready: the closing message is a firm handshake of a broadcast. No poetry, no risk. In nervous times, the dull candidate is the comfort food of democracies.', deltas };
+
+    default: // step 7 — get out the vote
+      if (choiceIndex === 0) {
+        shock(rng.chance(0.6) ? 1.2 : 0.3);
+        stat('partyStanding', 2, 'Standing');
+        return { text: 'Every door, every marginal, until your activists\' knuckles ache. Ground game doesn\'t trend on the news, but it turns soft leads into seats. Now there is nothing left to do but count.', deltas };
+      }
+      if (choiceIndex === 1) {
+        shock(rng.chance(0.5) ? 1.0 : -0.4);
+        return { text: 'A dawn-to-dusk media marathon: every sofa, every phone-in, every drive-time slot. You are hoarse by lunch and ubiquitous by dusk. High-risk, high-visibility.', deltas };
+      }
+      shock(0.4);
+      return { text: 'You trust the machine, project serene confidence, and let the operation do its work. Calm is contagious. Polls close at ten.', deltas };
   }
 }
 

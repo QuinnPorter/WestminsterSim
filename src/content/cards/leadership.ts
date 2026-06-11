@@ -327,4 +327,284 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'pm_confidence_vote',
+    title: 'A confidence motion',
+    body: 'The opposition has tabled a motion of no confidence in your government. You will almost certainly win it — but the margin, and the speech, will set the weather for months. Your own rebels are watching.',
+    tags: ['westminster', 'crisis', 'serious'],
+    weight: 12, cooldownDays: 500,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'A defiant, unifying despatch-box performance',
+        effects: { stats: { profile: 4 }, pollingShock: { party: 'own', delta: 0.6 }, relationships: [{ kind: 'chiefWhip', delta: 3 }] },
+        outcomeText: 'You turn a defensive motion into a rallying cry; even the rebels troop through your lobby and mean it. The margin is comfortable, the speech leads the bulletins. Authority: reasserted.',
+      },
+      {
+        label: 'Buy off the rebels beforehand',
+        effects: { stats: { integrity: -3 }, relationships: [{ kind: 'chiefWhip', delta: 5 }] },
+        outcomeText: 'A flurry of late concessions, a trade envoy role, a policy quietly shelved. You win handily — but everyone can count the price tags, and your authority now has a published rate card.',
+      },
+    ],
+  },
+  {
+    id: 'pm_cabinet_resignation',
+    title: 'A resignation on the desk',
+    body: 'Your Chancellor — or someone nearly as load-bearing — has put a resignation letter on your desk over a policy you insisted on. Accept it and look weak; refuse it and look weaker; a third path is forming in your mind.',
+    tags: ['party', 'crisis', 'serious'],
+    weight: 11, cooldownDays: 500,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Accept it and promote a loyalist',
+        effects: { stats: { partyStanding: 2 }, pollingShock: { party: 'own', delta: -0.5 }, relationships: [{ kind: 'ally', delta: 5 }] },
+        outcomeText: 'You take the letter, thank them coolly, and move a loyalist into the great office by nightfall. Decisive — and a fortnight of "splits and chaos" coverage you could have done without.',
+      },
+      {
+        label: 'Talk them down with a concession',
+        effects: { stats: { competence: 2, integrity: -2 } },
+        outcomeText: 'You give just enough ground to keep them in the tent. The crisis passes; the policy is now a compromise nobody loves. Unity bought on the never-never.',
+      },
+    ],
+  },
+  {
+    id: 'pm_economy_shock',
+    title: 'The markets lurch',
+    body: 'A global shock hits and the markets are pricing in pain. Your Chancellor wants emergency measures; the cost is enormous either way. Whatever you say at the lectern in an hour will move money and votes.',
+    tags: ['crisis', 'policy', 'serious'],
+    weight: 11, cooldownDays: 450,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'A big, costly intervention',
+        effects: { pollingShock: { party: 'own', delta: 0.7 }, stats: { competence: -1 } },
+        outcomeText: 'You announce support at a scale that steadies nerves and empties the reserves. The country exhales; the deficit hawks sharpen their pencils for the reckoning to come.',
+      },
+      {
+        label: 'Hold the line, project stability',
+        effects: { stats: { competence: 3, integrity: 2 }, pollingShock: { party: 'own', delta: -0.4 } },
+        outcomeText: 'You resist the urge to spend and promise calm competence instead. The markets settle on your steadiness; the families feeling the squeeze are less impressed by your fiscal rectitude.',
+      },
+    ],
+  },
+  {
+    id: 'pm_summit_walkout',
+    title: 'The summit ultimatum',
+    body: 'At a tense international summit, an ally delivers an ultimatum that would cost Britain dearly to accept and cost it diplomatically to refuse. The room — and the travelling press pack — waits on your answer.',
+    tags: ['westminster', 'crisis', 'media'],
+    weight: 10, cooldownDays: 500,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Stand firm — national interest first',
+        effects: { stats: { profile: 4, integrity: 2 }, pollingShock: { party: 'own', delta: 0.5 } },
+        outcomeText: [
+          { weight: 2, text: 'You say no, politely and immovably, and walk to your own press conference. It plays at home as strength; the ally, grumbling, comes back to the table within the week.' },
+          { weight: 1, text: 'You hold firm and the talks collapse acrimoniously. Strong at home, isolated abroad — and the consequences of the failed deal will land later, on your desk.', extra: { pollingShock: { party: 'own', delta: -0.3 } } },
+        ],
+      },
+      {
+        label: 'Find the face-saving compromise',
+        effects: { stats: { competence: 3 } },
+        outcomeText: 'You broker a fudge that lets everyone claim victory and nobody examine the small print. Diplomats purr; one columnist back home calls it a sell-out. Such is the trade.',
+      },
+    ],
+  },
+  {
+    id: 'pm_devolution_clash',
+    title: 'The first minister picks a fight',
+    body: 'A devolved first minister is staging a very public constitutional confrontation with your government — partly principle, mostly positioning. The cameras love it. Your unionist instincts and your strategists disagree on the response.',
+    tags: ['westminster', 'policy', 'serious'],
+    weight: 9, cooldownDays: 500,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Refuse the fight, offer partnership',
+        effects: { stats: { integrity: 3, competence: 2 }, pollingShock: { party: 'own', delta: 0.3 } },
+        outcomeText: 'You decline the grievance and offer joint funding and a summit instead. It deflates the drama and looks statesmanlike — denying your opponent the row they were campaigning for.',
+      },
+      {
+        label: 'Meet fire with fire',
+        effects: { stats: { profile: 3, partyStanding: 2 }, pollingShock: { party: 'own', delta: -0.2 } },
+        outcomeText: 'You give as good as you get and your base roars approval. The clip war escalates; the union\'s actual problems are, as ever, left for another day.',
+      },
+    ],
+  },
+  {
+    id: 'pm_spy_scandal',
+    title: 'The security breach',
+    body: 'The intelligence services brief you, ashen-faced, on a breach that is both a national security problem and — once it leaks, which it will — a political grenade. You control the timing of almost nothing here.',
+    tags: ['crisis', 'scandal', 'serious'],
+    weight: 8, cooldownDays: 600,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Get ahead of it — statement to the House',
+        effects: { stats: { integrity: 4, profile: 2 }, pollingShock: { party: 'own', delta: -0.2 } },
+        outcomeText: 'You tell Parliament what you can before the leak tells the front pages. Sober, full, in command of the facts. A bad story, well handled, becomes a survivable one.',
+      },
+      {
+        label: 'Contain it in the shadows',
+        effects: { stats: { integrity: -3 } },
+        outcomeText: [
+          { weight: 1, text: 'The services do their quiet work and it never fully surfaces. Some things are genuinely better managed in the dark. You sleep uneasily but you sleep.' },
+          { weight: 1, text: 'It leaks anyway, and now there are two stories: the breach, and the cover-up. "What did the PM know?" The grenade goes off in your hand.', extra: { pollingShock: { party: 'own', delta: -0.8 }, stats: { profile: -2 } } },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'pm_manifesto_delivery',
+    title: 'The delivery stocktake',
+    body: 'Halfway through the parliament, your delivery unit lays out the scorecard: the flagship pledges are amber-to-red, the money is tight, and the clock is loud. Where do you point the machine of government now?',
+    tags: ['policy', 'serious'],
+    weight: 10, cooldownDays: 500,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Ruthlessly prioritise one big pledge',
+        effects: { stats: { competence: 4 }, pollingShock: { party: 'own', delta: 0.5 } },
+        outcomeText: 'You bet the second half on one deliverable promise and throw everything at it. The other pledges quietly fade; the one you chose actually happens, visibly, before the election.',
+      },
+      {
+        label: 'Keep all the plates spinning',
+        effects: { stats: { competence: -1 }, pollingShock: { party: 'own', delta: -0.2 } },
+        outcomeText: 'You refuse to abandon any pledge and spread the effort thin. Everything advances a little; nothing completes. "Busy but directionless," sighs your delivery chief, off the record.',
+      },
+    ],
+  },
+  {
+    id: 'pm_reshuffle_botch',
+    title: 'The reshuffle that bit back',
+    body: 'A minister you tried to move has refused to budge and gone to the papers; another you sacked is on the airwaves being magnanimous and wounded. A routine reshuffle is becoming a story about your authority.',
+    tags: ['party', 'media', 'crisis'],
+    weight: 9, cooldownDays: 450,
+    requires: { minTier: 5 },
+    choices: [
+      {
+        label: 'Face it down — your gift, your call',
+        effects: { stats: { profile: 2, partyStanding: 2 }, relationships: [{ kind: 'rival', delta: -4 }] },
+        outcomeText: 'You assert, flatly, that hiring and firing is the PM\'s prerogative and dare anyone to disagree. The refusenik is isolated; the magnanimous martyr is yesterday\'s clip. Authority, narrowly, held.',
+      },
+      {
+        label: 'Cut a face-saving deal',
+        effects: { stats: { integrity: -2, partyStanding: -1 } },
+        outcomeText: 'You let the refusenik keep a fig-leaf role and find the martyr a soft landing. The story dies — and the price of defying you is now publicly known to be: a soft landing.',
+      },
+    ],
+  },
+  {
+    id: 'lo_government_collapsing',
+    title: 'The government is wounded',
+    body: 'The government is in visible trouble — splits, scandals, a stalling economy. As Leader of the Opposition this is your moment, but a wounded government can lash out, and an over-eager opposition can look like it\'s measuring the curtains.',
+    tags: ['westminster', 'party'],
+    weight: 12, cooldownDays: 350,
+    requires: { minTier: 5, inGovernment: false },
+    choices: [
+      {
+        label: 'A government-in-waiting prospectus',
+        effects: { stats: { profile: 4, competence: 2 }, pollingShock: { party: 'own', delta: 0.7 } },
+        outcomeText: 'You don\'t gloat — you reassure. A calm, costed prospectus for government that says: we are ready, we are serious, you can rest now. The grown-up contrast does the work.',
+      },
+      {
+        label: 'Twist the knife daily',
+        effects: { stats: { profile: 3, partyStanding: 3 }, pollingShock: { party: 'own', delta: 0.3 } },
+        outcomeText: 'You hammer them at every PMQs and in every clip. The base is delighted and morale soars. Whether the watching country wanted attack or alternative is a question for the exit poll.',
+      },
+    ],
+  },
+  {
+    id: 'lo_internal_plot',
+    title: 'Muttering on your own benches',
+    body: 'You are Leader of the Opposition, the polls are flat, and a clutch of your own MPs are briefing that you "can\'t win". {rival} is conspicuously saying nothing, which says everything. Letters, it is whispered, are being written.',
+    tags: ['party', 'crisis', 'serious'],
+    weight: 10, cooldownDays: 450,
+    requires: { minTier: 5, inGovernment: false },
+    choices: [
+      {
+        label: 'Confront the plotters head-on',
+        effects: { stats: { profile: 3, partyStanding: -2 }, relationships: [{ kind: 'rival', delta: -6 }] },
+        outcomeText: 'You call a meeting of the parliamentary party and dare the malcontents to put up or shut up. Most shut up. {rival} smiles and applauds with their fingertips. Bought time, not peace.',
+      },
+      {
+        label: 'Reshuffle to bind them in',
+        effects: { stats: { competence: 2 }, relationships: [{ kind: 'rival', delta: 5 }] },
+        outcomeText: 'You hand the ringleaders jobs and responsibility — harder to brief against a strategy you now own. The plot dissolves into collective responsibility. Cynical; effective; classic.',
+      },
+      {
+        label: 'Stake everything on a relaunch',
+        effects: { stats: { profile: 5, partyStanding: -3 }, pollingShock: { party: 'own', delta: 0.4 } },
+        outcomeText: 'New team, new slogan, a big speech, a clear dividing line. A relaunch is a gamble that buys silence only if the polls move. Yours, this time, twitch upward. Just.',
+      },
+    ],
+  },
+  {
+    id: 'lo_byelection_chance',
+    title: 'A by-election to seize',
+    body: 'A government seat has fallen vacant in exactly the kind of place you need to win to govern. As LO you can pour everything in and make it a referendum on the government — or manage expectations and protect yourself from a flop.',
+    tags: ['party', 'media'],
+    weight: 10, cooldownDays: 400,
+    requires: { minTier: 5, inGovernment: false },
+    choices: [
+      {
+        label: 'Throw the kitchen sink at it',
+        effects: { stats: { profile: 3 }, pollingShock: { party: 'own', delta: 0.5 } },
+        outcomeText: [
+          { weight: 2, text: 'You all but move in. The seat falls to you on a thumping swing and the result becomes the story of the month — proof, the pundits agree, of a government in retreat.', extra: { stats: { partyStanding: 3 } } },
+          { weight: 1, text: 'You go all in and fall agonisingly short. Having made it a test of your leadership, you now own the failure too. A long weekend of "is he up to it?" follows.', extra: { stats: { partyStanding: -3 }, pollingShock: { party: 'own', delta: -0.3 } } },
+        ],
+      },
+      {
+        label: 'Manage expectations, campaign sensibly',
+        effects: { stats: { competence: 2 } },
+        outcomeText: 'You work it hard but briefed low. A solid result that you can spin as progress without having staked your authority on it. Unspectacular, survivable.',
+      },
+    ],
+  },
+  {
+    id: 'pm_legacy_crossroads',
+    title: 'The shadow of the exit',
+    body: 'You have been PM long enough that the question has changed from "what next?" to "how will this end?". Go on too long and you\'ll be pushed; go too soon and the work is unfinished. A loyal ally asks, gently, if you\'ve thought about the timing.',
+    tags: ['party', 'personal', 'serious'],
+    weight: 7, cooldownDays: 700,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Name a departure on your own terms',
+        effects: { stats: { integrity: 4, profile: 2 }, pollingShock: { party: 'own', delta: 0.3 } },
+        outcomeText: 'You signal, privately then publicly, that you will go at a time of your choosing — and suddenly you are a leader with a plan, not a hostage to one. Authority through the dignity of an exit date.',
+      },
+      {
+        label: 'Govern as if forever',
+        effects: { stats: { partyStanding: -2 } },
+        outcomeText: 'You bat the question away and carry on. There is power in refusing to discuss your own ending — until there isn\'t, and the discussion happens without you in the room.',
+      },
+    ],
+  },
+  {
+    id: 'pm_pandemic_call',
+    title: 'A public health emergency',
+    body: 'A fast-moving public health emergency lands on your desk with incomplete data and impossible trade-offs: act early and over-react, or wait for certainty that may arrive too late. The scientists give ranges, not answers. The decision is yours alone.',
+    tags: ['crisis', 'policy', 'serious'],
+    weight: 8, cooldownDays: 700,
+    requires: { minTier: 5, inGovernment: true },
+    choices: [
+      {
+        label: 'Act hard and early',
+        effects: { stats: { integrity: 3, competence: 2 }, pollingShock: { party: 'own', delta: 0.4 } },
+        outcomeText: [
+          { weight: 2, text: 'You move before the curve and take the economic and political hit early. It works: the worst is averted, and history — though not every front page — will record that you chose lives over comfort.', extra: { stats: { profile: 3 } } },
+          { weight: 1, text: 'You move hard and the threat fizzles, leaving you to defend an "over-reaction" that cost livelihoods. You\'d do it again on the same evidence; explaining that is the hardest podium of your life.', extra: { pollingShock: { party: 'own', delta: -0.5 } } },
+        ],
+      },
+      {
+        label: 'Wait for the evidence',
+        effects: { stats: { competence: -1 } },
+        outcomeText: [
+          { weight: 1, text: 'You hold your nerve, the data clarifies, and a proportionate response proves sufficient. Vindicated caution — the rarest and least-thanked kind.' },
+          { weight: 1, text: 'The wait proves costly; by the time the evidence is undeniable, so is the scale of the crisis. The inquiry, years hence, will dwell on these lost weeks.', extra: { pollingShock: { party: 'own', delta: -0.9 }, stats: { profile: -2 } } },
+        ],
+      },
+    ],
+  },
 ];

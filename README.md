@@ -21,19 +21,26 @@ reshuffles, leadership vacancies, max stats).
 - **Start dates** — first day of the 2019 parliament (Con majority 80) or the
   2024 parliament (Lab landslide 411). Seat compositions are exact; history
   diverges procedurally from day one.
-- **The loop** — decision cards advance the clock ~3–6 weeks each. A scheduler
-  interleaves forced sequences (reshuffles, dismissals, leadership ballots,
-  election campaigns), calendar events (Budget, conference, locals, recess) and
-  a weighted card draw with cooldowns and token templating.
+- **The loop** — each ordinary decision advances the clock one or two months. A
+  scheduler interleaves forced sequences (reshuffles, dismissals, leadership
+  ballots, election campaigns), calendar events (Budget, conference, locals,
+  recess) and a weighted card draw with cooldowns and token templating. Stats
+  follow diminishing returns — easy to build, hard to max — and genuinely gate
+  promotion.
 - **Career** — eligibility for office is scored from competence, leader/whip
-  relationships, standing, profile, rebellions and your background. Mirrored
-  shadow roles in opposition; sideways moves, emergency reshuffles, and — as
-  leader — interactive reshuffles of your own cabinet. Leadership contests are
-  four-stage affairs against named rivals (declare → first ballot → endorsement
-  round → final ballot), and losing carries a real cost. You can also cross the
-  floor to another party, at a price the voters will name. As PM or LO, general
-  elections become a five-stage make-or-break campaign that genuinely moves
-  the polls; NPC PMs call late-term or snap elections and occasionally resign.
+  relationships, standing, profile, rebellions and your background. The early
+  ladder (PPS, minister) comes quickly to strong performers; the top stays hard.
+  Mirrored shadow roles in opposition; sideways moves, emergency reshuffles, and
+  — as leader — interactive reshuffles of your own cabinet (and a Cabinet-tab
+  "Sack" button). You can resign any office at will (as leader, an NPC succeeds
+  you) and your career remembers its peak, so a principled resignation doesn't
+  send you back to the bottom. Leadership contests are six-stage affairs against
+  3–6 named rivals (declaration → two ballots → hustings → endorsement → final
+  head-to-head), and losing carries a real cost. You can also cross the floor to
+  another party, at a price the voters will name. As PM or LO, general elections
+  become a seven-stage make-or-break campaign that genuinely moves the polls; a
+  living opposition reshuffles itself and changes its own leaders between
+  elections, and NPC PMs call late-term or snap elections and occasionally resign.
 - **Elections** — 650 synthetic constituencies generated to match the real
   starting parliament, swung by a regional-sensitivity model from national
   polling (random walk + mean reversion + cost-of-governing drag + event

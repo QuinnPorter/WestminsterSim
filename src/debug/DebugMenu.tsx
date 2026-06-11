@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { updatePolling } from '../engine/polling';
+import { updatePolling, samplePolling } from '../engine/polling';
 import { nextStep, queueGeneralElection } from '../engine/scheduler';
 import { runReshuffle, openLeadershipVacancy } from '../engine/career';
 
@@ -15,6 +15,7 @@ export function DebugMenu() {
     debugMutate((g, rng) => {
       g.day += days;
       updatePolling(g, rng, g.day);
+      samplePolling(g);
       g.currentCard = null;
       nextStep(g, rng);
     });

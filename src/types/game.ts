@@ -156,6 +156,11 @@ export interface PollingState {
   lastUpdated: GameDay;
 }
 
+export interface PollSnapshot {
+  day: GameDay;
+  shares: Partial<Record<PartyId, number>>;
+}
+
 export interface CabinetPost {
   officeId: OfficeId;
   characterId: string; // 'player' refers to the player
@@ -275,6 +280,8 @@ export interface GameState {
   seatMap: SyntheticSeat[];
   government: GovernmentState;
   polling: PollingState;
+  /** polling snapshots since the last election, for the tracker graph */
+  pollHistory: PollSnapshot[];
 
   history: HistoryEntry[];
   elections: Record<string, ElectionResult>;

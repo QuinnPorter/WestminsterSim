@@ -18,6 +18,26 @@ function resolveParty(state: GameState, ref: 'own' | 'gov' | PartyId): PartyId {
   return ref;
 }
 
+type StatKey = keyof GameState['player']['stats'];
+
+/** Apply a stat change with diminishing returns on gains: the closer a stat is
+ *  to 100, the less a positive delta moves it (high-80s is hard, 100 effectively
+ *  unreachable through routine play). Negative deltas apply in full. Returns the
+ *  *effective* change actually applied, so the UI stays honest. */
+export function gainStat(state: GameState, key: StatKey, delta: number): number {
+  const current = state.player.stats[key];
+  let effective = delta;
+  if (delta > 0) {
+    const headroom = Math.max(0, 1 - current / 100);
+    effective = delta * Math.pow(headroom, 1.5);
+    // round to 1dp so small gains near the ceiling don't vanish entirely
+    effective = Math.round(effective * 10) / 10;
+  }
+  const next = clamp(current + effective, 0, 100);
+  state.player.stats[key] = next;
+  return Math.round((next - current) * 10) / 10;
+}
+
 export function applyPollingShock(
   state: GameState,
   party: PartyId,
@@ -38,9 +58,9 @@ export function applyEffects(state: GameState, spec: EffectSpec): StatDelta[] {
   if (spec.stats) {
     for (const [key, delta] of Object.entries(spec.stats)) {
       if (!delta) continue;
-      const k = key as keyof typeof state.player.stats;
-      state.player.stats[k] = clamp(state.player.stats[k] + delta, 0, 100);
-      deltas.push({ label: STAT_LABELS[k] ?? k, delta });
+      const k = key as StatKey;
+      const applied = gainStat(state, k, delta);
+      if (applied !== 0) deltas.push({ label: STAT_LABELS[k] ?? k, delta: applied });
     }
   }
 

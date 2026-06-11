@@ -3,7 +3,7 @@ import { DecisionCard } from '../types/content';
 import { DEPARTMENTS, OFFICES } from '../data/offices';
 import { PARTIES } from '../data/parties';
 import { getRelationship, relationshipName } from './relationships';
-import { playerInGovernment, playerTier } from './career';
+import { playerInGovernment, playerTier, playerIsLeader } from './career';
 import { Rng } from './rng';
 
 // ---------- tokens ----------
@@ -99,18 +99,23 @@ export function drawCard(
     : undefined;
   const lastPrimaryTag = lastCard?.tags[0];
   const senior = playerTier(state) >= 3;
+  const leader = playerIsLeader(state);
   return rng.pickWeighted(eligible, (c) => {
     let w = c.weight;
     if (lastPrimaryTag && c.tags[0] === lastPrimaryTag) w *= SAME_TAG_PENALTY;
     if (senior && (c.tags[0] === 'constituency' || c.tags[0] === 'personal')) {
       w *= SENIOR_LOCAL_PENALTY;
     }
+    // as leader/PM, governance dominates: heavily down-weight any card that
+    // isn't a leader-tier (minTier 5) governance card
+    if (leader && (c.requires?.minTier ?? 0) < 5) {
+      w *= 0.1;
+    }
     return w;
   });
 }
 
 export function makeDrawnCard(state: GameState, rng: Rng, card: DecisionCard): DrawnCard {
-  const [minAdv, maxAdv] = card.advanceDays ?? [21, 42];
   return {
     cardId: card.id,
     kind: 'normal',
@@ -120,6 +125,7 @@ export function makeDrawnCard(state: GameState, rng: Rng, card: DecisionCard): D
       ? getRelationship(state, card.speaker)?.characterId
       : undefined,
     choices: card.choices.map((c) => ({ label: resolveTokens(state, c.label) })),
-    payload: { advance: rng.int(minAdv, maxAdv) },
+    // ordinary cadence: one or two months per decision (50/50)
+    payload: { advance: rng.chance(0.5) ? 30 : 60 },
   };
 }

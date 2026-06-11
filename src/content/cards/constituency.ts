@@ -197,4 +197,194 @@ export const CONSTITUENCY_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'con_hospital_downgrade',
+    title: 'The A&E downgrade',
+    body: 'The health trust wants to "centralise" {constituency}\'s A&E — clinically sensible, politically radioactive. The consultants\' report is dense; the campaign to save it already has placards.',
+    tags: ['constituency', 'policy', 'serious'],
+    weight: 12, cooldownDays: 500,
+    choices: [
+      {
+        label: 'Lead the save-our-hospital fight',
+        effects: { stats: { constituencyApproval: 6, profile: 2, competence: -2 } },
+        outcomeText: 'You march at the front with the placards. The downgrade is paused. The clinicians quietly tell you the maths still doesn\'t work — a problem deferred to a future you.',
+      },
+      {
+        label: 'Back the evidence, soften the blow',
+        effects: { stats: { competence: 4, integrity: 3, constituencyApproval: -4 } },
+        outcomeText: 'You accept the clinical case but win a guaranteed urgent-care centre and transport links. Honest, defensible, and on the placards next month under the word "BETRAYAL".',
+      },
+    ],
+  },
+  {
+    id: 'con_local_scandal',
+    title: 'The council in the headlines',
+    body: 'Your own party\'s local council is mired in a procurement scandal — nothing to do with you, but the names rhyme with yours on the ballot. A reporter asks if you\'ll condemn them.',
+    tags: ['constituency', 'media', 'party'],
+    weight: 10, cooldownDays: 400,
+    choices: [
+      {
+        label: 'Condemn it cleanly',
+        effects: { stats: { integrity: 4, constituencyApproval: 2, partyStanding: -3 } },
+        outcomeText: 'You say corruption is corruption whatever the rosette. Voters respect it; the council leader stops returning your calls and briefs against you to the local membership.',
+      },
+      {
+        label: 'Call for "due process"',
+        effects: { stats: { partyStanding: 2, integrity: -2 } },
+        outcomeText: 'You hide behind the investigation and say nothing quotable. The party machine is grateful. The reporter writes "MP refuses to condemn" and is not wrong.',
+      },
+    ],
+  },
+  {
+    id: 'con_developer_donation',
+    title: 'The developer\'s cheque',
+    body: 'A property developer with three live applications in {constituency} offers a generous donation to your local party. Entirely legal. Entirely declarable. Entirely the sort of thing that reads badly in 18-point type.',
+    tags: ['constituency', 'scandal'],
+    weight: 9, cooldownDays: 600,
+    choices: [
+      {
+        label: 'Politely refuse it',
+        effects: { stats: { integrity: 5, constituencyApproval: 1 } },
+        outcomeText: 'You send it back with thanks. Your local treasurer is distraught; your future self, when the applications come up, is serene. Clean hands cost money.',
+      },
+      {
+        label: 'Take it, declare it, recuse yourself',
+        effects: { stats: { integrity: -2, constituencyApproval: -1 }, setFlags: { developerMoney: true } },
+        outcomeText: 'You bank it, register it, and loudly recuse yourself from anything planning-related. Watertight — until someone decides the optics are the story.',
+      },
+    ],
+  },
+  {
+    id: 'con_war_memorial',
+    title: 'The war memorial',
+    body: 'The {constituency} war memorial is crumbling and the restoration fund is short. The British Legion asks you to lend your name — and, ideally, a chunk of your office budget — to the appeal.',
+    tags: ['constituency', 'serious'],
+    weight: 9, cooldownDays: 450,
+    choices: [
+      {
+        label: 'Throw yourself into the appeal',
+        effects: { stats: { constituencyApproval: 5, integrity: 2 } },
+        outcomeText: 'You raise the money, rededicate the memorial, and stand silent in the rain on Remembrance Sunday before a grateful crowd. Some duties are also privileges.',
+      },
+      {
+        label: 'Send a donation and a letter',
+        effects: { stats: { constituencyApproval: 1 } },
+        outcomeText: 'A cheque and a warm note. The memorial gets fixed, slowly. Nobody remembers who paid for the third of the south wall.',
+      },
+    ],
+  },
+  {
+    id: 'con_immigration_case',
+    title: 'The deportation letter',
+    body: 'A constituent family — settled, working, beloved at the local school — faces deportation on a Home Office technicality. The case is heartbreaking, the law is the law, and your own party is the one enforcing it.',
+    tags: ['constituency', 'serious', 'policy'],
+    weight: 10, cooldownDays: 500,
+    choices: [
+      {
+        label: 'Fight it publicly, all the way',
+        effects: { stats: { constituencyApproval: 4, integrity: 4, partyStanding: -3 }, relationships: [{ kind: 'leader', delta: -2 }] },
+        outcomeText: 'You take it to the floor, the press, and the minister\'s office. The family stays. Your government\'s immigration team adds you to the list of "unhelpful" colleagues.',
+      },
+      {
+        label: 'Work it quietly through channels',
+        effects: { stats: { competence: 3, constituencyApproval: 1 } },
+        outcomeText: 'No headlines, just a discreet, dogged caseworker grind and one well-placed letter. The family gets leave to remain. Few will know it was you. The family will never forget.',
+      },
+    ],
+  },
+  {
+    id: 'con_rival_party_gain',
+    title: 'The insurgents move in',
+    body: 'A populist party has opened a flashy office on {constituency}\'s high street and is hoovering up your disaffected voters with simple answers to hard questions. Your activists are rattled.',
+    tags: ['constituency', 'party'],
+    weight: 10, cooldownDays: 400,
+    choices: [
+      {
+        label: 'Out-organise them on the doorstep',
+        effects: { stats: { constituencyApproval: 4, competence: 2, profile: -1 } },
+        outcomeText: 'You go back to basics: more doors, more surgeries, more presence than a pop-up office can match. Unglamorous, relentless, effective. The insurgents\' novelty fades.',
+      },
+      {
+        label: 'Co-opt their best argument',
+        effects: { stats: { profile: 3, integrity: -3 } },
+        outcomeText: 'You adopt a harder line on their signature issue. It takes the wind from their sails — and a little from your own principles. The high-street office is quieter by spring.',
+      },
+    ],
+  },
+  {
+    id: 'con_flood_defence_funding',
+    title: 'The flood defence bid',
+    body: 'After last year\'s floods, {constituency} needs a defence scheme. The funding pot is national, competitive, and political. Winning it means lobbying your own government hard — and trading on whatever goodwill you have.',
+    tags: ['constituency', 'policy'],
+    weight: 9, cooldownDays: 450,
+    choices: [
+      {
+        label: 'Spend your capital to win the bid',
+        effects: { stats: { constituencyApproval: 6, partyStanding: -2 }, relationships: [{ kind: 'leader', delta: -1 }] },
+        outcomeText: 'You call in every favour and the scheme is funded. The riverside is safe; your stock with the Treasury is spent. Worth every chip.',
+      },
+      {
+        label: 'Make the technical case and hope',
+        effects: { stats: { competence: 3, constituencyApproval: -2 } },
+        outcomeText: 'You submit an immaculate bid on the merits and let it compete fairly. It comes a narrow second. The flood plain remains a flood plain.',
+      },
+    ],
+  },
+  {
+    id: 'con_local_hero',
+    title: 'The local hero',
+    body: 'A {constituency} teenager has done something genuinely remarkable — a rescue, a record, a viral act of kindness. Everyone wants a photo with them, you included. There is a fine line between honouring and using.',
+    tags: ['constituency', 'media', 'funny'],
+    weight: 8, cooldownDays: 350,
+    choices: [
+      {
+        label: 'Honour them properly in the House',
+        effects: { stats: { constituencyApproval: 4, profile: 2 } },
+        outcomeText: 'You read their name into Hansard and bring them to Parliament for the day. The photo is lovely and nobody could call it cynical. A genuinely nice moment in a cynical trade.',
+      },
+      {
+        label: 'A quiet letter, no cameras',
+        effects: { stats: { integrity: 3, constituencyApproval: 1 } },
+        outcomeText: 'You write privately, no press release. The family is touched. The wider constituency never hears about it, which is, you decide, rather the point.',
+      },
+    ],
+  },
+  {
+    id: 'con_surgery_threat',
+    title: 'The threatening constituent',
+    body: 'A constituent\'s emails have crossed from angry into frightening. Your caseworker is scared. The police say they\'ll "log it". An MP was murdered at a surgery not so long ago, and everyone in your office remembers.',
+    tags: ['constituency', 'serious', 'personal'],
+    weight: 8, cooldownDays: 600,
+    choices: [
+      {
+        label: 'Tighten security, keep surgeries open',
+        effects: { stats: { integrity: 4, constituencyApproval: 2, competence: -1 } },
+        outcomeText: 'You will not be driven from your own constituents. New protocols, a panic button, and a defiant statement. The surgeries stay open. Your family worries; you go anyway.',
+      },
+      {
+        label: 'Move to appointment-only, screened',
+        effects: { stats: { competence: 3, constituencyApproval: -2 } },
+        outcomeText: 'Sensible, safe, and a small democratic loss: the open door is now a booking form. Most understand. A few call you remote. The caseworker sleeps better.',
+      },
+    ],
+  },
+  {
+    id: 'con_boundary_review',
+    title: 'The boundary review',
+    body: 'The Boundary Commission\'s draft would carve {constituency} in three, scattering your safest wards. You can make representations — fight for the lines that keep you safe, or accept the tidy map and the risk.',
+    tags: ['constituency', 'party', 'serious'],
+    weight: 9, cooldownDays: 700,
+    choices: [
+      {
+        label: 'Fight for favourable lines',
+        effects: { stats: { competence: 2, integrity: -2 } },
+        outcomeText: 'You submit a forensic case for boundaries that — coincidentally — keep your best wards. Half of it sticks. Self-preservation dressed as community cohesion; an old parliamentary art.',
+      },
+      {
+        label: 'Accept the independent map',
+        effects: { stats: { integrity: 4, constituencyApproval: -1 } },
+        outcomeText: 'You let the Commission do its job unlobbied. The new seat is harder for you — but you can say, truthfully, that you didn\'t gerrymander your own survival.',
+      },
+    ],
+  },
 ];

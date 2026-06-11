@@ -6,7 +6,7 @@ import {
 import { resolveForcedChoice } from './career';
 import { applyEffects } from './effects';
 import { resolveTokens } from './cardEngine';
-import { updatePolling } from './polling';
+import { updatePolling, samplePolling } from './polling';
 import { Rng } from './rng';
 
 /** apply the player's choice to the current card and attach the outcome */
@@ -57,6 +57,7 @@ export function continueCore(game: GameState, rng: Rng): void {
   const before = game.day;
   game.day += advance;
   updatePolling(game, rng, game.day);
+  samplePolling(game);
 
   const yearsBefore = Math.floor((before - game.startDay) / 365);
   const yearsAfter = Math.floor((game.day - game.startDay) / 365);

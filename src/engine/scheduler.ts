@@ -5,11 +5,15 @@ import { drawCard, makeDrawnCard, resolveTokens } from './cardEngine';
 import {
   applyElectionAftermath, materializeForced, playerIsPM, runReshuffle,
   openLeadershipVacancy, playerIsLeader, onFrontbenchTrack,
+  playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS,
+  npcReshuffle, npcFrontbencherRetires,
 } from './career';
+import { OFFICES } from '../data/offices';
 import { runElection } from './election';
+import { gainStat } from './effects';
 import { partyPolling, pollingLead } from './polling';
 import { isoToDay, yearOf } from './clock';
-import { Rng, clamp } from './rng';
+import { Rng } from './rng';
 
 // ---------- calendar ----------
 
@@ -46,7 +50,7 @@ function makeCalendarCard(state: GameState, rng: Rng, key: string): DrawnCard {
   const base = {
     cardId: `cal_${key}_${state.day}`,
     kind: 'calendar' as const,
-    payload: { calKey: key, advance: rng.int(14, 28) },
+    payload: { calKey: key, advance: rng.chance(0.5) ? 30 : 60 },
   };
   switch (key) {
     case 'conference':
@@ -107,8 +111,8 @@ export function resolveCalendarChoice(
 ): { text: string; deltas: StatDelta[] } {
   const deltas: StatDelta[] = [];
   const stat = (k: keyof GameState['player']['stats'], d: number, label: string) => {
-    state.player.stats[k] = clamp(state.player.stats[k] + d, 0, 100);
-    deltas.push({ label, delta: d });
+    const applied = gainStat(state, k, d);
+    if (applied !== 0) deltas.push({ label, delta: applied });
   };
   const key = card.payload?.calKey as string;
 
@@ -161,7 +165,7 @@ export function resolveCalendarChoice(
 
 // ---------- systemic hazard rates (per tick, ~monthly) ----------
 
-const RESHUFFLE_HAZARD = 0.07;          // ~ once per 14 months
+const RESHUFFLE_HAZARD = 0.085;         // ~ once per ~12 months
 const EMERGENCY_RESHUFFLE_BONUS = 0.04; // extra hazard when the party is in the polling mire
 const PM_RESHUFFLE_HAZARD = 0.055;      // player-leader interactive reshuffles
 const PM_LATE_TERM_ELECTION = 0.06;     // NPC PM "goes early" in year five
@@ -170,7 +174,11 @@ const PLAYER_PM_ELECTION_PROMPT = 0.08;
 const PM_LONGEVITY_RESIGN = 0.015;      // PM stands down after a long innings
 const PM_SCANDAL_RESIGN = 0.0025;       // PM felled by scandal
 const LEADER_COLLAPSE_HAZARD = 0.02;
-const FIRST_RUNG_HAZARD = 0.14;         // extra path onto the ladder for tier-0 players
+const NPC_LEADER_SCANDAL = 0.0025;      // an NPC leader felled by scandal
+const NPC_RESHUFFLE_HAZARD = 0.04;      // an NPC-led front bench reshuffles itself
+const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
+const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
+const MINISTER_RUNG_HAZARD = 0.12;      // accelerated path from PPS/whip to a ministry
 
 // ---------- the brain ----------
 
@@ -290,41 +298,74 @@ export function nextStep(state: GameState, rng: Rng): void {
   }
 
   // an extra rung onto the ladder for promising newcomers (reshuffles are rare)
+  const playerTierNow = playerTier(state);
   if (
     state.player.officeId === null &&
     onFrontbenchTrack(state) &&
-    state.player.stats.partyStanding >= 48 &&
-    (state.day - state.player.enteredParliament) > 365 &&
+    state.player.stats.partyStanding >= 45 &&
+    (state.day - state.player.enteredParliament) > 180 &&
     rng.chance(FIRST_RUNG_HAZARD)
   ) {
+    // a returning ex-minister gets offered near their old level, not PPS
+    const target = nextOfficeFor(state, rng);
     state.forcedQueue.push({
       kind: 'reshuffleOffer',
-      payload: { officeId: rng.chance(0.55) ? 'pps' : 'whip' },
+      payload: { officeId: target ?? (rng.chance(0.55) ? 'pps' : 'whip') },
     });
     nextStep(state, rng);
     return;
   }
 
-  // leadership collapse: sustained dismal polling fells a leader
-  const playerParty = state.player.partyId;
-  const isGovParty = playerParty === state.government.governingParty;
-  const collapseThreshold = isGovParty ? 21 : 17;
+  // accelerated path from PPS/whip into a ministry for strong performers
   if (
-    !playerIsLeader(state) &&
+    (playerTierNow === 1 || playerTierNow === 2) &&
     onFrontbenchTrack(state) &&
-    partyPolling(state, playerParty) < collapseThreshold &&
-    rng.chance(LEADER_COLLAPSE_HAZARD)
+    rng.chance(MINISTER_RUNG_HAZARD)
   ) {
-    const leaderName = state.characters[
-      isGovParty ? state.government.pmId : state.government.loId
-    ]?.name ?? 'The leader';
-    state.history.push({
-      kind: 'event', date: state.day,
-      headline: `${leaderName} resigns as ${PARTIES[playerParty].shortName} leader after polling collapse`,
-    });
-    openLeadershipVacancy(state, rng, playerParty);
-    nextStep(state, rng);
-    return;
+    const target = nextOfficeFor(state, rng);
+    if (target) {
+      const score = eligibilityScore(state, target) + rng.normal(0, 6);
+      if (score >= (OFFER_THRESHOLDS[OFFICES[target].tier] ?? 60)) {
+        state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: target } });
+        nextStep(state, rng);
+        return;
+      }
+    }
+  }
+
+  // a living political world: front benches churn, leaders fall.
+  // Iterate the two frontbench parties; the one the player leads runs its own
+  // reshuffles (handled above), so skip it here.
+  for (const party of [state.government.governingParty, state.government.oppositionParty]) {
+    const isGov = party === state.government.governingParty;
+    const leaderId = isGov ? state.government.pmId : state.government.loId;
+    if (leaderId === 'player') continue;
+
+    // leader churn: scandal (any time, rare) or a sustained polling collapse
+    const collapseThreshold = isGov ? 21 : 17;
+    const scandalFall = rng.chance(NPC_LEADER_SCANDAL);
+    const collapse = partyPolling(state, party) < collapseThreshold && rng.chance(LEADER_COLLAPSE_HAZARD);
+    if (scandalFall || collapse) {
+      const leaderName = state.characters[leaderId]?.name ?? 'The leader';
+      const role = isGov ? 'Prime Minister' : `${PARTIES[party].shortName} leader`;
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: scandalFall
+          ? `${leaderName} resigns as ${role} amid scandal`
+          : `${leaderName} resigns as ${role} after a collapse in the polls`,
+      });
+      // if it's the player's own party, they may stand; otherwise an NPC succeeds
+      openLeadershipVacancy(state, rng, party);
+      nextStep(state, rng);
+      return;
+    }
+
+    // periodic NPC reshuffles and the very occasional retirement
+    if (rng.chance(NPC_RESHUFFLE_HAZARD)) {
+      npcReshuffle(state, rng, party);
+    } else if (rng.chance(NPC_FRONTBENCH_RETIRE)) {
+      npcFrontbencherRetires(state, rng, party);
+    }
   }
 
   // 4. a regular card
@@ -336,13 +377,15 @@ export function nextStep(state: GameState, rng: Rng): void {
 
 export function queueGeneralElection(state: GameState): void {
   if (playerIsLeader(state) && state.player.hasSeat) {
-    // the leader's campaign: five make-or-break stages
+    // the leader's campaign: seven make-or-break stages
     state.forcedQueue.push(
       { kind: 'campaign', payload: { step: 1, leader: true } },
       { kind: 'campaign', payload: { step: 2, leader: true } },
       { kind: 'campaign', payload: { step: 3, leader: true } },
       { kind: 'campaign', payload: { step: 4, leader: true } },
       { kind: 'campaign', payload: { step: 5, leader: true } },
+      { kind: 'campaign', payload: { step: 6, leader: true } },
+      { kind: 'campaign', payload: { step: 7, leader: true } },
       { kind: 'electionNight' }
     );
   } else {

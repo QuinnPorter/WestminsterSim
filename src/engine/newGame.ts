@@ -22,7 +22,7 @@ export interface CreationInput {
   seed?: number;
 }
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -183,6 +183,7 @@ export function createNewGame(input: CreationInput): GameState {
       pmSinceDay: startDay,
     },
     polling: { shares: { ...data.baselineShares }, lastUpdated: startDay },
+    pollHistory: [{ day: startDay, shares: { ...data.baselineShares } }],
     history: [
       {
         kind: 'enteredParliament',

@@ -50,6 +50,7 @@ function spanTitle(game: GameState, span: OfficeSpan): string {
 export function ProfileScreen({ game }: { game: GameState }) {
   const retire = useGameStore((s) => s.retire);
   const crossFloor = useGameStore((s) => s.crossFloor);
+  const resignOffice = useGameStore((s) => s.resignOffice);
   const [pickingParty, setPickingParty] = useState(false);
 
   const player = game.player;
@@ -228,6 +229,22 @@ export function ProfileScreen({ game }: { game: GameState }) {
             </>
           )}
         </div>
+      )}
+
+      {player.officeId && player.hasSeat && (
+        <button
+          className="btn"
+          style={{ textAlign: 'center', marginBottom: 8 }}
+          onClick={() => {
+            const isLeader = playerIsLeader(game);
+            const msg = isLeader
+              ? 'Resign the leadership? A successor will take over and you will return to the backbenches.'
+              : `Resign as ${playerOfficeTitle(game)}? You will stay on as an MP.`;
+            if (window.confirm(msg)) resignOffice();
+          }}
+        >
+          Resign your office
+        </button>
       )}
 
       <button

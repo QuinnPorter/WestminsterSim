@@ -171,4 +171,168 @@ export const PERSONAL_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'per_burnout',
+    title: 'Running on empty',
+    body: 'You fell asleep in a committee, snapped at a caseworker, and can\'t remember your last day off. Your partner leaves a note on the fridge that just says "talk to me?". The body is sending invoices.',
+    tags: ['personal', 'serious'],
+    weight: 9, cooldownDays: 400,
+    choices: [
+      {
+        label: 'Take a real week off',
+        effects: { stats: { competence: 3, profile: -2 } },
+        outcomeText: 'Phone in a drawer, walks, sleep, an actual conversation. You come back sharper and kinder. The week of missed votes and silence costs a little visibility. Cheap at the price.',
+      },
+      {
+        label: 'Push through — there\'s no time',
+        effects: { stats: { profile: 2, integrity: -1, competence: -2 } },
+        outcomeText: 'You power on, visibly everywhere, quietly fraying. The diary is impressed; the mistakes start small and accumulate. The note stays on the fridge.',
+      },
+    ],
+  },
+  {
+    id: 'per_old_vote_resurfaces',
+    title: 'A vote you\'d forgotten',
+    body: 'An activist account has dug up a vote you cast years ago that reads very badly out of context — and not brilliantly in it. It\'s climbing. A staffer asks how you want to handle it.',
+    tags: ['personal', 'media', 'scandal'],
+    weight: 8, cooldownDays: 500,
+    choices: [
+      {
+        label: 'Explain it honestly, own the nuance',
+        effects: { stats: { integrity: 4, profile: 1 } },
+        outcomeText: 'You post a calm thread explaining the vote, the context, and what you\'d do now. It won\'t satisfy the pile-on, but it satisfies the fair-minded — who are quieter but more numerous.',
+      },
+      {
+        label: 'Ignore it and let it burn out',
+        effects: { stats: { profile: -2 } },
+        outcomeText: [
+          { weight: 2, text: 'You say nothing and the internet, gloriously, forgets by Friday. Silence: occasionally the wisest reply.' },
+          { weight: 1, text: 'The silence reads as guilt and a real outlet picks it up. Now it\'s a story about you not answering, which is harder to kill.', extra: { stats: { partyStanding: -3 } } },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'per_book_deal',
+    title: 'The book deal',
+    body: 'A publisher offers a tidy advance for a memoir-slash-manifesto. It would raise your profile and your bank balance — and hand your enemies 300 pages to quote back at you forever.',
+    tags: ['personal', 'media'],
+    weight: 8, cooldownDays: 500,
+    choices: [
+      {
+        label: 'Write the bold political book',
+        effects: { stats: { profile: 5, partyStanding: -2, integrity: 1 } },
+        outcomeText: 'You set out what you actually believe, at length. It sells, it\'s reviewed, it\'s serialised — and one chapter is read aloud, unkindly, in the chamber within the month.',
+      },
+      {
+        label: 'A safe, charming non-memoir',
+        effects: { stats: { profile: 2 } },
+        outcomeText: 'Anecdotes, no enemies, a nice photo on the back. It does fine in the Christmas market and gives nothing away. The advance buys a new kitchen.',
+      },
+      {
+        label: 'Decline — too risky',
+        effects: { stats: { integrity: 1 } },
+        outcomeText: 'You pass. The publisher signs your rival instead, whose book is, annoyingly, quite good.',
+      },
+    ],
+  },
+  {
+    id: 'per_anniversary',
+    title: 'The forgotten anniversary',
+    body: 'It\'s your anniversary and you are, once again, three hundred miles away at a party fundraiser. Your partner has been more than patient for more years than is fair. The phone is ringing.',
+    tags: ['personal', 'serious'],
+    weight: 8, cooldownDays: 400,
+    choices: [
+      {
+        label: 'Leave the fundraiser, go home',
+        effects: { stats: { integrity: 3, partyStanding: -3, constituencyApproval: 1 } },
+        outcomeText: 'You make your excuses, drive through the night, and arrive with flowers and apologies. The party chair is frosty; your marriage is not. Some priorities sort themselves out at 70mph.',
+      },
+      {
+        label: 'Stay — the donors are here',
+        effects: { stats: { partyStanding: 3, integrity: -2 } },
+        outcomeText: 'You work the room and bank the donations. You phone at midnight to a voice that says it\'s fine in the tone that means it isn\'t. The fund is healthier; something else isn\'t.',
+      },
+    ],
+  },
+  {
+    id: 'per_health_diagnosis',
+    title: 'The diagnosis',
+    body: 'The thing you kept rescheduling turned out to be worth seeing a doctor about. It\'s manageable — with rest, treatment, and honesty you\'re not sure Westminster permits. Who, if anyone, do you tell?',
+    tags: ['personal', 'serious'],
+    weight: 6, cooldownDays: 700,
+    choices: [
+      {
+        label: 'Go public, campaign on it',
+        effects: { stats: { profile: 4, integrity: 4, competence: -2 } },
+        outcomeText: 'You tell your story and become, overnight, a face for thousands who share the condition. The cause is real and so is the cost: the treatment, and the politics, both take their toll.',
+      },
+      {
+        label: 'Tell only your closest team',
+        effects: { stats: { integrity: 2 } },
+        outcomeText: 'A tight circle, a quiet treatment plan, a managed diary. You carry on. Most colleagues never know why you started leaving receptions early.',
+      },
+    ],
+  },
+  {
+    id: 'per_charity_patron',
+    title: 'The patronage',
+    body: 'A small, vital local charity asks you to be their patron. It would mean real, unglamorous, ongoing commitment — and no political reward to speak of. Just turning up, for years, because it matters.',
+    tags: ['personal', 'constituency'],
+    weight: 8, cooldownDays: 450,
+    choices: [
+      {
+        label: 'Say yes, and mean it',
+        effects: { stats: { integrity: 3, constituencyApproval: 3, competence: -1 } },
+        outcomeText: 'You become a genuine, hands-on patron: the fetes, the trustee meetings, the 3am crisis calls. It eats time you don\'t have. It is, quietly, the part of the job you\'ll be proudest of.',
+      },
+      {
+        label: 'Lend your name only',
+        effects: { stats: { constituencyApproval: 1 } },
+        outcomeText: 'Your name goes on the letterhead and your face to the gala. It helps them, a bit. Everyone understands an MP\'s time is short. You understand it too, and feel the gap.',
+      },
+    ],
+  },
+  {
+    id: 'per_social_media_pileon',
+    title: 'The pile-on',
+    body: 'A clumsy late-night post of yours has been wilfully misread and you are, this morning, the main character of the internet. Some of the anger is bad faith. Some of it, uncomfortably, has a point.',
+    tags: ['personal', 'media'],
+    weight: 9, cooldownDays: 300,
+    choices: [
+      {
+        label: 'Apologise for the real bit, ignore the rest',
+        effects: { stats: { integrity: 3, profile: 1 } },
+        outcomeText: 'You concede the fair criticism cleanly and don\'t engage the trolls. It defuses the genuine grievance and starves the rest. By tomorrow you are no longer the main character.',
+      },
+      {
+        label: 'Double down defiantly',
+        effects: { stats: { profile: 3, partyStanding: -3 } },
+        outcomeText: [
+          { weight: 1, text: 'Your base loves the defiance and rallies round. The clip travels; your profile spikes. The whips wince but the polling among your supporters ticks up.' },
+          { weight: 1, text: 'Doubling down pours petrol on it. A second day, a third, a front page. The whips call. "Just stop posting," they beg.', extra: { stats: { partyStanding: -4, profile: -1 } } },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'per_mentor_retires',
+    title: 'The mentor steps down',
+    body: '{mentor} is standing down at the next election. Over a last lunch in the members\' dining room, they offer you the thing they have left to give: their contacts, their causes, and one piece of brutally honest advice.',
+    speaker: 'mentor',
+    tags: ['personal', 'party'],
+    weight: 7, cooldownDays: 600,
+    choices: [
+      {
+        label: 'Take up their causes',
+        effects: { stats: { partyStanding: 3, integrity: 3 }, relationships: [{ kind: 'mentor', delta: 8 }] },
+        outcomeText: 'You promise to carry their unfinished campaigns forward, and you mean it. They hand you a contacts book worth more than gold and a look that says: don\'t waste it.',
+      },
+      {
+        label: 'Thank them and forge your own path',
+        effects: { stats: { profile: 2, integrity: 1 } },
+        outcomeText: 'You honour them but politely decline the inheritance — you have your own road. They nod, a little sad, a little proud. "Good," they say. "Never just be someone\'s heir."',
+      },
+    ],
+  },
 ];

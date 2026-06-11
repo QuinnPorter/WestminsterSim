@@ -1,16 +1,23 @@
 import { useState } from 'react';
-import { GameState } from '../types/game';
+import { GameState, OfficeId } from '../types/game';
 import { CABINET_OFFICES, OFFICES } from '../data/offices';
 import { PARTIES } from '../data/parties';
+import { useGameStore } from '../store/gameStore';
+import { playerIsLeader, playerInGovernment } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import './CabinetScreen.css';
 
 export function CabinetScreen({ game }: { game: GameState }) {
   const [side, setSide] = useState<'gov' | 'opp'>('gov');
+  const sackMinister = useGameStore((s) => s.sackMinister);
   const isGov = side === 'gov';
   const leaderId = isGov ? game.government.pmId : game.government.loId;
   const posts = isGov ? game.government.cabinet : game.government.shadowCabinet;
   const party = isGov ? game.government.governingParty : game.government.oppositionParty;
+  // the player can sack ministers on the side they lead
+  const canSack =
+    playerIsLeader(game) &&
+    ((isGov && playerInGovernment(game)) || (!isGov && !playerInGovernment(game)));
 
   return (
     <div className="screen">
@@ -39,6 +46,14 @@ export function CabinetScreen({ game }: { game: GameState }) {
               game={game}
               characterId={post.characterId}
               title={isGov ? OFFICES[officeId].title : OFFICES[officeId].shadowTitle}
+              onSack={canSack && post.characterId !== 'player'
+                ? () => {
+                    const name = game.characters[post.characterId]?.name ?? 'this minister';
+                    if (window.confirm(`Sack ${name}? It spends political capital, and they won't forget.`)) {
+                      sackMinister(officeId as OfficeId);
+                    }
+                  }
+                : undefined}
             />
           );
         })}
@@ -76,8 +91,8 @@ function FeaturedMember({ game, characterId, title }: {
   );
 }
 
-function MemberCard({ game, characterId, title }: {
-  game: GameState; characterId: string; title: string;
+function MemberCard({ game, characterId, title, onSack }: {
+  game: GameState; characterId: string; title: string; onSack?: () => void;
 }) {
   const isPlayer = characterId === 'player';
   const char = isPlayer ? null : game.characters[characterId];
@@ -101,6 +116,9 @@ function MemberCard({ game, characterId, title }: {
         )}
       </div>
       <div className="cab-member-title">{title}</div>
+      {onSack && (
+        <button className="cab-sack" onClick={onSack}>Sack</button>
+      )}
     </div>
   );
 }

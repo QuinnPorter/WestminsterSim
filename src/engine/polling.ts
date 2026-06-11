@@ -23,8 +23,21 @@ const WEEK = 7;
 const GOVERNING_DRAG = 0.0005;
 const HONEYMOON_DAYS = 365;
 /** weekly random-walk noise (sd) and pull toward fundamentals */
-const WEEKLY_NOISE = 0.005;
+const WEEKLY_NOISE = 0.006;
 const MEAN_REVERSION = 0.015;
+/** keep at most this many poll snapshots per parliament */
+const MAX_POLL_SNAPSHOTS = 80;
+/** minimum days between recorded snapshots */
+const POLL_SAMPLE_GAP = 25;
+
+/** record a polling snapshot for the tracker graph, if enough time has passed */
+export function samplePolling(state: GameState): void {
+  const hist = state.pollHistory;
+  const last = hist[hist.length - 1];
+  if (last && state.day - last.day < POLL_SAMPLE_GAP) return;
+  hist.push({ day: state.day, shares: { ...state.polling.shares } });
+  if (hist.length > MAX_POLL_SNAPSHOTS) hist.splice(0, hist.length - MAX_POLL_SNAPSHOTS);
+}
 
 /** advance the polling random walk over elapsed days */
 export function updatePolling(state: GameState, rng: Rng, toDay: number): void {

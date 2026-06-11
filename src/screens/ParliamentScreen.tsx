@@ -1,6 +1,7 @@
 import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { Hemicycle } from '../components/Hemicycle';
+import { PollGraph } from '../components/PollGraph';
 import { partyPolling } from '../engine/polling';
 import { POLLED_PARTIES } from '../data/parties';
 
@@ -82,6 +83,11 @@ export function ParliamentScreen({ game }: { game: GameState }) {
             <span style={{ fontWeight: 700 }}>{v.toFixed(0)}%</span>
           </div>
         ))}
+      </div>
+
+      <div className="card" style={{ marginTop: 12 }}>
+        <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 8 }}>Polling since the last election</h3>
+        <PollGraph game={game} />
       </div>
     </div>
   );

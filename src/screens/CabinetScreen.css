@@ -82,3 +82,19 @@
 .cab-rel {
   margin-left: 4px;
 }
+
+.cab-sack {
+  margin-top: 6px;
+  align-self: flex-start;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--danger);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--surface);
+}
+
+.cab-sack:active {
+  transform: scale(0.95);
+}
