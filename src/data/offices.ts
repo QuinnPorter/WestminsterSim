@@ -1,0 +1,97 @@
+import { DepartmentId, Office, OfficeId } from '../types/game';
+
+export interface DepartmentInfo {
+  id: DepartmentId;
+  name: string;
+  /** used in card token {department} */
+  casual: string;
+}
+
+export const DEPARTMENTS: Record<DepartmentId, DepartmentInfo> = {
+  treasury: { id: 'treasury', name: 'HM Treasury', casual: 'Treasury' },
+  home: { id: 'home', name: 'Home Office', casual: 'Home Office' },
+  foreign: { id: 'foreign', name: 'Foreign Office', casual: 'Foreign Office' },
+  health: { id: 'health', name: 'Department of Health and Social Care', casual: 'Health' },
+  education: { id: 'education', name: 'Department for Education', casual: 'Education' },
+  defence: { id: 'defence', name: 'Ministry of Defence', casual: 'Defence' },
+  justice: { id: 'justice', name: 'Ministry of Justice', casual: 'Justice' },
+  transport: { id: 'transport', name: 'Department for Transport', casual: 'Transport' },
+  environment: { id: 'environment', name: 'Defra', casual: 'Environment' },
+  business: { id: 'business', name: 'Department for Business and Trade', casual: 'Business' },
+  dwp: { id: 'dwp', name: 'Department for Work and Pensions', casual: 'Work and Pensions' },
+  culture: { id: 'culture', name: 'DCMS', casual: 'Culture' },
+};
+
+const DEPT_IDS = Object.keys(DEPARTMENTS) as DepartmentId[];
+
+const SOS_TITLES: Record<DepartmentId, { gov: string; shadow: string }> = {
+  treasury: { gov: 'Chancellor of the Exchequer', shadow: 'Shadow Chancellor' },
+  home: { gov: 'Home Secretary', shadow: 'Shadow Home Secretary' },
+  foreign: { gov: 'Foreign Secretary', shadow: 'Shadow Foreign Secretary' },
+  health: { gov: 'Health Secretary', shadow: 'Shadow Health Secretary' },
+  education: { gov: 'Education Secretary', shadow: 'Shadow Education Secretary' },
+  defence: { gov: 'Defence Secretary', shadow: 'Shadow Defence Secretary' },
+  justice: { gov: 'Justice Secretary', shadow: 'Shadow Justice Secretary' },
+  transport: { gov: 'Transport Secretary', shadow: 'Shadow Transport Secretary' },
+  environment: { gov: 'Environment Secretary', shadow: 'Shadow Environment Secretary' },
+  business: { gov: 'Business Secretary', shadow: 'Shadow Business Secretary' },
+  dwp: { gov: 'Work and Pensions Secretary', shadow: 'Shadow Work and Pensions Secretary' },
+  culture: { gov: 'Culture Secretary', shadow: 'Shadow Culture Secretary' },
+};
+
+function buildOffices(): Record<OfficeId, Office> {
+  const offices: Record<OfficeId, Office> = {
+    pps: {
+      id: 'pps', tier: 1,
+      title: 'Parliamentary Private Secretary',
+      shadowTitle: 'Parliamentary aide to the Leader',
+    },
+    whip: {
+      id: 'whip', tier: 2,
+      title: 'Government Whip',
+      shadowTitle: 'Opposition Whip',
+    },
+    chiefWhip: {
+      id: 'chiefWhip', tier: 4,
+      title: 'Chief Whip',
+      shadowTitle: 'Opposition Chief Whip',
+    },
+    leader: {
+      id: 'leader', tier: 5,
+      title: 'Prime Minister',
+      shadowTitle: 'Leader of the Opposition',
+    },
+  };
+  for (const dept of DEPT_IDS) {
+    offices[`min_${dept}`] = {
+      id: `min_${dept}`, tier: 3, department: dept,
+      title: `Minister of State for ${DEPARTMENTS[dept].casual}`,
+      shadowTitle: `Shadow Minister for ${DEPARTMENTS[dept].casual}`,
+    };
+    offices[`sos_${dept}`] = {
+      id: `sos_${dept}`, tier: 4, department: dept,
+      title: SOS_TITLES[dept].gov,
+      shadowTitle: SOS_TITLES[dept].shadow,
+    };
+  }
+  return offices;
+}
+
+export const OFFICES: Record<OfficeId, Office> = buildOffices();
+
+/** offices that make up the cabinet / shadow cabinet display, in rank order */
+export const CABINET_OFFICES: OfficeId[] = [
+  'sos_treasury', 'sos_home', 'sos_foreign', 'sos_health', 'sos_education',
+  'sos_defence', 'sos_justice', 'sos_business', 'sos_dwp', 'sos_transport',
+  'sos_environment', 'sos_culture', 'chiefWhip',
+];
+
+export function officeTitle(officeId: OfficeId | null, inGovernment: boolean): string {
+  if (!officeId) return inGovernment ? 'Backbench MP' : 'Backbench MP';
+  const office = OFFICES[officeId];
+  return inGovernment ? office.title : office.shadowTitle;
+}
+
+export function officeTier(officeId: OfficeId | null): number {
+  return officeId ? OFFICES[officeId].tier : 0;
+}

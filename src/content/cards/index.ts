@@ -1,0 +1,58 @@
+import { DecisionCard } from '../../types/content';
+import { PERSONAL_CARDS } from './personal';
+import { BACKBENCHER_CARDS } from './backbencher';
+import { CONSTITUENCY_CARDS } from './constituency';
+import { WHIP_PPS_CARDS } from './whipPps';
+import { JUNIOR_MINISTER_CARDS } from './juniorMinister';
+import { SOS_CARDS } from './secretaryOfState';
+import { SHADOW_CARDS } from './shadow';
+import { LEADERSHIP_CARDS } from './leadership';
+import { CRISIS_CARDS } from './crisis';
+import { PORTFOLIO_CARDS } from './portfolio';
+
+/** the fallback pool: always-eligible cards that keep the engine from stalling */
+export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
+
+export const ALL_CARDS: DecisionCard[] = [
+  ...PERSONAL_CARDS,
+  ...BACKBENCHER_CARDS,
+  ...CONSTITUENCY_CARDS,
+  ...WHIP_PPS_CARDS,
+  ...JUNIOR_MINISTER_CARDS,
+  ...SOS_CARDS,
+  ...SHADOW_CARDS,
+  ...LEADERSHIP_CARDS,
+  ...CRISIS_CARDS,
+  ...PORTFOLIO_CARDS,
+];
+
+export function validateCards(cards: DecisionCard[]): string[] {
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  for (const card of cards) {
+    if (seen.has(card.id)) errors.push(`duplicate card id: ${card.id}`);
+    seen.add(card.id);
+    if (card.weight <= 0) errors.push(`${card.id}: weight must be > 0`);
+    if (card.choices.length < 2 || card.choices.length > 4) {
+      errors.push(`${card.id}: must have 2-4 choices`);
+    }
+    if (card.tags.length === 0) errors.push(`${card.id}: needs at least one tag`);
+    for (const choice of card.choices) {
+      if (Array.isArray(choice.outcomeText)) {
+        if (choice.outcomeText.length === 0) {
+          errors.push(`${card.id}: weighted outcome list is empty`);
+        }
+        for (const o of choice.outcomeText) {
+          if (o.weight <= 0) errors.push(`${card.id}: outcome weight must be > 0`);
+        }
+      }
+    }
+  }
+  return errors;
+}
+
+// fail fast in dev if content is malformed
+const errors = validateCards(ALL_CARDS);
+if (errors.length > 0) {
+  throw new Error(`Card validation failed:\n${errors.join('\n')}`);
+}

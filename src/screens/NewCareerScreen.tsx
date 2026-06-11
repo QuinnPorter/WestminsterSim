@@ -1,0 +1,242 @@
+import { useMemo, useState } from 'react';
+import {
+  AvatarConfig, BackgroundId, Era, Gender, PartyId, RegionId,
+} from '../types/game';
+import { useGameStore } from '../store/gameStore';
+import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
+import { PLAYER_REGIONS, REGIONS } from '../data/regions';
+import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
+import { PARLIAMENTS } from '../data/parliaments';
+import { Avatar } from '../avatar/Avatar';
+import { SwipeCarousel } from '../components/SwipeCarousel';
+import { AVATAR_COUNTS, AvatarLayerKey } from '../avatar/palette';
+import { Rng } from '../engine/rng';
+import { randomAvatar } from '../generation/characters';
+import './NewCareerScreen.css';
+
+const STEPS = ['Era', 'You', 'Party', 'Background', 'Look'] as const;
+
+const LAYER_PILLS: { key: AvatarLayerKey; label: string }[] = [
+  { key: 'skin', label: 'Skin' },
+  { key: 'hairStyle', label: 'Hair' },
+  { key: 'hairColour', label: 'Hair colour' },
+  { key: 'eyes', label: 'Eyes' },
+  { key: 'brows', label: 'Brows' },
+  { key: 'outfit', label: 'Outfit' },
+  { key: 'outfitColour', label: 'Outfit colour' },
+  { key: 'accessory', label: 'Extras' },
+  { key: 'bg', label: 'Backdrop' },
+];
+
+export function NewCareerScreen() {
+  const startNewGame = useGameStore((s) => s.startNewGame);
+  const [step, setStep] = useState(0);
+
+  const [era, setEra] = useState<Era>('2024');
+  const [name, setName] = useState('');
+  const [gender, setGender] = useState<Gender>('f');
+  const [age, setAge] = useState(38);
+  const [partyId, setPartyId] = useState<PartyId>('lab');
+  const [region, setRegion] = useState<RegionId>('yorkshire');
+  const [background, setBackground] = useState<BackgroundId>('teacher');
+  const [avatar, setAvatar] = useState<AvatarConfig>(() =>
+    randomAvatar(new Rng((Math.random() * 0xffffffff) >>> 0))
+  );
+  const [activeLayer, setActiveLayer] = useState<AvatarLayerKey>('hairStyle');
+
+  const validRegions = useMemo(
+    () => PLAYER_REGIONS.filter((r) => PARTIES[partyId].contestsRegions.includes(r)),
+    [partyId]
+  );
+
+  const canContinue =
+    step !== 1 || name.trim().length >= 2;
+
+  const cycleLayer = (dir: 1 | -1) => {
+    const count = AVATAR_COUNTS[activeLayer];
+    setAvatar((a) => ({
+      ...a,
+      [activeLayer]: ((a[activeLayer] + dir) % count + count) % count,
+    }));
+  };
+
+  const finish = () => {
+    startNewGame({
+      name: name.trim(), gender, age, region, background, partyId, avatar, era,
+    });
+  };
+
+  return (
+    <div className="screen nc">
+      <div className="nc-steps">
+        {STEPS.map((s, i) => (
+          <span key={s} className={`nc-step${i === step ? ' active' : ''}${i < step ? ' done' : ''}`}>
+            {s}
+          </span>
+        ))}
+      </div>
+
+      {step === 0 && (
+        <div className="fade-in">
+          <h2 className="nc-h">When does your story begin?</h2>
+          {(['2019', '2024'] as Era[]).map((e) => (
+            <button
+              key={e}
+              className={`card nc-era${era === e ? ' selected' : ''}`}
+              onClick={() => setEra(e)}
+            >
+              <strong>{e === '2019' ? 'December 2019' : 'July 2024'}</strong>
+              <span>
+                {e === '2019'
+                  ? 'A thumping Conservative majority of 80. Brexit looms, the red wall has crumbled, and you are one of the new intake.'
+                  : 'A Labour landslide of 411 seats. A weary country wants delivery, and you have just been handed a green bench to sit on.'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {step === 1 && (
+        <div className="fade-in">
+          <h2 className="nc-h">Who are you?</h2>
+          <label className="nc-label">Name</label>
+          <input
+            className="nc-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Alex Hartley"
+            maxLength={30}
+          />
+          <label className="nc-label">Gender</label>
+          <div className="nc-seg">
+            {([['f', 'Woman'], ['m', 'Man'], ['nb', 'Non-binary']] as [Gender, string][]).map(([g, label]) => (
+              <button
+                key={g}
+                className={gender === g ? 'active' : ''}
+                onClick={() => setGender(g)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="nc-label">Age — {age}</label>
+          <input
+            type="range" min={25} max={68} value={age}
+            onChange={(e) => setAge(Number(e.target.value))}
+            className="nc-range"
+          />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="fade-in">
+          <h2 className="nc-h">Pick your colours</h2>
+          <div className="nc-parties">
+            {PLAYABLE_PARTIES.map((p) => (
+              <button
+                key={p}
+                className={`nc-party${partyId === p ? ' selected' : ''}`}
+                style={{ ['--pc' as string]: PARTIES[p].colour }}
+                onClick={() => {
+                  setPartyId(p);
+                  if (!PARTIES[p].contestsRegions.includes(region)) {
+                    setRegion(PARTIES[p].contestsRegions[0] as RegionId);
+                  }
+                }}
+              >
+                <span className="nc-party-dot" />
+                {PARTIES[p].name}
+              </button>
+            ))}
+          </div>
+          {(partyId !== PARLIAMENTS[era].governingParty && partyId !== PARLIAMENTS[era].oppositionParty) && (
+            <p className="nc-hint">
+              A smaller party: a harder road to ministerial office, but your voice is your own.
+            </p>
+          )}
+          <label className="nc-label">Where do you stand?</label>
+          <select
+            className="nc-input"
+            value={region}
+            onChange={(e) => setRegion(e.target.value as RegionId)}
+          >
+            {validRegions.map((r) => (
+              <option key={r} value={r}>{REGIONS[r].name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="fade-in">
+          <h2 className="nc-h">What did you do before?</h2>
+          <div className="nc-bgs">
+            {BACKGROUND_IDS.map((b) => (
+              <button
+                key={b}
+                className={`card nc-bg${background === b ? ' selected' : ''}`}
+                onClick={() => setBackground(b)}
+              >
+                <strong>{BACKGROUNDS[b].name}</strong>
+                <span>{BACKGROUNDS[b].blurb}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div className="fade-in">
+          <h2 className="nc-h">Looking the part</h2>
+          <SwipeCarousel
+            onPrev={() => cycleLayer(-1)}
+            onNext={() => cycleLayer(1)}
+            caption={`${LAYER_PILLS.find((l) => l.key === activeLayer)?.label} ${avatar[activeLayer] + 1} / ${AVATAR_COUNTS[activeLayer]}`}
+          >
+            <Avatar config={avatar} size={170} partyColour={PARTIES[partyId].colour} />
+          </SwipeCarousel>
+          <div className="nc-pills">
+            {LAYER_PILLS.map((l) => (
+              <button
+                key={l.key}
+                className={`nc-pill${activeLayer === l.key ? ' active' : ''}`}
+                onClick={() => setActiveLayer(l.key)}
+              >
+                {l.label}
+              </button>
+            ))}
+            <button
+              className="nc-pill nc-dice"
+              onClick={() =>
+                setAvatar(randomAvatar(new Rng((Math.random() * 0xffffffff) >>> 0)))
+              }
+            >
+              🎲 Surprise me
+            </button>
+          </div>
+          <p className="nc-hint">Swipe the portrait (or use the arrows) to change the selected feature.</p>
+        </div>
+      )}
+
+      <div className="nc-nav">
+        {step > 0 && (
+          <button className="btn" onClick={() => setStep(step - 1)}>Back</button>
+        )}
+        {step < STEPS.length - 1 ? (
+          <button
+            className="btn btn-primary"
+            disabled={!canContinue}
+            style={{ opacity: canContinue ? 1 : 0.5 }}
+            onClick={() => canContinue && setStep(step + 1)}
+          >
+            Next
+          </button>
+        ) : (
+          <button className="btn btn-primary" onClick={finish}>
+            Take your seat
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

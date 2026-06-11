@@ -1,0 +1,66 @@
+.statchips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: none;
+}
+
+.statchips::-webkit-scrollbar {
+  display: none;
+}
+
+.statchip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 9px;
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.statchip-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statchip-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.statchip-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--party);
+  transition: width 0.4s ease;
+}
+
+.statchip-value {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.statchip-sheet {
+  margin-top: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: var(--fs-sm);
+  box-shadow: var(--shadow);
+}
+
+.statchip-sheet p {
+  margin-top: 4px;
+  color: var(--muted);
+}

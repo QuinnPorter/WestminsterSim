@@ -1,0 +1,68 @@
+.dcard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+
+.dcard-speaker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dcard-speaker-name {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+}
+
+.dcard-speaker-party {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.dcard-title {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.dcard-body {
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.dcard-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dcard-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dcard-delta {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.dcard-delta.pos {
+  background: #e3f2e9;
+  color: var(--success);
+}
+
+.dcard-delta.neg {
+  background: #f9e4e1;
+  color: var(--danger);
+}
+
+.dcard-continue {
+  margin-top: 4px;
+}

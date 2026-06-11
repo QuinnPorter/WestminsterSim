@@ -1,0 +1,118 @@
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+/* the phone-shaped shell, centred on desktop */
+.shell {
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  min-height: 100dvh;
+  background: var(--bg);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 480px) {
+  body {
+    background: #efe9de;
+  }
+  .shell {
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+.screen {
+  flex: 1;
+  padding: 16px 16px calc(var(--tabbar-h) + 24px);
+  overflow-y: auto;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  font-weight: 600;
+  text-align: left;
+  transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn:active {
+  transform: scale(0.985);
+}
+
+.btn-primary {
+  background: var(--party);
+  color: var(--party-ink);
+  border-color: var(--party);
+  text-align: center;
+}
+
+.fade-in {
+  animation: fadeIn 0.25s ease both;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

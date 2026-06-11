@@ -1,0 +1,53 @@
+:root {
+  /* surfaces */
+  --bg: #faf7f1;
+  --surface: #ffffff;
+  --surface-2: #f3efe7;
+  --ink: #26221c;
+  --muted: #8a8378;
+  --line: #e7e1d6;
+
+  /* semantic */
+  --success: #3e8e5a;
+  --danger: #c0392b;
+  --warning: #c98a12;
+
+  /* the player's party colour, set at runtime on <html> */
+  --party: #6b7280;
+  --party-ink: #ffffff;
+
+  /* party palette */
+  --con: #0087dc;
+  --lab: #e4003b;
+  --ld: #faa61a;
+  --snp: #fdf38e;
+  --snp-ink: #9b870c;
+  --green: #02a95b;
+  --reform: #12b6cf;
+  --pc: #005b54;
+  --dup: #d46a4c;
+  --sf: #326760;
+  --sdlp: #2aa82c;
+  --alliance: #f6cb2f;
+  --uup: #48a5ee;
+  --spk: #909090;
+  --ind: #b0a99c;
+
+  /* type */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.6rem;
+
+  /* shape */
+  --radius: 12px;
+  --radius-lg: 18px;
+  --shadow: 0 2px 10px rgba(38, 34, 28, 0.07);
+  --shadow-lg: 0 6px 24px rgba(38, 34, 28, 0.12);
+
+  /* layout */
+  --shell-max: 430px;
+  --tabbar-h: 60px;
+}
