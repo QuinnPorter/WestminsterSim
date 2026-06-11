@@ -599,6 +599,29 @@ export function applyElectionAftermath(
     stripOffice(state, rng, 'leftOffice');
   }
 
+  // a retained portfolio flips between government and shadow (or vice versa) on a
+  // change of government — record it so the career timeline and history show the
+  // correct current title (e.g. Health Secretary → Shadow Health Secretary, or a
+  // shadow minister taking up the real brief after a win)
+  if (
+    changeOfGovernment &&
+    onTrack &&
+    state.player.officeId &&
+    !playerIsLeader(state)
+  ) {
+    const nowInGov = state.player.partyId === newGov;
+    const title = officeTitle(state.player.officeId, nowInGov);
+    state.history.push({
+      kind: 'roleChange', date: state.day, officeId: state.player.officeId, how: 'continued',
+    });
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: nowInGov
+        ? `${state.player.name} takes office as ${title}`
+        : `${state.player.name} becomes ${title}`,
+    });
+  }
+
   // defeated leaders usually resign
   if (playerIsLeader(state) && state.player.partyId === prevGov && changeOfGovernment) {
     state.forcedQueue.push({

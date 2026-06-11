@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import { gainStat, applyEffects } from '../effects';
-import { nextOfficeFor, recordPeakTier } from '../career';
+import { nextOfficeFor, recordPeakTier, applyElectionAftermath, governingPartyAt } from '../career';
+import { officeTitle } from '../../data/offices';
+import { ElectionResult } from '../../types/game';
 import { makeDrawnCard } from '../cardEngine';
 import { OFFICES } from '../../data/offices';
 import { Rng } from '../rng';
@@ -96,5 +98,37 @@ describe('poll history', () => {
     const game = makeGame();
     expect(game.pollHistory.length).toBe(1);
     expect(game.pollHistory[0].day).toBe(game.startDay);
+  });
+});
+
+describe('portfolio title follows gov/shadow on a change of government', () => {
+  // 2024 start: player is Labour (governing), holds Health Secretary.
+  // The Conservatives win the next election → player keeps the brief as Shadow.
+  it('records a continued role and history shows the new side', () => {
+    const game = makeGame(11);
+    game.player.officeId = 'sos_health';
+    game.day = game.startDay + 1500;
+    const result: ElectionResult = {
+      id: `ge_${game.day}`, date: game.day,
+      seats: { con: 360, lab: 230, ld: 40, snp: 10, spk: 1 },
+      voteShares: { con: 0.44, lab: 0.34 },
+      playerResult: null, outcome: 'majority',
+      governingParty: 'con', playerHeldSeat: true,
+    };
+    game.elections[result.id] = result;
+    applyElectionAftermath(game, new Rng(5), result, true);
+
+    // the player kept the brief but is now in opposition
+    expect(game.player.officeId).toBe('sos_health');
+    expect(game.government.governingParty).toBe('con');
+    // a 'continued' role change was recorded at the election
+    const cont = game.history.find(
+      (h) => h.kind === 'roleChange' && h.how === 'continued'
+    );
+    expect(cont).toBeDefined();
+    // and at that date the player is now in opposition → Shadow title
+    const inGov = governingPartyAt(game, game.day) === game.player.partyId;
+    expect(inGov).toBe(false);
+    expect(officeTitle('sos_health', inGov)).toMatch(/^Shadow/);
   });
 });

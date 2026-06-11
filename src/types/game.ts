@@ -216,7 +216,7 @@ export interface ElectionResult {
 
 export type HistoryEntry =
   | { kind: 'roleChange'; date: GameDay; officeId: OfficeId | null;
-      how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' }
+      how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' | 'continued' }
   | { kind: 'election'; date: GameDay; resultId: string; heldSeat: boolean }
   | { kind: 'event'; date: GameDay; headline: string }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }

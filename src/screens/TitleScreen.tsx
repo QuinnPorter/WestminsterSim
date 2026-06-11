@@ -4,27 +4,53 @@ export function TitleScreen({ onNewCareer }: { onNewCareer: () => void }) {
   return (
     <div className="screen title-screen">
       <div className="title-crest">
-        {/* a friendly portcullis-ish mark */}
-        <svg viewBox="0 0 80 80" width="92" height="92">
-          <rect x="14" y="18" width="52" height="44" rx="8" fill="#33415C" />
-          <rect x="22" y="10" width="6" height="14" rx="3" fill="#33415C" />
-          <rect x="37" y="6" width="6" height="18" rx="3" fill="#33415C" />
-          <rect x="52" y="10" width="6" height="14" rx="3" fill="#33415C" />
-          <rect x="22" y="28" width="36" height="4" rx="2" fill="#FAF7F1" />
-          <rect x="22" y="38" width="36" height="4" rx="2" fill="#FAF7F1" />
-          <rect x="22" y="48" width="36" height="4" rx="2" fill="#FAF7F1" />
-          <rect x="30" y="24" width="4" height="32" rx="2" fill="#FAF7F1" />
-          <rect x="46" y="24" width="4" height="32" rx="2" fill="#FAF7F1" />
+        {/* The Palace of Westminster: Victoria Tower, the Gothic hall, and the
+            Elizabeth Tower (Big Ben) with its clock. */}
+        <svg viewBox="0 0 100 76" width="150" height="114" role="img" aria-label="Palace of Westminster">
+          <g fill="#33415C">
+            {/* Victoria Tower */}
+            <rect x="10" y="22" width="20" height="44" />
+            <rect x="10" y="18" width="4" height="5" />
+            <rect x="18" y="18" width="4" height="5" />
+            <rect x="26" y="18" width="4" height="5" />
+            <rect x="19.2" y="9" width="1.6" height="10" />
+            <path d="M20.8 9 L29 11.5 L20.8 14 Z" />
+            {/* Main hall */}
+            <rect x="30" y="44" width="34" height="22" />
+            <path d="M32 44 L35 38 L38 44 Z" />
+            <path d="M40 44 L43 38 L46 44 Z" />
+            <path d="M48 44 L51 38 L54 44 Z" />
+            <path d="M56 44 L59 38 L62 44 Z" />
+            {/* Elizabeth Tower (Big Ben) */}
+            <rect x="66" y="30" width="16" height="36" />
+            <rect x="67" y="26" width="14" height="4" />
+            <path d="M66 26 L82 26 L74 8 Z" />
+            <rect x="73.2" y="3" width="1.6" height="5" />
+            <circle cx="74" cy="6" r="1.6" />
+          </g>
+          {/* windows (cream cut-outs) */}
+          <g fill="#FAF7F1">
+            <rect x="14" y="30" width="2.6" height="8" rx="1.3" />
+            <rect x="18.7" y="30" width="2.6" height="8" rx="1.3" />
+            <rect x="23.4" y="30" width="2.6" height="8" rx="1.3" />
+            <rect x="14" y="48" width="2.6" height="10" rx="1.3" />
+            <rect x="18.7" y="48" width="2.6" height="10" rx="1.3" />
+            <rect x="23.4" y="48" width="2.6" height="10" rx="1.3" />
+            <rect x="34" y="50" width="3" height="12" rx="1.5" />
+            <rect x="41" y="50" width="3" height="12" rx="1.5" />
+            <rect x="48" y="50" width="3" height="12" rx="1.5" />
+            <rect x="55" y="50" width="3" height="12" rx="1.5" />
+          </g>
+          {/* the clock: cream face, navy hands */}
+          <circle cx="74" cy="40" r="5" fill="#FAF7F1" />
+          <path d="M74 40 L74 36.2 M74 40 L77 41" stroke="#33415C" strokeWidth="1.1" strokeLinecap="round" fill="none" />
         </svg>
       </div>
       <h1 className="title-name">WestminsterSim</h1>
-      <p className="title-tag">
-        One seat. Five stats. Six hundred and forty-nine colleagues in your way.
-      </p>
       <button className="btn btn-primary title-start" onClick={onNewCareer}>
         Begin your career
       </button>
-      <p className="title-foot">A political life simulator · entirely fictional MPs</p>
+      <p className="title-foot">A political simulator · All political figures are fictional</p>
     </div>
   );
 }
