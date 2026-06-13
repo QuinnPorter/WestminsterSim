@@ -34,6 +34,36 @@ describe('parliament data', () => {
     expect(t.spk).toBe(1);
   });
 
+  it('2015 matrix sums to 650 with correct national totals', () => {
+    const m = PARLIAMENTS['2015'].matrix;
+    expect(totalSeats(m)).toBe(650);
+    const t = nationalTotals(m);
+    expect(t.con).toBe(330);
+    expect(t.lab).toBe(232);
+    expect(t.snp).toBe(56);
+    expect(t.ld).toBe(8);
+    expect(t.dup).toBe(8);
+    expect(t.ukip).toBe(1);
+    expect(t.spk).toBe(1);
+  });
+
+  it('2017 matrix sums to 650 with correct national totals', () => {
+    const m = PARLIAMENTS['2017'].matrix;
+    expect(totalSeats(m)).toBe(650);
+    const t = nationalTotals(m);
+    expect(t.con).toBe(317);
+    expect(t.lab).toBe(262);
+    expect(t.snp).toBe(35);
+    expect(t.ld).toBe(12);
+    expect(t.dup).toBe(10);
+    expect(t.spk).toBe(1);
+  });
+
+  it('2017 begins as a DUP confidence-and-supply arrangement', () => {
+    expect(PARLIAMENTS['2017'].arrangement).toBe('supplyConfidence');
+    expect(PARLIAMENTS['2017'].confidencePartner).toBe('dup');
+  });
+
   it('every party id has metadata', () => {
     for (const m of Object.values(PARLIAMENTS)) {
       for (const region of Object.values(m.matrix)) {
@@ -55,7 +85,7 @@ describe('parliament data', () => {
 
 describe('seat map generation', () => {
   it('generates 650 seats matching the matrix (player seat may shift one)', () => {
-    for (const era of ['2019', '2024'] as const) {
+    for (const era of ['2015', '2017', '2019', '2024'] as const) {
       const rng = new Rng(42);
       const { seatMap, playerSeatId } = generateSeatMap(
         rng, PARLIAMENTS[era].matrix, era === '2019' ? 'con' : 'lab', 'southEast'

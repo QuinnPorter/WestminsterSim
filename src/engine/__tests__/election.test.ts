@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import { runElection } from '../election';
+import { cardEligible } from '../cardEngine';
 import { Rng } from '../rng';
 import { Era, PartyId } from '../../types/game';
 
@@ -60,6 +61,38 @@ describe('election calibration', () => {
     expect(result.seats.lab ?? 0).toBeGreaterThan(300);
   });
 
+  it('2015 baseline reproduces a Conservative win and an SNP sweep of Scotland', () => {
+    let conTotal = 0, labTotal = 0, snpTotal = 0;
+    const runs = 12;
+    for (let i = 0; i < runs; i++) {
+      const game = makeGame('2015', 'con', 600 + i);
+      const { result } = runElection(game, new Rng(2100 + i));
+      conTotal += result.seats.con ?? 0;
+      labTotal += result.seats.lab ?? 0;
+      snpTotal += result.seats.snp ?? 0;
+      expect(Object.values(result.seats).reduce((a, b) => a + (b ?? 0), 0)).toBe(650);
+      expect(result.governingParty).toBe('con');
+    }
+    expect(conTotal / runs).toBeGreaterThan(labTotal / runs); // Con plurality
+    expect(snpTotal / runs).toBeGreaterThan(45);              // SNP landslide in Scotland
+  });
+
+  it('2017 baseline leaves the Conservatives largest, often without a majority', () => {
+    let conTotal = 0, labTotal = 0, hung = 0;
+    const runs = 12;
+    for (let i = 0; i < runs; i++) {
+      const game = makeGame('2017', 'con', 700 + i);
+      const { result } = runElection(game, new Rng(2300 + i));
+      conTotal += result.seats.con ?? 0;
+      labTotal += result.seats.lab ?? 0;
+      if ((result.seats.con ?? 0) < 326) hung++;
+      expect(result.governingParty).toBe('con');
+    }
+    expect(conTotal / runs).toBeGreaterThan(labTotal / runs); // Con largest
+    expect(conTotal / runs).toBeLessThan(340);                // never a thumping majority
+    expect(hung).toBeGreaterThan(2);                          // frequently hung, as in 2017
+  });
+
   it('a popular incumbent player usually holds a safe seat', () => {
     let held = 0;
     const runs = 20;
@@ -96,5 +129,24 @@ describe('election calibration', () => {
     expect(after).not.toBe(before); // at least some seats changed hands
     const counted = Object.values(game.seats).reduce((a, b) => a + (b ?? 0), 0);
     expect(counted).toBe(650);
+  });
+});
+
+describe('minor-party card gate', () => {
+  const mk = (requires: Record<string, unknown>) =>
+    ({ id: `t_${Math.random()}`, title: '', body: '', tags: ['party'], weight: 1,
+       cooldownDays: 0, choices: [], requires } as unknown as Parameters<typeof cardEligible>[1]);
+
+  it('separates third-party cards from official-opposition cards', () => {
+    // 2024: Labour govern, Conservatives are the official opposition, SNP is a third party
+    const snp = makeGame('2024', 'snp', 11);
+    const con = makeGame('2024', 'con', 11);
+    const thirdPartyCard = mk({ inGovernment: false, minorParty: true });
+    const shadowCard = mk({ inGovernment: false, minorParty: false });
+
+    expect(cardEligible(snp, thirdPartyCard)).toBe(true);
+    expect(cardEligible(snp, shadowCard)).toBe(false);
+    expect(cardEligible(con, thirdPartyCard)).toBe(false);
+    expect(cardEligible(con, shadowCard)).toBe(true);
   });
 });

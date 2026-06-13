@@ -18,6 +18,9 @@ export interface Requirement {
   partyIn?: PartyId[];
   /** only fire when the player-leader is in this role (pm/lo/minorLeader) */
   leaderRole?: ('pm' | 'lo' | 'minorLeader')[];
+  /** true → only minor/third-party MPs; false → only frontbench-track (gov or
+   *  official opposition). Distinguishes third-party scrutiny from shadow cards. */
+  minorParty?: boolean;
   /** only fire under these government arrangements (coalition-life cards) */
   arrangementIn?: ('majority' | 'minority' | 'supplyConfidence' | 'coalition')[];
 }

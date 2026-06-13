@@ -16,6 +16,25 @@ import './NewCareerScreen.css';
 
 const STEPS = ['Era', 'You', 'Party', 'Background', 'Look'] as const;
 
+const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
+  '2015': {
+    title: 'May 2015',
+    blurb: "Cameron's surprise majority of 12. Austerity, an EU referendum pledge to keep, UKIP snapping at the right, and the SNP sweeping all but three Scottish seats.",
+  },
+  '2017': {
+    title: 'June 2017',
+    blurb: "Theresa May's gamble backfires: a hung parliament, propped up by the DUP. Brexit consumes everything and the majority has vanished.",
+  },
+  '2019': {
+    title: 'December 2019',
+    blurb: 'A thumping Conservative majority of 80. Brexit looms, the red wall has crumbled, and you are one of the new intake.',
+  },
+  '2024': {
+    title: 'July 2024',
+    blurb: 'A Labour landslide of 411 seats. A weary country wants delivery, and you have just been handed a green bench to sit on.',
+  },
+};
+
 const LAYER_PILLS: { key: AvatarLayerKey; label: string }[] = [
   { key: 'skin', label: 'Skin' },
   { key: 'hairStyle', label: 'Hair' },
@@ -79,18 +98,14 @@ export function NewCareerScreen() {
       {step === 0 && (
         <div className="fade-in">
           <h2 className="nc-h">When does your story begin?</h2>
-          {(['2019', '2024'] as Era[]).map((e) => (
+          {(['2015', '2017', '2019', '2024'] as Era[]).map((e) => (
             <button
               key={e}
               className={`card nc-era${era === e ? ' selected' : ''}`}
               onClick={() => setEra(e)}
             >
-              <strong>{e === '2019' ? 'December 2019' : 'July 2024'}</strong>
-              <span>
-                {e === '2019'
-                  ? 'A thumping Conservative majority of 80. Brexit looms, the red wall has crumbled, and you are one of the new intake.'
-                  : 'A Labour landslide of 411 seats. A weary country wants delivery, and you have just been handed a green bench to sit on.'}
-              </span>
+              <strong>{ERA_LABELS[e].title}</strong>
+              <span>{ERA_LABELS[e].blurb}</span>
             </button>
           ))}
         </div>

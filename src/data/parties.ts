@@ -32,6 +32,10 @@ export const PARTIES: Record<PartyId, Party> = {
     id: 'reform', name: 'Reform UK', shortName: 'Reform', colour: '#12B6CF',
     ideology: 75, contestsRegions: GB,
   },
+  ukip: {
+    id: 'ukip', name: 'UK Independence Party', shortName: 'UKIP', colour: '#70147A',
+    ideology: 78, contestsRegions: GB,
+  },
   pc: {
     id: 'pc', name: 'Plaid Cymru', shortName: 'PC', colour: '#005B54',
     ideology: -50, contestsRegions: ['wales'],
@@ -73,7 +77,7 @@ export const PLAYABLE_PARTIES: PartyId[] = [
 
 /** GB parties included in national polling */
 export const POLLED_PARTIES: PartyId[] = [
-  'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc',
+  'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc', 'ukip',
 ];
 
 export function partyColour(id: PartyId): string {

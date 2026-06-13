@@ -272,4 +272,189 @@ export const SHADOW_PORTFOLIO_CARDS: DecisionCard[] = [
       },
     ],
   },
+
+  // ========== OFFICIAL-OPPOSITION SCRUTINY (minorParty:false) ==========
+  // Holding the government to account as the party of alternative government —
+  // distinct from the third-party experience. minorParty:false keeps these off
+  // the smaller parties' benches.
+  {
+    id: 'sho_urgent_question',
+    title: 'The forensic urgent question',
+    body: 'A government department has buried a damning report on a Friday afternoon. As shadow {department} you can demand an urgent question on Monday — and you have until then to build a case the minister cannot wriggle out of.',
+    tags: ['westminster', 'media'],
+    weight: 13, cooldownDays: 300,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Build the forensic case',
+        effects: { stats: { competence: 4, profile: 2 } },
+        outcomeText: 'You walk in with three documents and a date the minister cannot deny. The exchange leads the bulletins and a junior minister spends the week explaining themselves.',
+      },
+      {
+        label: 'Go for the emotional broadside',
+        effects: { stats: { profile: 3 }, pollingShock: { party: 'own', delta: 0.1 } },
+        outcomeText: 'You skip the forensics and channel the public anger. Less watertight, more shareable — the clip travels further than the facts would have.',
+      },
+    ],
+  },
+  {
+    id: 'sho_select_committee',
+    title: 'In the committee chair',
+    body: 'You sit on a select committee scrutinising the government, and a powerful witness is before you who has dodged every other forum. The chair has given you ten minutes. Use them well and the clip runs all day.',
+    tags: ['westminster', 'serious'],
+    weight: 12, cooldownDays: 340,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Land the patient, lethal questions',
+        effects: { stats: { competence: 4, integrity: 2 } },
+        outcomeText: 'You build the trap question by question and spring it on the tenth minute. The witness\'s pause becomes the evening\'s most-replayed silence.',
+      },
+      {
+        label: 'Go for the viral confrontation',
+        effects: { stats: { profile: 4 }, relationships: [{ kind: 'journalist', delta: 2 }] },
+        outcomeText: 'You skip the build-up and go straight for the jugular. It trends within the hour; the wonks tut that you let the witness off the substance.',
+      },
+    ],
+  },
+  {
+    id: 'sho_foi_dig',
+    title: 'The document they didn\'t want released',
+    body: 'A Freedom of Information haul has landed on your desk — buried in it is proof a {department} programme is failing far worse than ministers admit. Release it now, or hold it for maximum damage?',
+    tags: ['media', 'scandal'],
+    weight: 12, cooldownDays: 360,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Drip-feed it for a week of headlines',
+        effects: { stats: { profile: 3, competence: 2 }, pollingShock: { party: 'own', delta: 0.2 } },
+        outcomeText: 'You release a damaging document a day and keep the story alive for a week. The government bleeds; the lobby learns to wait for your morning email.',
+      },
+      {
+        label: 'Hand it to a paper for a single big splash',
+        effects: { stats: { profile: 4 }, relationships: [{ kind: 'journalist', delta: 4 }] },
+        outcomeText: 'You give one outlet the lot for a front-page exclusive. A bigger bang, a grateful editor — and you have spent the ammunition in one shot.',
+      },
+    ],
+  },
+  {
+    id: 'sho_public_inquiry',
+    title: 'The demand for an inquiry',
+    body: 'A scandal has engulfed the government and the families want answers. As the official Opposition you can demand a full public inquiry — a powerful weapon, but one that takes years and could one day report on your own time in office.',
+    tags: ['westminster', 'serious'],
+    weight: 11, cooldownDays: 420,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Demand a full statutory inquiry',
+        effects: { stats: { integrity: 4, profile: 2 } },
+        outcomeText: 'You stand with the families and force the issue onto the floor. The government stalls, but the demand is now a millstone it cannot shake off.',
+      },
+      {
+        label: 'Press for faster, narrower answers',
+        effects: { stats: { competence: 3, integrity: 2 } },
+        outcomeText: 'You resist the years-long inquiry and demand action now instead. Less cathartic, more deliverable — and you avoid setting a precedent that might bite you later.',
+      },
+    ],
+  },
+  {
+    id: 'sho_government_in_waiting',
+    title: 'Look like a government',
+    body: 'The polls have turned and people are starting to imagine you in office. Your team says it is time to look like a government-in-waiting: serious, costed, ready. The risk is that you become a target instead of a critic.',
+    tags: ['party', 'serious'],
+    weight: 11, cooldownDays: 420,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Publish serious, costed plans',
+        effects: { stats: { competence: 4, integrity: 2 }, relationships: [{ kind: 'leader', delta: -2 }] },
+        outcomeText: 'You put real numbers on the table and look ready to govern. The government finally has something to shoot at — but the grown-up framing sticks.',
+      },
+      {
+        label: 'Stay a small target a while longer',
+        effects: { stats: { partyStanding: 3 } },
+        outcomeText: 'You keep the powder dry and the government guessing. Disciplined, frustrating to the wonks, and exactly what a cautious lead demands.',
+      },
+    ],
+  },
+  {
+    id: 'sho_minister_gaffe',
+    title: 'The minister\'s gaffe',
+    body: 'A cabinet minister has said something indefensible on camera. The clip is everywhere. As the official Opposition you can demand the sacking — or let the minister twist, a daily liability the government dare not move.',
+    tags: ['media', 'westminster'],
+    weight: 12, cooldownDays: 320,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Demand the sacking',
+        effects: { stats: { profile: 3, partyStanding: 2 } },
+        outcomeText: 'You call for the head and dominate the cycle. The PM, infuriatingly, obliges and removes the problem — handing you a win and taking away your target.',
+      },
+      {
+        label: 'Keep them in post and bleeding',
+        effects: { stats: { competence: 3, profile: 2 }, pollingShock: { party: 'own', delta: 0.1 } },
+        outcomeText: 'You "graciously" say it is for the PM to decide, knowing a wounded minister is worth more in post than out. Cynical, patient, effective.',
+      },
+    ],
+  },
+  {
+    id: 'sho_opposition_motion',
+    title: 'The binding opposition motion',
+    body: 'You have an opposition day and a clever idea: a motion crafted so the government\'s own rebels cannot vote against it without humiliation. Pull it off and you split their benches on camera.',
+    tags: ['westminster', 'media'],
+    weight: 12, cooldownDays: 300,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Set the trap',
+        effects: { stats: { competence: 3, profile: 3 }, pollingShock: { party: 'own', delta: 0.2 } },
+        outcomeText: 'The motion does its work: a dozen government MPs abstain and the discipline cracks live in the chamber. Theatre, weaponised.',
+      },
+      {
+        label: 'Use the day for a serious cause',
+        effects: { stats: { integrity: 4, competence: 2 } },
+        outcomeText: 'You spend the rare slot on a genuine injustice rather than a trap. No fireworks, but the campaigners get their day and remember who gave it to them.',
+      },
+    ],
+  },
+  {
+    id: 'sho_pmqs_prep',
+    title: 'Six questions for the Leader',
+    body: 'Your job this week is to prep the Leader of the Opposition\'s six questions at PMQs. Go for the killer blow on the crisis of the day, or build a patient, inescapable trap across all six?',
+    tags: ['westminster', 'party'],
+    weight: 11, cooldownDays: 320,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Build a six-question trap',
+        effects: { stats: { competence: 4 }, relationships: [{ kind: 'leader', delta: 4 }] },
+        outcomeText: 'You script a sequence that closes every escape route by question five. The Leader lands it, and your stock in the Leader\'s office quietly rises.',
+      },
+      {
+        label: 'Go for the single knockout line',
+        effects: { stats: { profile: 3 }, relationships: [{ kind: 'leader', delta: 2 }] },
+        outcomeText: 'You write one devastating line and bet the session on it. It either defines the week or dies on contact — high risk, high clip-count.',
+      },
+    ],
+  },
+  {
+    id: 'sho_forced_uturn',
+    title: 'The U-turn you forced',
+    body: 'A relentless campaign you led has pushed the government to the brink of a U-turn on a flagship policy. They will cave by the weekend. Do you claim the scalp loudly, or let them save face to lock the change in?',
+    tags: ['media', 'policy'],
+    weight: 11, cooldownDays: 360,
+    requires: { inGovernment: false, minorParty: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Claim the scalp loudly',
+        effects: { stats: { profile: 4, partyStanding: 2 }, pollingShock: { party: 'own', delta: 0.2 } },
+        outcomeText: 'You declare victory from the rooftops. The win is real and visible — though a cornered government, denied its face-saver, finds the change a little harder to make.',
+      },
+      {
+        label: 'Let them save face to bank the win',
+        effects: { stats: { integrity: 4, competence: 2 } },
+        outcomeText: 'You hold your fire and let the government dress up its retreat. The policy changes for good; you forgo the headline to make sure it sticks.',
+      },
+    ],
+  },
 ];

@@ -1,7 +1,7 @@
 // ---- core ids ----
 
 export type PartyId =
-  | 'con' | 'lab' | 'ld' | 'snp' | 'green' | 'reform' | 'pc'
+  | 'con' | 'lab' | 'ld' | 'snp' | 'green' | 'reform' | 'pc' | 'ukip'
   | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'spk' | 'ind';
 
 export type RegionId =
@@ -16,7 +16,7 @@ export type DepartmentId =
 /** Days since 2019-01-01 (UTC). clock.ts converts to dates. */
 export type GameDay = number;
 
-export type Era = '2019' | '2024';
+export type Era = '2015' | '2017' | '2019' | '2024';
 
 // ---- parties / parliament ----
 

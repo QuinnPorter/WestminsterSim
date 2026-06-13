@@ -12,6 +12,11 @@ export interface ParliamentData {
   baselineShares: Partial<Record<PartyId, number>>;
   governingParty: PartyId;
   oppositionParty: PartyId;
+  /** how the government holds power at game start (defaults from the majority
+   *  sign if omitted) — e.g. 2017 began as a DUP confidence-and-supply deal */
+  arrangement?: 'majority' | 'minority' | 'supplyConfidence' | 'coalition';
+  confidencePartner?: PartyId;
+  coalitionPartner?: PartyId;
 }
 
 // 2019 GE: Con 365, Lab 202, SNP 48, LD 11, DUP 8, SF 7, PC 4, SDLP 2,
@@ -48,14 +53,72 @@ const MATRIX_2024: SeatMatrix = {
   ni: { sf: 7, dup: 5, sdlp: 2, alliance: 1, uup: 1, ind: 2 },
 };
 
+// 2015 GE: Con 330, Lab 232, SNP 56, LD 8, DUP 8, SF 4, SDLP 3, PC 3, UUP 2,
+// UKIP 1, Green 1, Ind 1, Speaker 1 = 650
+const MATRIX_2015: SeatMatrix = {
+  northEast: { lab: 26, con: 3 },
+  northWest: { lab: 51, con: 22, ld: 2 },
+  yorkshire: { lab: 33, con: 20, ld: 1 },
+  eastMidlands: { con: 32, lab: 14 },
+  westMidlands: { con: 34, lab: 25 },
+  east: { con: 52, lab: 4, ukip: 1, ld: 1 },
+  london: { lab: 45, con: 27, ld: 1 },
+  southEast: { con: 77, lab: 4, ld: 1, green: 1, spk: 1 },
+  southWest: { con: 51, lab: 4 },
+  scotland: { snp: 56, lab: 1, con: 1, ld: 1 },
+  wales: { lab: 25, con: 11, pc: 3, ld: 1 },
+  ni: { dup: 8, sf: 4, sdlp: 3, uup: 2, ind: 1 },
+};
+
+// 2017 GE: Con 317, Lab 262, SNP 35, LD 12, DUP 10, SF 7, PC 4, Green 1,
+// Ind 1, Speaker 1 = 650 (a hung parliament; Con govern with DUP support)
+const MATRIX_2017: SeatMatrix = {
+  northEast: { lab: 26, con: 3 },
+  northWest: { lab: 54, con: 20, ld: 1 },
+  yorkshire: { lab: 37, con: 17 },
+  eastMidlands: { con: 31, lab: 15 },
+  westMidlands: { con: 35, lab: 24 },
+  east: { con: 50, lab: 7, ld: 1 },
+  london: { lab: 49, con: 21, ld: 3 },
+  southEast: { con: 73, lab: 8, ld: 1, green: 1, spk: 1 },
+  southWest: { con: 47, lab: 7, ld: 1 },
+  scotland: { snp: 35, con: 12, lab: 7, ld: 5 },
+  wales: { lab: 28, con: 8, pc: 4 },
+  ni: { dup: 10, sf: 7, ind: 1 },
+};
+
 export const PARLIAMENTS: Record<Era, ParliamentData> = {
+  '2015': {
+    era: '2015',
+    firstSitting: '2015-05-18',
+    matrix: MATRIX_2015,
+    baselineShares: {
+      con: 0.369, lab: 0.304, ukip: 0.126, ld: 0.079, snp: 0.047,
+      green: 0.038, pc: 0.006, reform: 0.002,
+    },
+    governingParty: 'con',
+    oppositionParty: 'lab',
+  },
+  '2017': {
+    era: '2017',
+    firstSitting: '2017-06-19',
+    matrix: MATRIX_2017,
+    baselineShares: {
+      con: 0.424, lab: 0.40, ld: 0.074, snp: 0.030, ukip: 0.018,
+      green: 0.016, pc: 0.005, reform: 0.002,
+    },
+    governingParty: 'con',
+    oppositionParty: 'lab',
+    arrangement: 'supplyConfidence',
+    confidencePartner: 'dup',
+  },
   '2019': {
     era: '2019',
     firstSitting: '2019-12-17',
     matrix: MATRIX_2019,
     baselineShares: {
       con: 0.447, lab: 0.33, ld: 0.118, snp: 0.04,
-      green: 0.028, reform: 0.021, pc: 0.005,
+      green: 0.028, reform: 0.021, pc: 0.005, ukip: 0.002,
     },
     governingParty: 'con',
     oppositionParty: 'lab',
@@ -66,7 +129,7 @@ export const PARLIAMENTS: Record<Era, ParliamentData> = {
     matrix: MATRIX_2024,
     baselineShares: {
       lab: 0.337, con: 0.237, reform: 0.143, ld: 0.122,
-      green: 0.067, snp: 0.025, pc: 0.007,
+      green: 0.067, snp: 0.025, pc: 0.007, ukip: 0.002,
     },
     governingParty: 'lab',
     oppositionParty: 'con',

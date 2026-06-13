@@ -11,6 +11,8 @@ import { LEADERSHIP_CARDS } from './leadership';
 import { LEADER_EXTRA_CARDS } from './leaderExtra';
 import { CRISIS_CARDS } from './crisis';
 import { PORTFOLIO_CARDS } from './portfolio';
+import { PORTFOLIO_EXTRA_CARDS } from './portfolioExtra';
+import { THIRD_PARTY_CARDS } from './thirdParty';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling */
 export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
@@ -28,6 +30,8 @@ export const ALL_CARDS: DecisionCard[] = [
   ...LEADER_EXTRA_CARDS,
   ...CRISIS_CARDS,
   ...PORTFOLIO_CARDS,
+  ...PORTFOLIO_EXTRA_CARDS,
+  ...THIRD_PARTY_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {
