@@ -304,6 +304,20 @@ export function nextStep(state: GameState, rng: Rng): void {
     }
   }
 
+  // a new NPC leader of the player's party shakes up the team: a one-off
+  // player-facing reshuffle (offer / move / dismissal) shortly after they take over
+  {
+    const due = state.player.flags._npcLeaderReshuffleBy as number | undefined;
+    if (!playerIsLeader(state) && due !== undefined && state.day >= due) {
+      delete state.player.flags._npcLeaderReshuffleBy;
+      runReshuffle(state, rng);
+      if (state.forcedQueue.length > 0) {
+        nextStep(state, rng);
+        return;
+      }
+    }
+  }
+
   // minority/coalition instability: stability is dictated by the real
   // parliamentary arithmetic. A government whose bloc (itself + any coalition or
   // confidence partner) commands a majority is safe; otherwise it is fragile in

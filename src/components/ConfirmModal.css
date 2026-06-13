@@ -43,13 +43,16 @@
   margin: 0;
 }
 
-.modal-confirm {
+/* .btn.modal-confirm beats the base .btn rule (an equal-specificity tie would
+   otherwise let .btn's white background win by load order, leaving white --party-ink
+   text on a white background — an invisible label) */
+.btn.modal-confirm {
   background: var(--party);
   color: var(--party-ink);
   border-color: var(--party);
 }
 
-.modal-confirm.danger {
+.btn.modal-confirm.danger {
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;

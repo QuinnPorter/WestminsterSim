@@ -710,6 +710,11 @@ export function resolveNpcLeadership(
       -30, 30
     );
     replaceLeader(state, winner.id, seed);
+    // a new leader of the player's own party soon remakes the team — schedule a
+    // player-facing reshuffle so they are more likely to be moved, promoted or sacked
+    if (state.player.hasSeat && onFrontbenchTrack(state) && !playerIsLeader(state)) {
+      state.player.flags._npcLeaderReshuffleBy = state.day + rng.int(14, 60);
+    }
   }
 
   // a new NPC leader usually remakes their front bench
@@ -1645,7 +1650,18 @@ export function resolveForcedChoice(
     case 'leadershipStand': {
       const candidateIds = (card.payload?.candidateIds as string[]) ?? [];
       if (choiceIndex === 0) {
+        // base support reflects the player's current standing (tier, Deputy-PM),
+        // so compute it BEFORE resigning the office to stand
         state.player.flags._ldrSupport = Math.round(leadershipBaseSupport(state));
+        // a frontbencher resigns their post to mount a challenge — win or lose,
+        // they are no longer in the cabinet/shadow cabinet during the contest
+        if (state.player.officeId && !playerIsLeader(state)) {
+          stripOffice(state, rng, 'resigned');
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} resigns from the front bench to stand for the leadership`,
+          });
+        }
         // rank the field by seeded strength (weakest first); strongest is the finalist
         const ranked = candidateIds
           .map((id) => ({ id, strength: rivalStrengthOf(state.characters[id], rng) }))
@@ -1804,7 +1820,9 @@ export function resolveForcedChoice(
         baseStrength + (fieldSize - 3) * 2.5 + 0.42 * support + rng.normal(0, 7);
       const playerFinal = support + change + rng.normal(0, 6);
 
-      if (playerFinal >= finalistFinal && support + change >= LEADERSHIP_WIN_THRESHOLD - 17) {
+      // give the player a small (~5%) edge in the head-to-head — close contests
+      // tip the player's way a little more often
+      if (playerFinal * 1.05 >= finalistFinal && support + change >= LEADERSHIP_WIN_THRESHOLD - 17) {
         makePlayerLeader(state, rng);
         gain('profile', 15, 'Profile');
         gain('partyStanding', 10, 'Standing');
