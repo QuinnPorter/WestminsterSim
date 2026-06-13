@@ -446,7 +446,9 @@ export function nextStep(state: GameState, rng: Rng): void {
   // to the PM is elevated to Deputy Prime Minister / First Secretary of State
   if (
     playerInGovernment(state) && !playerIsLeader(state) &&
-    state.government.pmId !== 'player' && playerTier(state) === 4 &&
+    state.government.pmId !== 'player' &&
+    // a departmental Secretary of State (never the Chief Whip) can be made deputy
+    !!state.player.officeId?.startsWith('sos_') &&
     !state.player.flags._isDeputyPM && canHoldOffice(state) &&
     state.day >= ((state.player.flags._deputyPmCooldownUntil as number) ?? 0)
   ) {

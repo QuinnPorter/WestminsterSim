@@ -8,7 +8,7 @@ import {
 } from '../engine/turn';
 import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
-  playerOfficeTitle,
+  setDeputyPmCore, playerOfficeTitle,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -36,6 +36,8 @@ interface GameStore {
   crossFloor: (partyId: PartyId) => void;
   resignOffice: () => void;
   sackMinister: (officeId: OfficeId) => void;
+  /** player-PM names a cabinet Secretary of State as Deputy PM / First Secretary */
+  setDeputyPm: (characterId: string) => void;
   callForPmResignation: () => void;
   retire: () => void;
   abandonGame: () => void;
@@ -146,6 +148,9 @@ export const useGameStore = create<GameStore>()(
 
       sackMinister: (officeId) =>
         mutateGame(get, set, (game, rng) => sackMinisterCore(game, rng, officeId)),
+
+      setDeputyPm: (characterId) =>
+        mutateGame(get, set, (game, rng) => setDeputyPmCore(game, rng, characterId)),
 
       callForPmResignation: () =>
         mutateGame(get, set, (game, rng) => { callForPmResignationCore(game, rng); }),

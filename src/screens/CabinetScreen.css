@@ -83,18 +83,47 @@
   margin-left: 4px;
 }
 
-.cab-sack {
+.cab-coalition {
+  margin-left: 4px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 4px;
+  vertical-align: middle;
+}
+
+.cab-actions {
   margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cab-sack,
+.cab-deputy {
   align-self: flex-start;
   font-size: 0.62rem;
   font-weight: 700;
-  color: var(--danger);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 2px 8px;
   background: var(--surface);
 }
 
-.cab-sack:active {
+.cab-sack {
+  color: var(--danger);
+}
+
+.cab-deputy {
+  color: var(--party);
+}
+
+.cab-sack:active,
+.cab-deputy:active {
   transform: scale(0.95);
 }

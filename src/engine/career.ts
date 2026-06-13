@@ -2,7 +2,7 @@ import {
   Character, DrawnCard, ElectionResult, ForcedEvent, GameState, OfficeId,
   PartyId, StatDelta,
 } from '../types/game';
-import { CABINET_OFFICES, DEPARTMENTS, OFFICES, officeTitle, officeTitleFor } from '../data/offices';
+import { CABINET_OFFICES, DEPARTMENTS, GREAT_OFFICES, OFFICES, officeTitle, officeTitleFor } from '../data/offices';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { PARTIES } from '../data/parties';
 import { PARLIAMENTS } from '../data/parliaments';
@@ -314,6 +314,8 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
     return rng.chance(0.55) ? 'pps' : 'whip';
   }
   if (tier === 1 || tier === 2) {
+    // a sitting Whip is the natural pick for promotion into the whips' office
+    if (state.player.officeId === 'whip' && rng.chance(0.2)) return 'chiefWhip';
     const dept = bg.deptAffinity.length > 0 && rng.chance(0.5)
       ? rng.pick(bg.deptAffinity)
       : rng.pick(Object.keys(DEPARTMENTS)) as keyof typeof DEPARTMENTS;
@@ -332,6 +334,9 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
         : rng.pick(others);
       return `min_${dept}`;
     }
+    // a tier-4 promotion is usually a Secretary of State, but occasionally the
+    // Chief Whip (a parallel cabinet-rank role in the whips' office)
+    if (rng.chance(0.2)) return 'chiefWhip';
     const dept = current && rng.chance(0.45)
       ? current
       : bg.deptAffinity.length > 0 && rng.chance(0.4)
@@ -405,17 +410,29 @@ function clearPlayerDeputyPM(state: GameState): void {
  *  Secretary of State), drawn from the strongest cabinet hand. Re-rolling this
  *  whole decision keeps the aggregate chance of a deputy at 75% at any snapshot,
  *  whether it runs at the start of a parliament or at a mid-term reshuffle. */
-function appointNpcDeputyPm(state: GameState, rng: Rng): void {
+export function appointNpcDeputyPm(state: GameState, rng: Rng): void {
   state.government.deputyPmId = undefined;
   state.government.deputyTitle = undefined;
   if (!rng.chance(0.75)) return;
-  const candidates = state.government.cabinet
-    .filter((p) => p.characterId !== 'player' && OFFICES[p.officeId]?.tier === 4)
-    .map((p) => state.characters[p.characterId])
-    .filter((c): c is Character => !!c && c.active)
-    .sort((a, b) => b.competence - a.competence);
-  if (candidates.length === 0) return;
-  state.government.deputyPmId = candidates[0].id;
+  // candidates: governing-party cabinet Secretaries of State (a department) —
+  // never the Chief Whip, and never a coalition partner's minister
+  const pool = state.government.cabinet
+    .filter((p) => p.characterId !== 'player' && OFFICES[p.officeId]?.department)
+    .map((p) => ({ post: p, c: state.characters[p.characterId] }))
+    .filter((x): x is { post: typeof x.post; c: Character } =>
+      !!x.c && x.c.active && x.c.partyId === state.government.governingParty);
+  if (pool.length === 0) return;
+  // ~50% a great office of state (Chancellor/Home/Foreign), else another
+  // secretary — and within the chosen bucket take the strongest by competence
+  const great = pool.filter((x) => GREAT_OFFICES.includes(x.post.officeId));
+  const other = pool.filter((x) => !GREAT_OFFICES.includes(x.post.officeId));
+  const preferGreat = rng.chance(0.5);
+  const primary = preferGreat ? great : other;
+  const fallback = preferGreat ? other : great;
+  const bucket = primary.length > 0 ? primary : fallback;
+  if (bucket.length === 0) return;
+  const best = bucket.sort((a, b) => b.c.competence - a.c.competence)[0];
+  state.government.deputyPmId = best.c.id;
   state.government.deputyTitle = rng.chance(0.67) ? 'dpm' : 'firstSec';
 }
 
@@ -432,6 +449,24 @@ function redecideNpcDeputyPm(state: GameState, rng: Rng): void {
 function reshuffleNpcDeputyPm(state: GameState, rng: Rng): void {
   if (state.government.deputyPmId === 'player') return;
   appointNpcDeputyPm(state, rng);
+}
+
+/** the player-PM names a cabinet Secretary of State as their Deputy PM / First
+ *  Secretary. Only a departmental SoS (never the Chief Whip) is eligible. */
+export function setDeputyPmCore(state: GameState, _rng: Rng, characterId: string): void {
+  if (!playerIsLeader(state) || !playerInGovernment(state)) return;
+  if (characterId === 'player' || characterId === state.government.deputyPmId) return;
+  const post = state.government.cabinet.find((p) => p.characterId === characterId);
+  if (!post || !OFFICES[post.officeId]?.department) return; // SoS only, not chiefWhip
+  delete state.player.flags._isDeputyPM;
+  state.government.deputyPmId = characterId;
+  state.government.deputyTitle = state.government.deputyTitle ?? 'dpm';
+  const name = state.characters[characterId]?.name ?? 'a senior minister';
+  const prefix = deputyPrefix(state.government.deputyTitle);
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} appoints ${name} ${prefix}`,
+  });
 }
 
 // ---------- reshuffles ----------
@@ -455,9 +490,11 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
         : `${leaderName} shakes up the shadow cabinet`,
   });
 
-  // churn 1-2 NPC frontbench posts, with named winners and losers
+  // churn 1-2 NPC frontbench posts, with named winners and losers (leave any
+  // coalition-partner ministers alone — they belong to the junior party)
   const side = frontbenchSide(state);
-  const churnable = state.government[side].filter((p) => p.characterId !== 'player');
+  const churnable = state.government[side].filter((p) =>
+    p.characterId !== 'player' && state.characters[p.characterId]?.partyId === state.player.partyId);
   for (const post of rng.shuffle(churnable).slice(0, rng.int(1, emergency ? 3 : 2))) {
     const old = state.characters[post.characterId];
     if (old) old.officeId = null;
@@ -522,7 +559,9 @@ export function npcReshuffle(state: GameState, rng: Rng, party: PartyId): void {
   const leaderName = characterName(
     state, inGov ? state.government.pmId : state.government.loId
   );
-  const posts = state.government[side].filter((p) => p.characterId !== 'player');
+  // never churn a coalition partner's ministers (they belong to the junior party)
+  const posts = state.government[side].filter((p) =>
+    p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party);
   const changed = rng.shuffle(posts).slice(0, rng.int(1, 2));
   if (changed.length === 0) return;
   for (const post of changed) {
@@ -875,7 +914,7 @@ export function applyElectionAftermath(
     state.government.arrangement = 'minority'; // default; may be upgraded below
     const seatsForMajority = Math.floor(votingSeats / 2) + 1;
     const shortfall = Math.max(0, seatsForMajority - govSeats);
-    const partner = pickCoalitionPartner(result, newGov);
+    const partner = pickCoalitionPartner(result, rng, newGov);
     const playerParty = state.player.partyId;
     const playerSeats = result.seats[playerParty] ?? 0;
     if (playerWonSeat && playerIsLeader(state) && playerParty === newGov) {
@@ -897,6 +936,7 @@ export function applyElectionAftermath(
       if (roll < 0.10) {
         state.government.arrangement = 'coalition';
         state.government.coalitionPartner = partner;
+        seatCoalitionCabinet(state, rng);
         state.history.push({
           kind: 'event', date: state.day,
           headline: `${PARTIES[newGov].name} forms a coalition with the ${PARTIES[partner].shortName}`,
@@ -1008,20 +1048,60 @@ export function applyElectionAftermath(
   settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
 }
 
-/** pick a plausible coalition/supply partner: the nearest-ideology seated party
- *  to the largest party, excluding abstentionists, the Speaker and independents */
-function pickCoalitionPartner(result: ElectionResult, newGov: PartyId): PartyId | null {
-  const govIdeology = PARTIES[newGov].ideology;
-  let best: PartyId | null = null;
-  let bestDist = Infinity;
-  for (const [p, seats] of Object.entries(result.seats) as [PartyId, number][]) {
-    if (p === newGov || seats <= 0) continue;
-    if (p === 'sf' || p === 'spk' || p === 'ind') continue;
-    if (!PARTIES[p]) continue;
-    const dist = Math.abs(PARTIES[p].ideology - govIdeology);
-    if (dist < bestDist) { bestDist = dist; best = p; }
+const POPULIST_PARTIES: PartyId[] = ['reform', 'brexit', 'ukip'];
+/** the maximum ideology gap two parties will bridge to govern together */
+const MAX_COALITION_DISTANCE = 75;
+
+/** would these two parties ever sit in government together? Hard bans aside
+ *  (Labour never with a populist right party; the Conservatives never with the
+ *  Greens), they must be within an ideological reach of each other. */
+export function coalitionCompatible(a: PartyId, b: PartyId): boolean {
+  const banned = (x: PartyId, y: PartyId) =>
+    (x === 'lab' && POPULIST_PARTIES.includes(y)) || (x === 'con' && y === 'green');
+  if (banned(a, b) || banned(b, a)) return false;
+  if (!PARTIES[a] || !PARTIES[b]) return false;
+  return Math.abs(PARTIES[a].ideology - PARTIES[b].ideology) <= MAX_COALITION_DISTANCE;
+}
+
+/** pick a plausible coalition/supply partner for the largest party: any seated,
+ *  compatible party (not just the single nearest), chosen weighted by seats so
+ *  the partner varies but plausibly favours larger ones. Returns null if no
+ *  compatible partner exists (→ the major party governs as a minority). */
+export function pickCoalitionPartner(result: ElectionResult, rng: Rng, newGov: PartyId): PartyId | null {
+  const candidates = (Object.entries(result.seats) as [PartyId, number][])
+    .filter(([p, seats]) =>
+      p !== newGov && seats > 0 &&
+      p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] &&
+      coalitionCompatible(newGov, p));
+  if (candidates.length === 0) return null;
+  return rng.pickWeighted(candidates, ([, seats]) => seats)[0];
+}
+
+/** seat a coalition partner in the governing cabinet, proportional to its seats:
+ *  a small junior partner gets a couple of mid-rank secretaries (never a great
+ *  office or the Chief Whip), a tiny 1–2 MP partner at most one (maybe none). */
+export function seatCoalitionCabinet(state: GameState, rng: Rng): void {
+  const partner = state.government.coalitionPartner;
+  if (state.government.arrangement !== 'coalition' || !partner) return;
+  const govSeats = state.seats[state.government.governingParty] ?? 0;
+  const partnerSeats = state.seats[partner] ?? 0;
+  if (partnerSeats <= 0 || govSeats <= 0) return;
+  const share = partnerSeats / (govSeats + partnerSeats);
+  let count = Math.min(Math.round(share * CABINET_OFFICES.length), partnerSeats);
+  if (partnerSeats <= 2) count = Math.min(count, 1);
+  if (partnerSeats === 1 && rng.chance(0.5)) count = 0;
+  if (count <= 0) return;
+  // eligible posts: departmental secretaries that aren't great offices, held by
+  // the governing party (not the player, not the Chief Whip)
+  const eligible = rng.shuffle(state.government.cabinet.filter((p) =>
+    p.characterId !== 'player' &&
+    OFFICES[p.officeId]?.department && !GREAT_OFFICES.includes(p.officeId) &&
+    state.characters[p.characterId]?.partyId === state.government.governingParty));
+  for (const post of eligible.slice(0, count)) {
+    const old = state.characters[post.characterId];
+    if (old) { old.officeId = null; old.active = false; }
+    post.characterId = newFrontbencher(state, rng, partner, post.officeId).id;
   }
-  return best;
 }
 
 function settleNpcLeaderships(
@@ -1235,7 +1315,8 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     }
     case 'pmReshuffle': {
       const side = playerInGovernment(state) ? 'cabinet' : 'shadowCabinet';
-      const posts = state.government[side].filter((p) => p.characterId !== 'player');
+      const posts = state.government[side].filter((p) =>
+        p.characterId !== 'player' && state.characters[p.characterId]?.partyId === state.player.partyId);
       const members = posts
         .map((p) => state.characters[p.characterId])
         .filter((c): c is Character => Boolean(c));
@@ -1379,22 +1460,22 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           {
             title: 'The manifesto launch',
             body: 'Launch day. The cameras are set and the manifesto goes to the printers tonight. What kind of offer are you putting to the country?',
-            choices: ['A bold, transformative offer', 'Safety first — small targets, no hostages', "Steal the other side's best clothes"],
+            choices: ['A bold, transformative offer', 'Safety first — small targets, no hostages', "Steal the other side's best clothes", 'Bet it all on one giant uncosted pledge'],
           },
           {
             title: 'The TV debate',
             body: 'Tonight: the head-to-head debate, live, eight million watching. Your prep team offers three strategies and warns that campaigns have died on this stage.',
-            choices: ['Attack from the first answer', 'Statesmanlike — rise above it', 'Land the rehearsed zinger'],
+            choices: ['Attack from the first answer', 'Statesmanlike — rise above it', 'Land the rehearsed zinger', "Go personal — shred their character"],
           },
           {
             title: 'The wobble',
             body: 'Mid-campaign crisis: a candidate suspended over old posts, a costing that doesn\'t add up, and a poll showing the gap moving the wrong way. The morning press conference is in nine hours. The room looks at you.',
-            choices: ['Own it — apologise and act fast', 'Brazen it out, change the subject', 'Counter-attack with opposition research'],
+            choices: ['Own it — apologise and act fast', 'Brazen it out, change the subject', 'Counter-attack with opposition research', 'Blame the media and refuse to engage'],
           },
           {
             title: 'The battleground blitz',
             body: 'Ten days left. The bus can only be in one place at a time, and the spreadsheet people are fighting about where. Your call, leader.',
-            choices: ['Shore up the heartlands', 'Raid their marginals', 'Gamble on the unlikely new coalition'],
+            choices: ['Shore up the heartlands', 'Raid their marginals', 'Gamble on the unlikely new coalition', 'Coast — the lead will hold itself'],
           },
           {
             title: 'The final broadcast',
@@ -1856,7 +1937,9 @@ export function resolveForcedChoice(
       const inGov = playerInGovernment(state);
       const side = inGov ? 'cabinet' : 'shadowCabinet';
       const party = state.player.partyId;
-      const posts = state.government[side].filter((p) => p.characterId !== 'player');
+      // a coalition partner's ministers are theirs to keep — don't reshuffle them
+      const posts = state.government[side].filter((p) =>
+        p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party);
       const titleOf = (officeId: OfficeId) =>
         inGov ? OFFICES[officeId].title : OFFICES[officeId].shadowTitle;
       const headline = (text: string) =>
@@ -2149,6 +2232,7 @@ export function resolveForcedChoice(
         state.government.arrangement = 'coalition';
         state.government.coalitionPartner = partnerId;
         delete state.government.confidencePartner;
+        seatCoalitionCabinet(state, rng);
         gain('partyStanding', -6, 'Standing');
         gain('integrity', -3, 'Integrity');
         state.player.rebellionCount += 1;
@@ -2202,6 +2286,7 @@ export function resolveForcedChoice(
           state.government.arrangement = 'coalition';
           state.government.coalitionPartner = state.player.partyId;
           delete state.government.confidencePartner;
+          seatCoalitionCabinet(state, rng);
           gain('profile', 10, 'Profile');
           gain('partyStanding', -4, 'Standing');
           state.history.push({
@@ -2228,6 +2313,7 @@ export function resolveForcedChoice(
         state.government.arrangement = 'coalition';
         state.government.coalitionPartner = state.player.partyId;
         delete state.government.confidencePartner;
+        seatCoalitionCabinet(state, rng);
         gain('partyStanding', -2, 'Standing');
         state.forcedQueue.unshift({
           kind: 'reshuffleOffer',
@@ -2639,9 +2725,20 @@ function resolveLeaderCampaignChoice(
         shock(0.3);
         return { text: 'A manifesto with no hostages to fortune: every promise pre-tested, every number triple-checked. Bulletproof and slightly beige. Nobody is excited; nobody is alarmed. You can work with that.', deltas };
       }
-      shock(0.8);
-      stat('integrity', -3, 'Integrity');
-      return { text: 'You lift the other side\'s most popular policy wholesale and dare them to complain. They do, at length, which means a week of coverage explaining that you now own their best idea.', deltas };
+      if (choiceIndex === 2) {
+        shock(0.8);
+        stat('integrity', -3, 'Integrity');
+        return { text: 'You lift the other side\'s most popular policy wholesale and dare them to complain. They do, at length, which means a week of coverage explaining that you now own their best idea.', deltas };
+      }
+      // choice 3 — the uncosted megabet: occasionally electrifying, usually a trap
+      if (rng.chance(0.3)) {
+        shock(2.4);
+        stat('profile', 2, 'Profile');
+        return { text: 'The giant, uncosted pledge is reckless and magnificent and it catches fire. The country, it turns out, was desperate for someone to promise something enormous. The strategists exhale; the bond markets do not.', deltas };
+      }
+      shock(-2.4);
+      stat('integrity', -2, 'Integrity');
+      return { text: 'The eye-catching promise unravels on contact with a calculator. "How will you pay for it?" becomes the only question of the week, and you have no answer that survives a follow-up. The number eats the campaign.', deltas };
 
     case 3: // tv debate
       if (choiceIndex === 0) {
@@ -2657,13 +2754,24 @@ function resolveLeaderCampaignChoice(
         shock(0.6);
         return { text: 'You rise above the bait, answer the questions, and talk to the camera like an adult addressing adults. No fireworks, no disasters. The pundits score it a draw; the focus groups quietly score it to you.', deltas };
       }
-      if (rng.chance(0.55)) {
-        shock(1.7);
-        stat('profile', 3, 'Profile');
-        return { text: 'The zinger lands so perfectly the studio audience breaks the no-applause rule. It is the headline, the meme, and the moment. Your team watches it seventeen times on the bus home.', deltas };
+      if (choiceIndex === 2) {
+        if (rng.chance(0.55)) {
+          shock(1.7);
+          stat('profile', 3, 'Profile');
+          return { text: 'The zinger lands so perfectly the studio audience breaks the no-applause rule. It is the headline, the meme, and the moment. Your team watches it seventeen times on the bus home.', deltas };
+        }
+        shock(-1.3);
+        return { text: 'You deploy the rehearsed line a beat too early, into the wrong context, and it dies in the silence. Their counter — clearly also rehearsed — does not. The internet is unkind.', deltas };
       }
-      shock(-1.3);
-      return { text: 'You deploy the rehearsed line a beat too early, into the wrong context, and it dies in the silence. Their counter — clearly also rehearsed — does not. The internet is unkind.', deltas };
+      // choice 3 — go personal: a nasty gamble that usually rebounds on you
+      if (rng.chance(0.3)) {
+        shock(1.8);
+        stat('integrity', -3, 'Integrity');
+        return { text: 'The character assault is brutal and it works: rattled and wounded, they never recover their footing. You win the night and lose a little of yourself doing it.', deltas };
+      }
+      shock(-2.2);
+      stat('integrity', -4, 'Integrity');
+      return { text: 'The personal attack curdles in the room. "That was beneath the office," they say quietly, and eight million people agree. You look like a bully; the sympathy — and the polls — swing to them.', deltas };
 
     case 4: // the wobble
       if (choiceIndex === 0) {
@@ -2679,13 +2787,23 @@ function resolveLeaderCampaignChoice(
         shock(-1.6);
         return { text: 'The dead cat fails to bounce. Now there are two stories: the wobble, and the transparent attempt to bury it. The campaign loses three days it did not have.', deltas };
       }
-      stat('integrity', -3, 'Integrity');
-      if (rng.chance(0.5)) {
-        shock(1.0);
-        return { text: 'Your opposition research lands like a depth charge — suddenly it is their candidates, their costings, their crisis. Brutal stuff. The gap moves your way while everyone\'s hands get dirty.', deltas };
+      if (choiceIndex === 2) {
+        stat('integrity', -3, 'Integrity');
+        if (rng.chance(0.5)) {
+          shock(1.0);
+          return { text: 'Your opposition research lands like a depth charge — suddenly it is their candidates, their costings, their crisis. Brutal stuff. The gap moves your way while everyone\'s hands get dirty.', deltas };
+        }
+        shock(-1.0);
+        return { text: 'The counter-attack misfires: your dossier has a factual error in paragraph two, and the story becomes your campaign\'s methods. The phrase "gutter politics" attaches itself to your lapel.', deltas };
       }
-      shock(-1.0);
-      return { text: 'The counter-attack misfires: your dossier has a factual error in paragraph two, and the story becomes your campaign\'s methods. The phrase "gutter politics" attaches itself to your lapel.', deltas };
+      // choice 3 — blame the media and stonewall: looks evasive, usually backfires
+      if (rng.chance(0.25)) {
+        shock(0.4);
+        return { text: 'You refuse to play, attack the framing, and — just this once — the press tires of the story before you do. A narrow escape that emboldens entirely the wrong instincts.', deltas };
+      }
+      shock(-1.9);
+      stat('integrity', -2, 'Integrity');
+      return { text: 'Refusing to engage reads as guilt. The empty podium, the cancelled interviews, the "leader in hiding" chyron — the silence becomes a louder story than the wobble ever was.', deltas };
 
     case 5: // battleground blitz
       if (choiceIndex === 0) {
@@ -2701,13 +2819,23 @@ function resolveLeaderCampaignChoice(
         shock(-0.7);
         return { text: 'The marginals raid stretches the machine thin, and the heartland candidates mutter to journalists about being abandoned. The map was a gamble; the gamble was noticed.', deltas };
       }
-      if (rng.chance(0.35)) {
-        shock(2.0);
-        stat('profile', 3, 'Profile');
-        return { text: 'The unlikely coalition turns out to exist. The rallies swell, the registration numbers spike, and the pollsters start muttering about turnout models being wrong. Something is happening out there.', deltas };
+      if (choiceIndex === 2) {
+        if (rng.chance(0.35)) {
+          shock(2.0);
+          stat('profile', 3, 'Profile');
+          return { text: 'The unlikely coalition turns out to exist. The rallies swell, the registration numbers spike, and the pollsters start muttering about turnout models being wrong. Something is happening out there.', deltas };
+        }
+        shock(-1.0);
+        return { text: 'The new coalition fails to materialise where it counts. The rallies were real; the votes, the data people gently explain, were not where the bus went. A week the campaign won\'t get back.', deltas };
       }
-      shock(-1.0);
-      return { text: 'The new coalition fails to materialise where it counts. The rallies were real; the votes, the data people gently explain, were not where the bus went. A week the campaign won\'t get back.', deltas };
+      // choice 3 — coast on the lead: complacency the voters tend to punish
+      if (rng.chance(0.25)) {
+        shock(0.3);
+        return { text: 'You ease off, project the serene confidence of a winner, and the lead — miraculously — holds. You will never admit how close you came to throwing it away with a fortnight of nothing.', deltas };
+      }
+      shock(-1.6);
+      stat('partyStanding', -2, 'Standing');
+      return { text: 'Coasting was a mistake. The lead was soft, the other side never stopped running, and "complacent" becomes the word that follows you to polling day. Your own MPs watch the tightening polls and remember who eased off.', deltas };
 
     case 6: // final broadcast
       if (choiceIndex === 0) {

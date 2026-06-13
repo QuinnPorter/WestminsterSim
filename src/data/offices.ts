@@ -84,6 +84,9 @@ function buildOffices(): Record<OfficeId, Office> {
 
 export const OFFICES: Record<OfficeId, Office> = buildOffices();
 
+/** the great offices of state — Chancellor, Home Secretary, Foreign Secretary */
+export const GREAT_OFFICES: OfficeId[] = ['sos_treasury', 'sos_home', 'sos_foreign'];
+
 /** offices that make up the cabinet / shadow cabinet display, in rank order */
 export const CABINET_OFFICES: OfficeId[] = [
   'sos_treasury', 'sos_home', 'sos_foreign', 'sos_health', 'sos_education',

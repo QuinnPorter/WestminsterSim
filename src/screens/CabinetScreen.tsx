@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { GameState, OfficeId } from '../types/game';
-import { CABINET_OFFICES } from '../data/offices';
+import { CABINET_OFFICES, OFFICES } from '../data/offices';
 import { PARTIES } from '../data/parties';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
@@ -11,6 +11,7 @@ import './CabinetScreen.css';
 export function CabinetScreen({ game }: { game: GameState }) {
   const [side, setSide] = useState<'gov' | 'opp'>('gov');
   const sackMinister = useGameStore((s) => s.sackMinister);
+  const setDeputyPm = useGameStore((s) => s.setDeputyPm);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const isGov = side === 'gov';
   const leaderId = isGov ? game.government.pmId : game.government.loId;
@@ -20,6 +21,8 @@ export function CabinetScreen({ game }: { game: GameState }) {
   const canSack =
     playerIsLeader(game) &&
     ((isGov && playerInGovernment(game)) || (!isGov && !playerInGovernment(game)));
+  // only a sitting Prime Minister names the Deputy PM
+  const canMakeDeputy = canSack && isGov && playerInGovernment(game);
 
   return (
     <div className="screen">
@@ -44,13 +47,21 @@ export function CabinetScreen({ game }: { game: GameState }) {
           if (!post) return null;
           // the deputy PM / First Secretary doubles up an existing cabinet seat
           const isDeputy = isGov && game.government.deputyPmId === post.characterId;
+          const isNpc = post.characterId !== 'player';
+          const memberParty = isNpc ? game.characters[post.characterId]?.partyId : undefined;
+          // a coalition partner's minister sits in the governing cabinet
+          const coalitionOf = isGov && memberParty && memberParty !== game.government.governingParty
+            ? PARTIES[memberParty].shortName : undefined;
+          // deputy PM is a departmental Secretary of State, never the Chief Whip
+          const deputyEligible = !!OFFICES[officeId]?.department && !coalitionOf;
           return (
             <MemberCard
               key={officeId}
               game={game}
               characterId={post.characterId}
               title={cabinetTitleFor(officeId, isGov, isDeputy, game.government.deputyTitle)}
-              onSack={canSack && post.characterId !== 'player'
+              coalitionOf={coalitionOf}
+              onSack={canSack && isNpc
                 ? () => {
                     const name = game.characters[post.characterId]?.name ?? 'this minister';
                     requestConfirm({
@@ -59,6 +70,17 @@ export function CabinetScreen({ game }: { game: GameState }) {
                       confirmLabel: 'Sack',
                       danger: true,
                       onConfirm: () => sackMinister(officeId as OfficeId),
+                    });
+                  }
+                : undefined}
+              onMakeDeputy={canMakeDeputy && isNpc && deputyEligible && !isDeputy
+                ? () => {
+                    const name = game.characters[post.characterId]?.name ?? 'this minister';
+                    requestConfirm({
+                      title: `Make ${name} your deputy?`,
+                      message: 'They will serve as Deputy Prime Minister / First Secretary alongside their brief.',
+                      confirmLabel: 'Make deputy',
+                      onConfirm: () => setDeputyPm(post.characterId),
                     });
                   }
                 : undefined}
@@ -99,8 +121,9 @@ function FeaturedMember({ game, characterId, title }: {
   );
 }
 
-function MemberCard({ game, characterId, title, onSack }: {
-  game: GameState; characterId: string; title: string; onSack?: () => void;
+function MemberCard({ game, characterId, title, onSack, onMakeDeputy, coalitionOf }: {
+  game: GameState; characterId: string; title: string;
+  onSack?: () => void; onMakeDeputy?: () => void; coalitionOf?: string;
 }) {
   const isPlayer = characterId === 'player';
   const char = isPlayer ? null : game.characters[characterId];
@@ -117,6 +140,9 @@ function MemberCard({ game, characterId, title, onSack }: {
       )}
       <div className="cab-member-name">
         {name} {isPlayer && <span className="cab-you">YOU</span>}
+        {coalitionOf && (
+          <span className="cab-coalition" title="Coalition partner">{coalitionOf}</span>
+        )}
         {rel && (
           <span className="cab-rel" title="Your relationship">
             {rel.value >= 25 ? '🙂' : rel.value <= -25 ? '😠' : '😐'}
@@ -124,9 +150,14 @@ function MemberCard({ game, characterId, title, onSack }: {
         )}
       </div>
       <div className="cab-member-title">{title}</div>
-      {onSack && (
-        <button className="cab-sack" onClick={onSack}>Sack</button>
-      )}
+      <div className="cab-actions">
+        {onMakeDeputy && (
+          <button className="cab-deputy" onClick={onMakeDeputy}>Make deputy</button>
+        )}
+        {onSack && (
+          <button className="cab-sack" onClick={onSack}>Sack</button>
+        )}
+      </div>
     </div>
   );
 }
