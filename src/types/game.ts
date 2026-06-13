@@ -137,6 +137,8 @@ export interface Player {
   avatar: AvatarConfig;
   stats: PlayerStats;
   officeId: OfficeId | null;
+  /** day the player took their current office (null while a backbencher) */
+  officeSinceDay: GameDay | null;
   /** rebellions in the current parliament */
   rebellionCount: number;
   /** story flags set by cards */
@@ -178,6 +180,12 @@ export interface GovernmentState {
   majority: number;
   /** day the current PM took office (for longevity resignations) */
   pmSinceDay: GameDay;
+  /** how the current government holds power */
+  arrangement: 'majority' | 'minority' | 'supplyConfidence' | 'coalition';
+  /** formal junior coalition partner — sits in government */
+  coalitionPartner?: PartyId;
+  /** party propping up a minority on supply & confidence — NOT in government */
+  confidencePartner?: PartyId;
 }
 
 // ---- elections & history ----
@@ -201,7 +209,7 @@ export interface ConstituencyResult {
   majorityVotes: number;
 }
 
-export type ElectionOutcome = 'majority' | 'minority';
+export type ElectionOutcome = 'majority' | 'minority' | 'hung';
 
 export interface ElectionResult {
   id: string;
@@ -233,6 +241,8 @@ export type ForcedKind =
   | 'reshuffleOffer' | 'dismissal' | 'resignPrompt'
   | 'campaign' | 'electionNight' | 'lostSeat' | 'wilderness'
   | 'leadershipStand' | 'leadershipBallot' | 'pmReshuffle' | 'pmPressure'
+  | 'resignPledge' | 'confidenceVote' | 'partyCoup'
+  | 'coalitionTalks' | 'coalitionOffer'
   | 'calendar';
 
 export interface DrawnCard {

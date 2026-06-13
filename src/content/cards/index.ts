@@ -6,7 +6,9 @@ import { WHIP_PPS_CARDS } from './whipPps';
 import { JUNIOR_MINISTER_CARDS } from './juniorMinister';
 import { SOS_CARDS } from './secretaryOfState';
 import { SHADOW_CARDS } from './shadow';
+import { SHADOW_PORTFOLIO_CARDS } from './shadowPortfolio';
 import { LEADERSHIP_CARDS } from './leadership';
+import { LEADER_EXTRA_CARDS } from './leaderExtra';
 import { CRISIS_CARDS } from './crisis';
 import { PORTFOLIO_CARDS } from './portfolio';
 
@@ -21,7 +23,9 @@ export const ALL_CARDS: DecisionCard[] = [
   ...JUNIOR_MINISTER_CARDS,
   ...SOS_CARDS,
   ...SHADOW_CARDS,
+  ...SHADOW_PORTFOLIO_CARDS,
   ...LEADERSHIP_CARDS,
+  ...LEADER_EXTRA_CARDS,
   ...CRISIS_CARDS,
   ...PORTFOLIO_CARDS,
 ];

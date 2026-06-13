@@ -19,8 +19,9 @@ function fundamentals(state: GameState): Partial<Record<PartyId, number>> {
 }
 
 const WEEK = 7;
-/** drag on the governing party once the honeymoon ends, per week */
-const GOVERNING_DRAG = 0.0005;
+/** drag on the governing party once the honeymoon ends, per week — incumbency
+ *  erodes support over a parliament, making re-election (and majorities) harder */
+const GOVERNING_DRAG = 0.0009;
 const HONEYMOON_DAYS = 365;
 /** weekly random-walk noise (sd) and pull toward fundamentals */
 const WEEKLY_NOISE = 0.006;

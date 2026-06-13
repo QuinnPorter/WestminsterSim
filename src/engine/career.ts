@@ -46,14 +46,38 @@ export function onMinorPartyTrack(state: GameState): boolean {
   return state.player.hasSeat && !onFrontbenchTrack(state);
 }
 
-/** the full party name, when the player is on the minor-party track */
+/** in government either as the governing party OR as a formal coalition junior
+ *  partner — both hold real government office and govern */
+export function playerInGovernmentBloc(state: GameState): boolean {
+  return playerInGovernment(state) || state.player.partyId === state.government.coalitionPartner;
+}
+
+export type LeaderRole = 'pm' | 'lo' | 'minorLeader' | null;
+/** which apex role the player-leader occupies (null when not a leader). A
+ *  minor-party leader is distinct from the official Leader of the Opposition. */
+export function playerLeaderRole(state: GameState): LeaderRole {
+  if (!playerIsLeader(state)) return null;
+  if (playerInGovernment(state)) return 'pm';
+  if (state.player.partyId === state.government.oppositionParty) return 'lo';
+  return 'minorLeader';
+}
+
+/** years the player has held their current office (0 while a backbencher) */
+export function timeInPostYears(state: GameState): number {
+  return state.player.officeSinceDay == null ? 0 : (state.day - state.player.officeSinceDay) / 365;
+}
+
+/** the full party name, when the player is on the minor-party track — but NOT
+ *  when their minor party has joined a coalition, where they hold genuine
+ *  government office and take the real ministerial titles */
 function minorPartyNameOf(state: GameState): string | undefined {
+  if (playerInGovernmentBloc(state)) return undefined;
   return onMinorPartyTrack(state) ? PARTIES[state.player.partyId].name : undefined;
 }
 
 export function playerOfficeTitle(state: GameState): string {
   return officeTitleFor(state.player.officeId, {
-    inGovernment: playerInGovernment(state),
+    inGovernment: playerInGovernmentBloc(state),
     minorPartyName: minorPartyNameOf(state),
   });
 }
@@ -209,6 +233,7 @@ export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 
   // vacate any cabinet-level post the player held
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = officeId;
+  state.player.officeSinceDay = state.day;
   recordPeakTier(state);
   // only government/opposition players occupy a tracked cabinet seat; minor-party
   // spokesperson roles are not part of any NPC bench
@@ -234,6 +259,7 @@ export function stripOffice(
 ): void {
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = null;
+  state.player.officeSinceDay = null;
   state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how });
 }
 
@@ -278,8 +304,8 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
   // is the player for the chop?
   if (state.player.officeId && !playerIsLeader(state)) {
     const holdScore = eligibilityScore(state, state.player.officeId) + rng.normal(0, 5);
-    const floor = 36 + tier * 3 + (emergency ? 4 : 0);
-    if (holdScore < floor || (state.player.flags.scandal && rng.chance(0.6))) {
+    const floor = 39 + tier * 3 + (emergency ? 6 : 0);
+    if (holdScore < floor || (state.player.flags.scandal && rng.chance(0.7))) {
       state.forcedQueue.push({ kind: 'dismissal' });
       return;
     }
@@ -367,13 +393,13 @@ function leadershipBaseSupport(state: GameState): number {
   const s = state.player.stats;
   const pastLosses = (state.player.flags._contestLosses as number) ?? 0;
   return clamp(
-    0.25 * s.partyStanding +
-      0.2 * s.profile +
+    0.28 * s.partyStanding +
+      0.18 * s.profile +
       0.15 * (50 + averageColleagueWarmth(state) / 2) +
-      0.1 * s.competence +
-      (playerTier(state) >= 4 ? 8 : 0) -
-      2 * state.player.rebellionCount -
-      6 * pastLosses,
+      0.14 * s.competence +
+      (playerTier(state) >= 4 ? 6 : 0) -
+      3 * state.player.rebellionCount -
+      7 * pastLosses,
     5, 90
   );
 }
@@ -509,6 +535,11 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
   const party = state.player.partyId;
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = 'leader';
+  state.player.officeSinceDay = state.day;
+  // record the polling the player inherits, so "failed to improve" can bite later;
+  // and clear any stale resignation pledge from a previous spell as leader
+  state.player.flags._leaderTookOverPolls = (state.polling.shares[party] ?? 0) * 100;
+  delete state.player.flags._pledgeResignBy;
   recordPeakTier(state);
   state.history.push({
     kind: 'roleChange', date: state.day, officeId: 'leader', how: 'electedLeader',
@@ -556,6 +587,9 @@ export function applyElectionAftermath(
   const prevGov = state.government.governingParty;
   const prevOpp = state.government.oppositionParty;
   const newGov = result.governingParty;
+  // snapshot the outgoing seat counts before they're overwritten — used to scale
+  // NPC leader resignations by how much each party gained or lost
+  const prevSeats = { ...state.seats };
 
   state.history.push({
     kind: 'election', date: state.day, resultId: result.id, heldSeat: playerWonSeat,
@@ -613,6 +647,62 @@ export function applyElectionAftermath(
   const govSeats = result.seats[newGov] ?? 0;
   state.government.majority = govSeats - (votingSeats - govSeats);
 
+  // ---- government arrangement & coalition formation ----
+  // a fresh parliament starts with no inherited coalition/supply partner
+  delete state.government.coalitionPartner;
+  delete state.government.confidencePartner;
+  if (result.outcome === 'majority') {
+    state.government.arrangement = 'majority';
+  } else {
+    state.government.arrangement = 'minority'; // default; may be upgraded below
+    const seatsForMajority = Math.floor(votingSeats / 2) + 1;
+    const shortfall = Math.max(0, seatsForMajority - govSeats);
+    const partner = pickCoalitionPartner(result, newGov);
+    const playerParty = state.player.partyId;
+    const playerSeats = result.seats[playerParty] ?? 0;
+    if (playerWonSeat && playerIsLeader(state) && playerParty === newGov) {
+      // the player is the incoming PM — they choose the arrangement
+      state.forcedQueue.push({ kind: 'coalitionTalks', payload: { partnerId: partner } });
+    } else if (
+      playerWonSeat && playerIsLeader(state) && playerParty !== newGov &&
+      shortfall > 0 && playerSeats >= shortfall
+    ) {
+      // the player's party holds the balance of power — they negotiate
+      state.forcedQueue.push({
+        kind: 'coalitionOffer',
+        payload: { majorParty: newGov, shortfall, partySeats: playerSeats },
+      });
+    } else if (partner) {
+      // NPCs settle it: coalitions are rare (~a quarter of sub-majority results)
+      const coalitionChance = result.outcome === 'hung' ? 0.35 : 0.15;
+      if (rng.chance(coalitionChance)) {
+        state.government.arrangement = 'coalition';
+        state.government.coalitionPartner = partner;
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[newGov].name} forms a coalition with the ${PARTIES[partner].shortName}`,
+        });
+      } else if (rng.chance(0.4)) {
+        state.government.arrangement = 'supplyConfidence';
+        state.government.confidencePartner = partner;
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[newGov].name} to govern with ${PARTIES[partner].shortName} support`,
+        });
+      } else {
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[newGov].name} to govern as a minority`,
+        });
+      }
+    } else {
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${PARTIES[newGov].name} to govern as a minority`,
+      });
+    }
+  }
+
   state.parliamentStart = state.day;
   state.nextElectionBy = state.day + Math.round(4.75 * 365);
   state.player.rebellionCount = 0;
@@ -633,7 +723,7 @@ export function applyElectionAftermath(
     }
     state.forcedQueue.push({ kind: 'lostSeat' });
     // any leadership fallout in other parties resolves quietly
-    settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp);
+    settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
     return;
   }
 
@@ -675,7 +765,23 @@ export function applyElectionAftermath(
       payload: { reason: 'electionDefeat' },
     });
   }
-  settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp);
+  settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
+}
+
+/** pick a plausible coalition/supply partner: the nearest-ideology seated party
+ *  to the largest party, excluding abstentionists, the Speaker and independents */
+function pickCoalitionPartner(result: ElectionResult, newGov: PartyId): PartyId | null {
+  const govIdeology = PARTIES[newGov].ideology;
+  let best: PartyId | null = null;
+  let bestDist = Infinity;
+  for (const [p, seats] of Object.entries(result.seats) as [PartyId, number][]) {
+    if (p === newGov || seats <= 0) continue;
+    if (p === 'sf' || p === 'spk' || p === 'ind') continue;
+    if (!PARTIES[p]) continue;
+    const dist = Math.abs(PARTIES[p].ideology - govIdeology);
+    if (dist < bestDist) { bestDist = dist; best = p; }
+  }
+  return best;
 }
 
 function settleNpcLeaderships(
@@ -683,17 +789,44 @@ function settleNpcLeaderships(
   rng: Rng,
   prevGov: PartyId,
   newGov: PartyId,
-  prevOpp: PartyId
+  prevOpp: PartyId,
+  result: ElectionResult,
+  prevSeats: Partial<Record<PartyId, number>>
 ): void {
-  // outgoing governing party that lost: leader resigns 85% of the time.
-  // opposition that failed to gain ground: leader resigns 25% of the time.
-  // openLeadershipVacancy builds a named field and lets the player stand if
-  // it's their party (fixes the old bug where post-election contests had no
-  // named opponents).
-  if (newGov !== prevGov && state.government.loId !== 'player' && rng.chance(0.85)) {
+  const leaderOf = (party: PartyId): string =>
+    party === state.government.governingParty ? state.government.pmId :
+    party === state.government.oppositionParty ? state.government.loId : '';
+
+  // an outgoing Prime Minister who has just lost office almost always resigns
+  if (newGov !== prevGov && leaderOf(prevGov) !== 'player' && rng.chance(0.9)) {
     openLeadershipVacancy(state, rng, prevGov);
-  } else if (newGov === prevGov && state.government.loId !== 'player' && rng.chance(0.25)) {
-    openLeadershipVacancy(state, rng, prevOpp);
+  }
+
+  // the party that is now in opposition (and isn't led by the player) changes
+  // its leader very often after a defeat — but a big advance, or denying the
+  // winner a majority, earns the incumbent the benefit of the doubt
+  const oppParty = newGov === prevGov ? prevOpp : prevGov;
+  if (oppParty !== state.player.partyId && leaderOf(oppParty) !== 'player') {
+    const gained = (result.seats[oppParty] ?? 0) - (prevSeats[oppParty] ?? 0);
+    let p = 0.6;
+    if (gained > 30) p -= 0.45;
+    else if (gained > 10) p -= 0.25;
+    else if (gained < -10) p += 0.2;
+    if (result.outcome !== 'majority') p -= 0.2; // denied them a majority — more credit
+    if (rng.chance(clamp(p, 0.1, 0.92))) {
+      openLeadershipVacancy(state, rng, oppParty);
+    }
+  }
+
+  // minor parties churn their leaders too: a flat post-election chance if they
+  // went backwards
+  for (const [p, seats] of Object.entries(result.seats) as [PartyId, number][]) {
+    if (p === newGov || p === oppParty || p === state.player.partyId) continue;
+    if (p === 'sf' || p === 'spk' || p === 'ind' || !PARTIES[p]) continue;
+    const gained = seats - (prevSeats[p] ?? 0);
+    if (gained < 0 && rng.chance(0.3)) {
+      openLeadershipVacancy(state, rng, p);
+    }
   }
 }
 
@@ -705,7 +838,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const officeId = ev.payload?.officeId as OfficeId;
       const sideways = ev.payload?.sideways === true;
       const title = officeTitleFor(officeId, {
-        inGovernment: playerInGovernment(state),
+        inGovernment: playerInGovernmentBloc(state),
         minorPartyName: minorPartyNameOf(state),
       });
       const from = onMinorPartyTrack(state)
@@ -740,6 +873,16 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           title: 'After the defeat',
           body: 'The exit poll was right. The party has lost, and the cameras are outside your door asking the same question: will you resign the leadership?',
           choices: [{ label: 'Resign with dignity' }, { label: 'Fight on as leader' }],
+          payload: { reason, advance: rng.int(7, 14) },
+        };
+      }
+      if (reason === 'pledgeHonoured') {
+        return {
+          cardId: `forced_resign_${state.day}`,
+          kind: 'resignPrompt',
+          title: 'The day you promised',
+          body: 'The date you named has arrived. The party has held its peace on the understanding that today you go. You could honour the pledge and leave with your reputation — or tear it up and try to cling on.',
+          choices: [{ label: 'Stand down, as promised' }, { label: 'Break the pledge and fight on' }],
           payload: { reason, advance: rng.int(7, 14) },
         };
       }
@@ -887,6 +1030,87 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         payload: { severe, advance: rng.int(7, 14) },
       };
     }
+    case 'resignPledge':
+      return {
+        cardId: `forced_pledge_${state.day}`,
+        kind: 'resignPledge',
+        title: 'The men in grey suits',
+        body: 'A delegation of the party\'s most senior figures files into your office and shuts the door. They are not quite threatening you. They simply want a timetable: name a date to go, they suggest, and the knives go back in the drawer. For now.',
+        choices: [
+          { label: 'Pledge to stand down within the year' },
+          { label: 'Refuse — I am going nowhere' },
+          { label: 'Resign now, with dignity' },
+        ],
+        payload: { advance: rng.int(7, 14) },
+      };
+    case 'confidenceVote': {
+      const broken = ev.payload?.broken === true;
+      return {
+        cardId: `forced_confidence_${state.day}`,
+        kind: 'confidenceVote',
+        title: 'A motion of no confidence',
+        body: broken
+          ? 'You broke your word, and the party has not forgiven it. The opposition tables a motion of no confidence and your own benches are ominously quiet. Tonight the House decides whether your government stands.'
+          : 'The opposition has tabled a motion of no confidence, and without a majority the arithmetic is brutal. Every vote must be whipped, every waverer found. Lose, and the government falls — and the country votes.',
+        choices: [
+          { label: 'Whip every loyalist mercilessly' },
+          { label: 'Buy off the waverers with concessions' },
+          { label: 'Dare them — tie it to a dissolution' },
+        ],
+        payload: { broken, advance: rng.int(7, 14) },
+      };
+    }
+    case 'partyCoup': {
+      const broken = ev.payload?.broken === true;
+      return {
+        cardId: `forced_coup_${state.day}`,
+        kind: 'partyCoup',
+        title: 'The heave',
+        body: broken
+          ? 'Your broken promise hangs over everything. The plotters no longer bother to hide; they have the names, the numbers and the nerve. A formal leadership challenge is lodged.'
+          : 'It has been coming for weeks. A bloc of your own MPs has organised, the letters are in, and a stalking-horse challenger has emerged. To survive you must out-organise the organised.',
+        choices: [
+          { label: 'Face down the plotters' },
+          { label: 'Reshuffle the team to reassert grip' },
+          { label: 'Concede a policy review to the rebels' },
+        ],
+        payload: { broken, advance: rng.int(7, 14) },
+      };
+    }
+    case 'coalitionTalks': {
+      const partnerId = ev.payload?.partnerId as PartyId | undefined;
+      const partnerName = partnerId ? PARTIES[partnerId].name : 'a smaller party';
+      const partnerShort = partnerId ? PARTIES[partnerId].shortName : 'them';
+      return {
+        cardId: `forced_coalitiontalks_${state.day}`,
+        kind: 'coalitionTalks',
+        title: 'A hung parliament',
+        body: `Nobody has a majority. As leader of the largest party you have first go at forming a government, and ${partnerName} hold the balance — at a price. Your options run from a formal coalition to going it alone and daring the House to stop you.`,
+        choices: [
+          { label: `Form a full coalition with the ${partnerShort}` },
+          { label: 'Confidence-and-supply only' },
+          { label: 'Govern alone as a minority' },
+        ],
+        payload: { partnerId, advance: rng.int(7, 14) },
+      };
+    }
+    case 'coalitionOffer': {
+      const majorParty = ev.payload?.majorParty as PartyId | undefined;
+      const majorName = majorParty ? PARTIES[majorParty].name : 'the largest party';
+      return {
+        cardId: `forced_coalitionoffer_${state.day}`,
+        kind: 'coalitionOffer',
+        title: 'Holding the balance',
+        body: `The numbers are extraordinary: your party holds the balance of power. ${majorName} cannot govern without you, and their negotiators are already on the phone. How hard do you push?`,
+        choices: [
+          { label: 'Demand senior cabinet seats' },
+          { label: 'A focused policy win and a junior post' },
+          { label: 'Confidence-and-supply only' },
+          { label: 'Stay out — pure opposition' },
+        ],
+        payload: { majorParty, advance: rng.int(7, 14) },
+      };
+    }
     case 'campaign': {
       const step = (ev.payload?.step as number) ?? 1;
       const isLeader = ev.payload?.leader === true;
@@ -1000,7 +1224,7 @@ export function resolveForcedChoice(
         gain('partyStanding', 6, 'Standing');
         gain('profile', 8, 'Profile');
         const title = officeTitleFor(officeId, {
-          inGovernment: playerInGovernment(state),
+          inGovernment: playerInGovernmentBloc(state),
           minorPartyName: minorPartyNameOf(state),
         });
         state.history.push({
@@ -1061,6 +1285,43 @@ export function resolveForcedChoice(
         adjustRelationship(state, 'rival', -10);
         return {
           text: 'You fight on. Half the party admires the steel; the other half begins counting letters of no confidence.',
+          deltas,
+        };
+      }
+      if (reason === 'pledgeHonoured') {
+        if (choiceIndex === 0) {
+          // honour the timetable — a dignified, scheduled exit
+          const party = state.player.partyId;
+          state.player.officeId = null;
+          state.player.officeSinceDay = null;
+          state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how: 'resigned' });
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} stands down as promised`,
+          });
+          gain('integrity', 6, 'Integrity');
+          gain('partyStanding', 4, 'Standing');
+          resolveNpcLeadership(state, rng, party);
+          return {
+            text: 'You keep your word and go on schedule, with a valedictory that even your enemies call gracious. Honouring the pledge costs you the job — and buys you a reputation that outlasts it.',
+            deltas,
+          };
+        }
+        // renege — break the pledge: stats collapse and a challenge is now certain
+        gain('partyStanding', -18, 'Standing');
+        gain('integrity', -15, 'Integrity');
+        gain('profile', -6, 'Profile');
+        applyPollingShock(state, state.player.partyId, -1.5);
+        state.forcedQueue.unshift({
+          kind: playerIsPM(state) ? 'confidenceVote' : 'partyCoup',
+          payload: { broken: true },
+        });
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} breaks pledge to stand down`,
+        });
+        return {
+          text: 'You tear up your own timetable and announce you are staying after all. The betrayal is total and the reaction immediate: your party turns on you, and a formal challenge is already being lodged.',
           deltas,
         };
       }
@@ -1170,7 +1431,7 @@ export function resolveForcedChoice(
       // average strength. Returns an elimination outcome, or null to continue.
       const checkEliminated = (preface: string): { text: string; deltas: StatDelta[] } | null => {
         const avg = (card.payload?.avgRivalStrength as number) ?? 40;
-        const bar = avg * [0.5, 0.7, 0.9][round - 1] + rng.normal(0, 4);
+        const bar = avg * [0.62, 0.82, 1.0][round - 1] + rng.normal(0, 5);
         const current = (state.player.flags._ldrSupport as number) ?? support;
         if (current >= bar) return null;
         // eliminated — the strongest survivor (the finalist) goes on to win
@@ -1193,7 +1454,7 @@ export function resolveForcedChoice(
 
       if (round === 1) {
         let change = 0; let flavour = '';
-        if (choiceIndex === 0) { change = 5 + rng.int(0, 4); flavour = 'The unity pitch lands well with weary colleagues.'; }
+        if (choiceIndex === 0) { change = 3 + rng.int(0, 4); flavour = 'The unity pitch lands well with weary colleagues.'; }
         if (choiceIndex === 1) { change = rng.int(-7, 13); flavour = change > 3 ? 'The radical pitch electrifies the contest.' : 'The radical pitch alarms the cautious middle.'; }
         if (choiceIndex === 2) { change = 3 + rng.int(0, 7); flavour = 'The members love you; MPs grumble about populism.'; }
         addSupport(change);
@@ -1213,7 +1474,7 @@ export function resolveForcedChoice(
         // the hustings: a performance with a real chance of a great or poor night
         let change = 0; let text = '';
         if (choiceIndex === 0) {
-          change = rng.chance(0.55) ? 8 + rng.int(0, 6) : -4 - rng.int(0, 4);
+          change = rng.chance(0.55) ? 8 + rng.int(0, 6) : -6 - rng.int(0, 5);
           text = change > 0
             ? 'The barnstormer brings the hall to its feet — the clip leads every bulletin.'
             : 'The big swing reads as bluster on television; the panel is unkind.';
@@ -1221,7 +1482,7 @@ export function resolveForcedChoice(
           change = 3 + rng.int(0, 5);
           text = 'Measured and detailed: no fireworks, but you look ready for Number 10.';
         } else {
-          change = rng.chance(0.5) ? 7 + rng.int(0, 6) : -6 - rng.int(0, 4);
+          change = rng.chance(0.5) ? 7 + rng.int(0, 6) : -8 - rng.int(0, 5);
           text = change > 0
             ? `You best ${finalistName} in a head-on clash and the room knows it.`
             : `The attack on ${finalistName} backfires — they look gracious, you look desperate.`;
@@ -1264,10 +1525,10 @@ export function resolveForcedChoice(
       // and the runner-up gathers an "anyone-but-the-frontrunner" coalition that
       // grows with how strong the player looks — so contests stay hard to win
       const finalistFinal =
-        baseStrength + (fieldSize - 3) * 2 + 0.38 * support + rng.normal(0, 7);
+        baseStrength + (fieldSize - 3) * 2.5 + 0.42 * support + rng.normal(0, 7);
       const playerFinal = support + change + rng.normal(0, 6);
 
-      if (playerFinal >= finalistFinal && support + change >= LEADERSHIP_WIN_THRESHOLD - 21) {
+      if (playerFinal >= finalistFinal && support + change >= LEADERSHIP_WIN_THRESHOLD - 17) {
         makePlayerLeader(state, rng);
         gain('profile', 15, 'Profile');
         gain('partyStanding', 10, 'Standing');
@@ -1455,6 +1716,267 @@ export function resolveForcedChoice(
       }
       gain('profile', -2, 'Profile');
       return { text: 'Consultancy pays better than Parliament ever did. You bank it and bide your time.', deltas };
+    }
+
+    case 'resignPledge': {
+      if (choiceIndex === 0) {
+        // pledge a departure date — buys breathing room; enforced by the scheduler
+        state.player.flags._pledgeResignBy = state.day + rng.int(240, 400);
+        gain('integrity', 2, 'Integrity');
+        state.player.rebellionCount = Math.max(0, state.player.rebellionCount - 1);
+        applyPollingShock(state, state.player.partyId, 0.3);
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} signals they will stand down within the year`,
+        });
+        return {
+          text: 'You give them a date — vague, but a date. The knives go back in the drawer and the noise subsides. You have bought time. The clock, however, is now running.',
+          deltas,
+        };
+      }
+      if (choiceIndex === 1) {
+        // refuse — escalate to a confidence vote (PM) or a leadership challenge (otherwise)
+        gain('partyStanding', -6, 'Standing');
+        state.forcedQueue.unshift({ kind: playerIsPM(state) ? 'confidenceVote' : 'partyCoup' });
+        return {
+          text: 'You tell them where to put their timetable. The room empties in silence, and within hours the briefing war begins. A formal challenge is now only a matter of time — days, not weeks.',
+          deltas,
+        };
+      }
+      // resign now, on your own terms
+      const party = state.player.partyId;
+      state.player.officeId = null;
+      state.player.officeSinceDay = null;
+      state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how: 'resigned' });
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} resigns the leadership`,
+      });
+      gain('integrity', 4, 'Integrity');
+      resolveNpcLeadership(state, rng, party);
+      return {
+        text: 'You go now, at a lectern of your choosing, while you can still write the headline rather than become it. The party murmurs that it was, in the end, rather dignified.',
+        deltas,
+      };
+    }
+
+    case 'confidenceVote': {
+      const broken = card.payload?.broken === true;
+      const s = state.player.stats;
+      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.competence;
+      const arr = state.government.arrangement;
+      if (arr === 'coalition') strength += 6;
+      else if (arr === 'supplyConfidence') strength += 2;
+      else if (arr === 'minority') strength -= 8;
+      else strength += 10;
+      let text = '';
+      if (choiceIndex === 0) {
+        strength += rng.chance(0.5) ? 12 : -8;
+        gain('profile', 2, 'Profile');
+        text = 'You whip the vote as if your life depends on it, because it does.';
+      } else if (choiceIndex === 1) {
+        strength += 9;
+        gain('integrity', -4, 'Integrity');
+        gain('partyStanding', 2, 'Standing');
+        text = 'Concessions fly out of the door: a review here, a carve-out there, a peerage hinted at.';
+      } else {
+        strength += rng.chance(0.55) ? 14 : -6;
+        text = 'You tie the motion to a dissolution — vote me down and we all face the voters.';
+      }
+      const bar = (broken ? 92 : 74) + rng.normal(0, 6);
+      if (strength + rng.normal(0, 6) >= bar) {
+        applyPollingShock(state, state.player.partyId, 0.3);
+        state.player.rebellionCount = Math.max(0, state.player.rebellionCount - 1);
+        state.player.flags._coupCooldownUntil = state.day + rng.int(180, 360);
+        if ((arr === 'coalition' || arr === 'supplyConfidence') && rng.chance(0.5)) {
+          gain('partyStanding', -3, 'Standing'); // the partner exacts a price for its votes
+        }
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name}'s government survives a confidence vote`,
+        });
+        return { text: `${text} The government survives the division — by a margin that will be argued over for weeks.`, deltas };
+      }
+      // government falls → the country goes to the polls (player fights it as leader)
+      gain('profile', 3, 'Profile');
+      state.nextElectionBy = state.day; // scheduler queues the general election on the next step
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name}'s government loses a confidence vote`,
+      });
+      return {
+        text: `${text} It is not enough. The motion carries; your government has fallen and Parliament is dissolved. You will fight the election as leader — but the country has the last word now.`,
+        deltas,
+      };
+    }
+
+    case 'partyCoup': {
+      const broken = card.payload?.broken === true;
+      const s = state.player.stats;
+      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.competence;
+      let text = '';
+      if (choiceIndex === 0) {
+        strength += rng.chance(0.5) ? 12 : -8;
+        gain('profile', 2, 'Profile');
+        text = 'You confront the ringleaders in person and dare them to put up or shut up.';
+      } else if (choiceIndex === 1) {
+        strength += 7;
+        gain('partyStanding', 2, 'Standing');
+        text = 'You reshuffle the top team, binding rivals in with jobs and shared blame.';
+      } else {
+        strength += 9;
+        gain('integrity', -3, 'Integrity');
+        text = 'You hand the rebels a policy review and a seat at the table. Unlovely, but it splits them.';
+      }
+      const bar = (broken ? 90 : 66) + rng.normal(0, 6);
+      if (strength + rng.normal(0, 6) >= bar) {
+        state.player.rebellionCount = Math.max(0, state.player.rebellionCount - 1);
+        state.player.flags._coupCooldownUntil = state.day + rng.int(180, 360);
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} sees off a leadership challenge`,
+        });
+        return { text: `${text} When the votes are counted you have held on. The plotters melt away — for now.`, deltas };
+      }
+      const party = state.player.partyId;
+      state.player.officeId = null;
+      state.player.officeSinceDay = null;
+      state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how: 'resigned' });
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} is ousted as leader`,
+      });
+      gain('profile', 3, 'Profile');
+      resolveNpcLeadership(state, rng, party);
+      return {
+        text: `${text} It is not enough. The challenge succeeds; you stand aside and watch a rival take the leadership. The backbenches await — and, perhaps, a road back.`,
+        deltas,
+      };
+    }
+
+    case 'coalitionTalks': {
+      const partnerId = card.payload?.partnerId as PartyId | undefined;
+      const partnerName = partnerId ? PARTIES[partnerId].name : 'the smaller party';
+      if (choiceIndex === 0 && partnerId) {
+        state.government.arrangement = 'coalition';
+        state.government.coalitionPartner = partnerId;
+        delete state.government.confidencePartner;
+        gain('partyStanding', -6, 'Standing');
+        gain('integrity', -3, 'Integrity');
+        state.player.rebellionCount += 1;
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[state.player.partyId].name} forms a coalition with the ${PARTIES[partnerId].shortName}`,
+        });
+        return {
+          text: `You strike the deal: ${partnerName} take seats around the cabinet table and a slice of the programme. Your purists are appalled — but the government has a working majority and room to breathe.`,
+          deltas,
+        };
+      }
+      if (choiceIndex === 1 && partnerId) {
+        state.government.arrangement = 'supplyConfidence';
+        state.government.confidencePartner = partnerId;
+        delete state.government.coalitionPartner;
+        gain('partyStanding', -2, 'Standing');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[state.player.partyId].name} to govern with ${PARTIES[partnerId].shortName} confidence-and-supply`,
+        });
+        return {
+          text: `${partnerName} agree to keep you in office vote by vote, in return for a handful of promises. Government on a short leash — but government.`,
+          deltas,
+        };
+      }
+      state.government.arrangement = 'minority';
+      delete state.government.coalitionPartner;
+      delete state.government.confidencePartner;
+      gain('profile', 3, 'Profile');
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${PARTIES[state.player.partyId].name} to govern as a minority`,
+      });
+      return {
+        text: 'You decide to govern alone and dare the House to bring you down. The bold choice, and the fragile one: every vote is now a test of survival.',
+        deltas,
+      };
+    }
+
+    case 'coalitionOffer': {
+      const majorParty = card.payload?.majorParty as PartyId | undefined;
+      const shortfall = (card.payload?.shortfall as number) ?? 10;
+      const partySeats = (card.payload?.partySeats as number) ?? 10;
+      const s = state.player.stats;
+      const leverage = Math.min(1.5, shortfall / Math.max(1, partySeats));
+      if (choiceIndex === 0) {
+        // demand senior seats — the hard, high-reward path
+        const score = 30 * leverage + 0.3 * s.competence + 0.3 * s.profile + rng.normal(0, 10);
+        if (score >= 55) {
+          state.government.arrangement = 'coalition';
+          state.government.coalitionPartner = state.player.partyId;
+          delete state.government.confidencePartner;
+          gain('profile', 10, 'Profile');
+          gain('partyStanding', -4, 'Standing');
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${PARTIES[state.player.partyId].name} enters coalition; ${state.player.name} takes a senior government role`,
+          });
+          return {
+            text: 'You drive a hard bargain and win it: your party enters government with seats around the cabinet table, and you take a senior post at its heart. From the wilderness to Whitehall in a single afternoon.',
+            deltas,
+          };
+        }
+        gain('partyStanding', -4, 'Standing');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `Coalition talks with ${PARTIES[state.player.partyId].name} collapse`,
+        });
+        return {
+          text: `You overplay your hand. ${majorParty ? PARTIES[majorParty].shortName : 'The larger party'} walks away to cut a deal elsewhere — or to dare the House alone. Your activists wanted purity anyway; now they have it.`,
+          deltas,
+        };
+      }
+      if (choiceIndex === 1) {
+        // junior post + policy win — safer, smaller
+        state.government.arrangement = 'coalition';
+        state.government.coalitionPartner = state.player.partyId;
+        delete state.government.confidencePartner;
+        gain('partyStanding', -2, 'Standing');
+        state.forcedQueue.unshift({
+          kind: 'reshuffleOffer',
+          payload: { officeId: `min_${rng.pick(Object.keys(DEPARTMENTS))}` },
+        });
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[state.player.partyId].name} joins a coalition government`,
+        });
+        return {
+          text: 'You settle for a real win on your signature issue and a foot inside government. Modest, deliverable — and more than your party has had in a generation.',
+          deltas,
+        };
+      }
+      if (choiceIndex === 2) {
+        state.government.arrangement = 'supplyConfidence';
+        state.government.confidencePartner = state.player.partyId;
+        delete state.government.coalitionPartner;
+        gain('integrity', 3, 'Integrity');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[state.player.partyId].name} agrees confidence-and-supply`,
+        });
+        return {
+          text: 'You keep your hands clean and your independence intact: support on the big votes in return for concessions, but no ministerial cars. Your members can still look themselves in the mirror.',
+          deltas,
+        };
+      }
+      gain('partyStanding', 2, 'Standing');
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${PARTIES[state.player.partyId].name} declines to prop up a government`,
+      });
+      return {
+        text: 'You stay out of it entirely. Let the big parties own the mess; you will hold them to account from the cleanliness of opposition.',
+        deltas,
+      };
     }
 
     default:

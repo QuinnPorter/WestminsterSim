@@ -3,7 +3,9 @@ import { DecisionCard } from '../types/content';
 import { DEPARTMENTS, OFFICES } from '../data/offices';
 import { PARTIES } from '../data/parties';
 import { getRelationship, relationshipName } from './relationships';
-import { playerInGovernment, playerTier, playerIsLeader } from './career';
+import {
+  playerInGovernmentBloc, playerTier, playerIsLeader, playerLeaderRole,
+} from './career';
 import { Rng } from './rng';
 
 // ---------- key moments ----------
@@ -15,7 +17,12 @@ export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
     card.kind === 'campaign' ||
     card.kind === 'leadershipStand' ||
     card.kind === 'leadershipBallot' ||
-    card.kind === 'pmPressure'
+    card.kind === 'pmPressure' ||
+    card.kind === 'resignPledge' ||
+    card.kind === 'confidenceVote' ||
+    card.kind === 'partyCoup' ||
+    card.kind === 'coalitionTalks' ||
+    card.kind === 'coalitionOffer'
   );
 }
 
@@ -24,6 +31,10 @@ export function keyMomentLabel(card: DrawnCard): string {
   if (card.kind === 'campaign') return 'General election';
   if (card.kind === 'leadershipStand' || card.kind === 'leadershipBallot') return 'Leadership contest';
   if (card.kind === 'pmPressure') return 'Crisis in Number 10';
+  if (card.kind === 'confidenceVote') return 'Confidence vote';
+  if (card.kind === 'partyCoup') return 'Leadership challenge';
+  if (card.kind === 'resignPledge') return 'Pressure to resign';
+  if (card.kind === 'coalitionTalks' || card.kind === 'coalitionOffer') return 'Coalition talks';
   return 'Key moment';
 }
 
@@ -68,7 +79,14 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
   const tier = playerTier(state);
   if (req.minTier !== undefined && tier < req.minTier) return false;
   if (req.maxTier !== undefined && tier > req.maxTier) return false;
-  if (req.inGovernment !== undefined && playerInGovernment(state) !== req.inGovernment) return false;
+  // a coalition junior partner holds real government office, so counts as
+  // "in government" for governing-vs-opposition card gating
+  if (req.inGovernment !== undefined && playerInGovernmentBloc(state) !== req.inGovernment) return false;
+  if (req.leaderRole) {
+    const role = playerLeaderRole(state);
+    if (!role || !req.leaderRole.includes(role)) return false;
+  }
+  if (req.arrangementIn && !req.arrangementIn.includes(state.government.arrangement)) return false;
   if (req.era && !req.era.includes(state.startEra)) return false;
   if (req.partyIn && !req.partyIn.includes(state.player.partyId)) return false;
   if (req.department) {
@@ -130,7 +148,11 @@ export function drawCard(
     // as leader/PM, governance dominates: heavily down-weight any card that
     // isn't a leader-tier (minTier 5) governance card
     if (leader && (c.requires?.minTier ?? 0) < 5) {
-      w *= 0.1;
+      w *= 0.04;
+    }
+    // and bias the draw toward cards written for this specific leader role
+    if (leader && c.requires?.leaderRole?.includes(playerLeaderRole(state) ?? 'pm')) {
+      w *= 1.5;
     }
     return w;
   });

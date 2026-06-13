@@ -71,7 +71,7 @@ export const JUNIOR_MINISTER_CARDS: DecisionCard[] = [
     body: 'Buried in your {department} portfolio is the small, unglamorous reform you actually came into politics to do. Officials say there is a sliver of legislative time — if you spend your political capital on it.',
     tags: ['policy', 'serious'],
     weight: 12, cooldownDays: 600,
-    requires: { minTier: 3, maxTier: 4 },
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
     choices: [
       {
         label: 'Spend the capital',
@@ -91,7 +91,7 @@ export const JUNIOR_MINISTER_CARDS: DecisionCard[] = [
     body: 'A confidential {department} memo appears verbatim in the Sunday papers. There were six people in the meeting. You were one of them. The Secretary of State has ordered a leak inquiry with the enthusiasm of someone who already has a suspect.',
     tags: ['scandal', 'westminster'],
     weight: 10, cooldownDays: 450,
-    requires: { minTier: 3, maxTier: 4 },
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
     choices: [
       {
         label: 'Cooperate fully and calmly',
@@ -131,7 +131,7 @@ export const JUNIOR_MINISTER_CARDS: DecisionCard[] = [
     body: 'Two hours in front of the select committee on the {department} brief. The chair has done their homework. Unfortunately, so has the member at the end, who has found the one number that doesn\'t add up.',
     tags: ['westminster', 'serious'],
     weight: 12, cooldownDays: 300,
-    requires: { minTier: 3, maxTier: 4 },
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
     choices: [
       {
         label: 'Concede the number, own the fix',
@@ -151,7 +151,7 @@ export const JUNIOR_MINISTER_CARDS: DecisionCard[] = [
     body: 'A {department} programme you built from nothing finally delivers spectacular results. The Secretary of State\'s office has drafted the press release. Your name appears in it zero times.',
     tags: ['party', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { minTier: 3, maxTier: 3 },
+    requires: { minTier: 3, maxTier: 3, inGovernment: true },
     choices: [
       {
         label: 'Let them have it',

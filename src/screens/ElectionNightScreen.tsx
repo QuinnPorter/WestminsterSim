@@ -104,7 +104,11 @@ function NationalPicture({ result }: { result: ElectionResult }) {
       ))}
       <p className="en-outcome" style={{ color: partyTextColour(result.governingParty) }}>
         {PARTIES[result.governingParty].name}{' '}
-        {result.outcome === 'majority' ? 'wins a majority' : 'to govern in a minority'}.
+        {result.outcome === 'majority'
+          ? 'wins a majority'
+          : result.outcome === 'hung'
+            ? 'largest party in a hung parliament'
+            : 'to govern in a minority'}.
       </p>
     </div>
   );

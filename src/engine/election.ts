@@ -1,5 +1,5 @@
 import {
-  CandidateResult, ConstituencyResult, ElectionResult, GameState, PartyId,
+  CandidateResult, ConstituencyResult, ElectionOutcome, ElectionResult, GameState, PartyId,
   SyntheticSeat,
 } from '../types/game';
 import { PARTIES, POLLED_PARTIES } from '../data/parties';
@@ -186,7 +186,16 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
   const sfSeats = seats.sf ?? 0;
   const votingSeats = 650 - sfSeats - 1; // minus Speaker
   const govSeats = seats[governingParty] ?? 0;
-  const majority = govSeats - (votingSeats - govSeats);
+
+  // classify by the gap to a working majority: a clear majority, a "hung"
+  // parliament (close enough that a partner can form a working arrangement),
+  // or a bare minority further out. Both sub-majority outcomes are unstable.
+  const seatsForMajority = Math.floor(votingSeats / 2) + 1;
+  const HUNG_BAND = 16;
+  const outcome: ElectionOutcome =
+    govSeats >= seatsForMajority ? 'majority'
+      : govSeats >= seatsForMajority - HUNG_BAND ? 'hung'
+        : 'minority';
 
   const result: ElectionResult = {
     id: `ge_${state.day}`,
@@ -194,7 +203,7 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
     seats,
     voteShares: national,
     playerResult,
-    outcome: majority > 0 ? 'majority' : 'minority',
+    outcome,
     governingParty,
     playerHeldSeat: playerWonSeat,
   };

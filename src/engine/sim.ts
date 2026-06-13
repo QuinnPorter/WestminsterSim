@@ -23,6 +23,21 @@ export interface SimSummary {
   /** cardId -> times seen, for repetition analysis */
   cardCounts: Record<string, number>;
   finalStats: GameState['player']['stats'];
+  // ---- rebalance metrics ----
+  electionMajority: number;
+  electionHung: number;
+  electionMinority: number;
+  coalitionsFormed: number;
+  /** a sub-majority government fell mid-term (collapse or lost confidence vote) */
+  govFellEarly: number;
+  /** the player was ousted from the leadership (coup / lost confidence / broken pledge) */
+  forcedOutLeader: number;
+  honouredPledge: number;
+  brokenPledge: number;
+  /** the player's (minor) party won a government office via a coalition */
+  coalitionOfficeWon: boolean;
+  /** mean length of the player's office spells, in years (cycling cadence) */
+  avgPostTenureYears: number;
 }
 
 export interface SimOptions {
@@ -110,7 +125,33 @@ export function simulateCareer(opts: SimOptions): SimSummary {
     .filter((h) => h.kind === 'event')
     .map((h) => (h as { headline: string }).headline);
 
+  const outcomes = Object.values(game.elections);
+  const countH = (re: RegExp) => headlines.filter((h) => re.test(h)).length;
+
+  // average office-spell length (cycling cadence)
+  const roleChanges = game.history.filter((h) => h.kind === 'roleChange') as
+    { date: number; officeId: string | null }[];
+  let spellSum = 0;
+  let spellCount = 0;
+  for (let i = 0; i < roleChanges.length; i++) {
+    if (roleChanges[i].officeId !== null) {
+      const end = i + 1 < roleChanges.length ? roleChanges[i + 1].date : game.day;
+      spellSum += end - roleChanges[i].date;
+      spellCount++;
+    }
+  }
+
   return {
+    electionMajority: outcomes.filter((e) => e.outcome === 'majority').length,
+    electionHung: outcomes.filter((e) => e.outcome === 'hung').length,
+    electionMinority: outcomes.filter((e) => e.outcome === 'minority').length,
+    coalitionsFormed: countH(/forms a coalition|enters coalition|joins a coalition government/),
+    govFellEarly: countH(/government falls|loses a confidence vote/),
+    forcedOutLeader: countH(/is ousted as leader|is forced out as Prime Minister|breaks pledge to stand down/),
+    honouredPledge: countH(/stands down as promised/),
+    brokenPledge: countH(/breaks pledge to stand down/),
+    coalitionOfficeWon: headlines.some((h) => /takes a senior government role|joins a coalition government/.test(h)),
+    avgPostTenureYears: spellCount > 0 ? (spellSum / spellCount) / 365 : 0,
     npcPmResigned: headlines.some((h) =>
       /resigns as Prime Minister|announces resignation after/.test(h)
     ),

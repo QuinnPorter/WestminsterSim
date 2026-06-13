@@ -16,6 +16,10 @@ export interface Requirement {
   /** flag -> required value; `false` means "must be unset or false" */
   flags?: Record<string, boolean | number>;
   partyIn?: PartyId[];
+  /** only fire when the player-leader is in this role (pm/lo/minorLeader) */
+  leaderRole?: ('pm' | 'lo' | 'minorLeader')[];
+  /** only fire under these government arrangements (coalition-life cards) */
+  arrangementIn?: ('majority' | 'minority' | 'supplyConfidence' | 'coalition')[];
 }
 
 export type CardTrigger =

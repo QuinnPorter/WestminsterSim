@@ -10,7 +10,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     speaker: 'rival',
     tags: ['crisis', 'party', 'serious'],
     weight: 11, cooldownDays: 420,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Statesmanlike: thank them, move on fast',
@@ -30,7 +30,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The whips bring grim arithmetic: a chunk of your own side will abstain on tomorrow\'s flagship vote to send you a message. Lose it and your authority may not recover. The rebels want concessions; the press wants blood.',
     tags: ['party', 'crisis', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Make it a confidence issue — dare them',
@@ -50,7 +50,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The intelligence chiefs wake you at 5am: a credible threat, a narrow window, and a choice only you can make. The advice is balanced, which is another way of saying the call is yours alone.',
     tags: ['crisis', 'serious'],
     weight: 9, cooldownDays: 500,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Authorise the operation',
@@ -74,7 +74,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A think tank wants you to publish detailed costed plans — to look "ready for office". Your shadow chancellor is terrified: every promise becomes a target, every number a hostage. But vagueness invites the charge that you stand for nothing.',
     tags: ['policy', 'media'],
     weight: 12, cooldownDays: 360,
-    requires: { minTier: 5, inGovernment: false },
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Publish bold, costed plans',
@@ -94,7 +94,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'You can use your opposition day debate to lay a parliamentary trap — a motion crafted to split the government benches and tempt their rebels into the wrong lobby. It is procedural chess, and it could embarrass them or backfire as a gimmick.',
     tags: ['westminster', 'party'],
     weight: 12, cooldownDays: 320,
-    requires: { minTier: 5, inGovernment: false },
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Spring the trap',
@@ -117,7 +117,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Your own party\'s factions are at each other\'s throats again, briefing the papers instead of fighting the government. As Leader of the Opposition you can knock heads together — or let them tire themselves out.',
     tags: ['party', 'serious'],
     weight: 11, cooldownDays: 360,
-    requires: { minTier: 5, inGovernment: false },
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Bang heads together personally',
@@ -137,7 +137,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Your first PMQs from the government side of the box. Six questions from the Leader of the Opposition, who has been preparing for this moment slightly longer than you have.',
     tags: ['westminster', 'media'],
     weight: 18, cooldownDays: 9999, oncePerCareer: true,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Command the chamber',
@@ -157,7 +157,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Nurses, railways, border staff: a coordinated wave of public-sector strikes, and the unions have asked for a meeting with you personally — over the heads of three of your secretaries of state.',
     tags: ['crisis', 'policy', 'serious'],
     weight: 12, cooldownDays: 450,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Take the meeting yourself',
@@ -182,7 +182,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A safe seat — YOUR safe seat, the kind the party weighs rather than counts — has fallen on a swing that has psephologists using words like "unprecedented" with visible enjoyment. The post-mortem lands on your desk along with the morning\'s knife-sharpening from your own benches.',
     tags: ['party', 'crisis'],
     weight: 11, cooldownDays: 500,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'Own it — "we hear you"',
@@ -207,7 +207,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Your flagship policy is dying in the polls, on your backbenches, and possibly in the courts. Strategy says reverse it now and eat two bad days; pride says a leader who U-turns is a leader who can be turned.',
     tags: ['policy', 'party', 'serious'],
     weight: 11, cooldownDays: 450,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'Reverse it cleanly',
@@ -230,7 +230,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The public inquiry — the one into the thing your government would rather forget — reports on Thursday. You have the advance copy. It is worse than feared in two chapters and better in one, and the chair has a gift for quotable condemnation.',
     tags: ['scandal', 'serious'],
     weight: 10, cooldownDays: 600,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Accept every recommendation, full apology',
@@ -250,7 +250,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Inflation has made the weekly shop a news genre. A supermarket worker asks you, live on a walkabout, if you know the price of milk. You do — you were briefed at 6am — but the deeper question is what your government does about it.',
     tags: ['policy', 'media', 'serious'],
     weight: 12, cooldownDays: 420,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Big intervention — caps and support',
@@ -270,7 +270,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Tonight\'s vote on your signature bill is, the whips confirm with grey faces, on an absolute knife edge. Two of your MPs are wavering for honourable reasons and one for purchasable ones. The division bell rings in six hours.',
     tags: ['westminster', 'party', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'Persuade the honourable two yourself',
@@ -293,7 +293,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Your resignation honours draft has leaked, and one name is detonating: a major donor whose company is under investigation. Withdrawing the name admits fault; keeping it feeds a week of sleaze coverage.',
     tags: ['scandal', 'party'],
     weight: 9, cooldownDays: 600,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'Pull the name immediately',
@@ -313,7 +313,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A profile writer asks the question every leader pretends not to think about: who comes next? Around your cabinet table sit three answers, each of whom has noticed you noticing them.',
     tags: ['party', 'personal', 'serious'],
     weight: 8, cooldownDays: 600,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'Anoint a favourite, quietly',
@@ -333,7 +333,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Your first major international summit. The agenda is trade, security and a group photograph in which everyone jostles politely for the centre. One leader, notoriously difficult, has requested a bilateral.',
     tags: ['westminster', 'media'],
     weight: 11, cooldownDays: 350,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Charm the difficult one',
@@ -356,7 +356,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Your whips report a rebellion brewing on the flagship bill — thirty of your own MPs, enough to wound. Their ringleader wants a meeting. The whips want you to crush it. Your coffee wants drinking before it goes cold again.',
     tags: ['party', 'serious'],
     weight: 12, cooldownDays: 300,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Face the rebels yourself',
@@ -376,7 +376,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'One of your cabinet has been caught in a scandal that is — your comms director\'s phrase — "survivable but expensive". The press pack is in full cry. Due process says wait; the polls say act.',
     tags: ['scandal', 'party', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'Sack them immediately',
@@ -399,7 +399,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The government has had its worst week in months. The open goal gapes. Your office offers two scripts: statesmanlike restraint, or the full-throated attack the membership is howling for.',
     tags: ['westminster', 'party'],
     weight: 13, cooldownDays: 280,
-    requires: { minTier: 5, inGovernment: false },
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Statesmanlike — look like the next PM',
@@ -419,7 +419,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Between the boxes and the crises, a thought keeps surfacing: what is this premiership — or this leadership — actually for? Your team can clear space for one defining project. Only one.',
     tags: ['policy', 'serious'],
     weight: 8, cooldownDays: 700,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'The generational project',
@@ -439,7 +439,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The phone by your bed rings at 3:04am. A situation is developing overseas involving British nationals. The duty clerk talks fast; the options are all bad; the decision window is measured in hours and it is yours alone.',
     tags: ['crisis', 'serious'],
     weight: 9, cooldownDays: 600,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Authorise the risky extraction',
@@ -462,7 +462,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The opposition has tabled a motion of no confidence in your government. You will almost certainly win it — but the margin, and the speech, will set the weather for months. Your own rebels are watching.',
     tags: ['westminster', 'crisis', 'serious'],
     weight: 12, cooldownDays: 500,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'A defiant, unifying despatch-box performance',
@@ -482,7 +482,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Your Chancellor — or someone nearly as load-bearing — has put a resignation letter on your desk over a policy you insisted on. Accept it and look weak; refuse it and look weaker; a third path is forming in your mind.',
     tags: ['party', 'crisis', 'serious'],
     weight: 11, cooldownDays: 500,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Accept it and promote a loyalist',
@@ -502,7 +502,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A global shock hits and the markets are pricing in pain. Your Chancellor wants emergency measures; the cost is enormous either way. Whatever you say at the lectern in an hour will move money and votes.',
     tags: ['crisis', 'policy', 'serious'],
     weight: 11, cooldownDays: 450,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'A big, costly intervention',
@@ -522,7 +522,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'At a tense international summit, an ally delivers an ultimatum that would cost Britain dearly to accept and cost it diplomatically to refuse. The room — and the travelling press pack — waits on your answer.',
     tags: ['westminster', 'crisis', 'media'],
     weight: 10, cooldownDays: 500,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Stand firm — national interest first',
@@ -545,7 +545,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A devolved first minister is staging a very public constitutional confrontation with your government — partly principle, mostly positioning. The cameras love it. Your unionist instincts and your strategists disagree on the response.',
     tags: ['westminster', 'policy', 'serious'],
     weight: 9, cooldownDays: 500,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Refuse the fight, offer partnership',
@@ -565,7 +565,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The intelligence services brief you, ashen-faced, on a breach that is both a national security problem and — once it leaks, which it will — a political grenade. You control the timing of almost nothing here.',
     tags: ['crisis', 'scandal', 'serious'],
     weight: 8, cooldownDays: 600,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Get ahead of it — statement to the House',
@@ -588,7 +588,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'Halfway through the parliament, your delivery unit lays out the scorecard: the flagship pledges are amber-to-red, the money is tight, and the clock is loud. Where do you point the machine of government now?',
     tags: ['policy', 'serious'],
     weight: 10, cooldownDays: 500,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Ruthlessly prioritise one big pledge',
@@ -608,7 +608,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A minister you tried to move has refused to budge and gone to the papers; another you sacked is on the airwaves being magnanimous and wounded. A routine reshuffle is becoming a story about your authority.',
     tags: ['party', 'media', 'crisis'],
     weight: 9, cooldownDays: 450,
-    requires: { minTier: 5 },
+    requires: { minTier: 5, leaderRole: ['pm', 'lo'] },
     choices: [
       {
         label: 'Face it down — your gift, your call',
@@ -628,7 +628,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'The government is in visible trouble — splits, scandals, a stalling economy. As Leader of the Opposition this is your moment, but a wounded government can lash out, and an over-eager opposition can look like it\'s measuring the curtains.',
     tags: ['westminster', 'party'],
     weight: 12, cooldownDays: 350,
-    requires: { minTier: 5, inGovernment: false },
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
     choices: [
       {
         label: 'A government-in-waiting prospectus',
@@ -648,7 +648,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'You are Leader of the Opposition, the polls are flat, and a clutch of your own MPs are briefing that you "can\'t win". {rival} is conspicuously saying nothing, which says everything. Letters, it is whispered, are being written.',
     tags: ['party', 'crisis', 'serious'],
     weight: 10, cooldownDays: 450,
-    requires: { minTier: 5, inGovernment: false },
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Confront the plotters head-on',
@@ -673,7 +673,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A government seat has fallen vacant in exactly the kind of place you need to win to govern. As LO you can pour everything in and make it a referendum on the government — or manage expectations and protect yourself from a flop.',
     tags: ['party', 'media'],
     weight: 10, cooldownDays: 400,
-    requires: { minTier: 5, inGovernment: false },
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Throw the kitchen sink at it',
@@ -696,7 +696,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'You have been PM long enough that the question has changed from "what next?" to "how will this end?". Go on too long and you\'ll be pushed; go too soon and the work is unfinished. A loyal ally asks, gently, if you\'ve thought about the timing.',
     tags: ['party', 'personal', 'serious'],
     weight: 7, cooldownDays: 700,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Name a departure on your own terms',
@@ -716,7 +716,7 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
     body: 'A fast-moving public health emergency lands on your desk with incomplete data and impossible trade-offs: act early and over-react, or wait for certainty that may arrive too late. The scientists give ranges, not answers. The decision is yours alone.',
     tags: ['crisis', 'policy', 'serious'],
     weight: 8, cooldownDays: 700,
-    requires: { minTier: 5, inGovernment: true },
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
     choices: [
       {
         label: 'Act hard and early',

@@ -22,7 +22,7 @@ export interface CreationInput {
   seed?: number;
 }
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -42,6 +42,7 @@ function buildPlayer(input: CreationInput, seatId: string, startDay: number): Pl
       integrity: clamp(55 + (mods.integrity ?? 0), 0, 100),
     },
     officeId: null,
+    officeSinceDay: null,
     rebellionCount: 0,
     flags: {},
     seatId,
@@ -181,6 +182,7 @@ export function createNewGame(input: CreationInput): GameState {
       shadowCabinet,
       majority,
       pmSinceDay: startDay,
+      arrangement: majority > 0 ? 'majority' : 'minority',
     },
     polling: { shares: { ...data.baselineShares }, lastUpdated: startDay },
     pollHistory: [{ day: startDay, shares: { ...data.baselineShares } }],

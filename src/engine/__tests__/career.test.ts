@@ -137,3 +137,67 @@ describe('crossing the floor', () => {
     expect(game.player.flags.defected).toBeUndefined();
   });
 });
+
+describe('rebalance targets (difficulty & coalitions)', () => {
+  const RUNS = 120;
+  const YEARS = 25;
+  const results: SimSummary[] = [];
+  for (let i = 0; i < RUNS; i++) {
+    // bias the policy toward ambition so leadership/governing paths are exercised
+    results.push(simulateCareer({ seed: 41000 + i * 13, years: YEARS, ambition: 0.7 }));
+  }
+
+  const sum = (f: (r: SimSummary) => number) => results.reduce((a, r) => a + f(r), 0);
+  const maj = sum((r) => r.electionMajority);
+  const hung = sum((r) => r.electionHung);
+  const min = sum((r) => r.electionMinority);
+  const totalElections = maj + hung + min;
+  const subMajority = hung + min;
+  const coalitions = sum((r) => r.coalitionsFormed);
+  const fellEarly = sum((r) => r.govFellEarly);
+  const forcedOut = sum((r) => r.forcedOutLeader);
+  const honoured = sum((r) => r.honouredPledge);
+  const broken = sum((r) => r.brokenPledge);
+  const coalitionOffice = results.filter((r) => r.coalitionOfficeWon).length;
+  const leaderRate = results.filter((r) => r.becameLeader).length / RUNS;
+  const tenures = results.map((r) => r.avgPostTenureYears).filter((t) => t > 0);
+  const avgTenure = tenures.reduce((a, b) => a + b, 0) / Math.max(1, tenures.length);
+  const avgElections = sum((r) => r.electionsContested) / RUNS;
+
+  // eslint-disable-next-line no-console
+  console.log('REBALANCE', JSON.stringify({
+    totalElections, majRate: +(maj / totalElections).toFixed(3),
+    subMajRate: +(subMajority / totalElections).toFixed(3),
+    coalitionRateOfSubMaj: +(coalitions / Math.max(1, subMajority)).toFixed(3),
+    coalitions, fellEarly, forcedOut, honoured, broken, coalitionOffice,
+    leaderRate: +leaderRate.toFixed(3), avgTenure: +avgTenure.toFixed(2),
+    avgElections: +avgElections.toFixed(2),
+  }));
+
+  it('majorities are harder but common; sub-majority parliaments occur', () => {
+    expect(maj / totalElections).toBeGreaterThan(0.30);
+    expect(maj / totalElections).toBeLessThan(0.75);
+    expect(subMajority / totalElections).toBeGreaterThan(0.18);
+  });
+
+  it('coalitions and minority collapses both happen', () => {
+    expect(coalitions).toBeGreaterThan(0);
+    expect(fellEarly).toBeGreaterThan(0);
+  });
+
+  it('leadership is losable and winnable', () => {
+    expect(leaderRate).toBeGreaterThan(0.01);
+    expect(leaderRate).toBeLessThan(0.6);
+    expect(forcedOut).toBeGreaterThan(0);
+  });
+
+  it('elections stay on a sane cadence with instability on', () => {
+    expect(avgElections).toBeGreaterThan(2.5);
+    expect(avgElections).toBeLessThan(7);
+  });
+
+  it('positions cycle on a realistic cadence', () => {
+    expect(avgTenure).toBeGreaterThan(0.8);
+    expect(avgTenure).toBeLessThan(3.5);
+  });
+});

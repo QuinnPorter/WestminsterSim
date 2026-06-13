@@ -6,7 +6,7 @@ import {
   applyElectionAftermath, materializeForced, playerIsPM, runReshuffle,
   openLeadershipVacancy, playerIsLeader, onFrontbenchTrack, onMinorPartyTrack,
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS,
-  npcReshuffle, npcFrontbencherRetires,
+  npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { runElection } from './election';
@@ -173,14 +173,14 @@ const PM_SNAP_ELECTION = 0.012;         // rare snap on an exceptional polling l
 const PLAYER_PM_ELECTION_PROMPT = 0.08;
 const PM_LONGEVITY_RESIGN = 0.015;      // PM stands down after a long innings
 const PM_SCANDAL_RESIGN = 0.0025;       // PM felled by scandal
-const LEADER_COLLAPSE_HAZARD = 0.02;
+const LEADER_COLLAPSE_HAZARD = 0.028;   // NPC leader felled by a sustained polling mire
 const NPC_LEADER_SCANDAL = 0.0025;      // an NPC leader felled by scandal
 const NPC_RESHUFFLE_HAZARD = 0.04;      // an NPC-led front bench reshuffles itself
 const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
 const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
 const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
 const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
-const MINOR_LEADER_CHURN = 0.012;       // a minor party changes its own leader
+const MINOR_LEADER_CHURN = 0.02;        // a minor party changes its own leader
 
 // ---------- the brain ----------
 
@@ -280,23 +280,92 @@ export function nextStep(state: GameState, rng: Rng): void {
     return;
   }
 
+  // a pledged departure date has arrived — honour it (or break it and pay)
+  {
+    const pledge = state.player.flags._pledgeResignBy as number | undefined;
+    if (playerIsLeader(state) && pledge !== undefined && state.day >= pledge) {
+      delete state.player.flags._pledgeResignBy;
+      state.forcedQueue.push({ kind: 'resignPrompt', payload: { reason: 'pledgeHonoured' } });
+      nextStep(state, rng);
+      return;
+    }
+  }
+
+  // minority/coalition instability: sub-majority governments are fragile and
+  // often fall mid-term — weak minorities far more than strong ones, coalitions
+  // least of all. Applies whether the player or an NPC holds Number 10.
+  {
+    const arr = state.government.arrangement;
+    const yearsSinceFormation = (state.day - state.parliamentStart) / 365;
+    const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
+    if (arr !== 'majority' && yearsSinceFormation > 1 && state.day >= coupCool) {
+      const shortfall = Math.max(0, Math.ceil(-state.government.majority / 2));
+      let h = 0.012 + 0.0008 * shortfall;
+      if (arr === 'coalition') h *= 0.4;
+      else if (arr === 'supplyConfidence') h *= 0.7;
+      h += 0.0015 * (yearsSinceFormation - 1);
+      if (rng.chance(Math.min(0.09, h))) {
+        if (playerIsPM(state)) {
+          state.forcedQueue.push({ kind: 'confidenceVote' });
+        } else {
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${PARTIES[state.government.governingParty].name} government falls; a general election is called`,
+          });
+          queueGeneralElection(state);
+        }
+        nextStep(state, rng);
+        return;
+      }
+    }
+  }
+
+  const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
+
   // the pressures of Number 10: a PM under fire from poor polling, scandal,
   // their own rebellious backbenches or sheer longevity faces an authority
   // crisis — usually survivable, occasionally fatal to the premiership
-  if (playerIsPM(state)) {
+  if (playerIsPM(state) && state.day >= coupCool) {
     const polls = partyPolling(state, state.player.partyId);
     const tenureYears = (state.day - state.government.pmSinceDay) / 365;
     let pressure = 0;
-    if (polls < 30) pressure += (30 - polls) * 0.7;
-    if (state.player.flags.scandal) pressure += 12;
-    pressure += state.player.rebellionCount * 4;
-    if (tenureYears > 4) pressure += (tenureYears - 4) * 3;
-    const hazard = Math.min(0.1, pressure / 300);
+    if (polls < 30) pressure += (30 - polls) * 0.9;
+    if (state.player.flags.scandal) pressure += 15;
+    pressure += state.player.rebellionCount * 5;
+    if (tenureYears > 4) pressure += (tenureYears - 4) * 4;
+    const hazard = Math.min(0.14, pressure / 260);
     if (hazard > 0 && rng.chance(hazard)) {
       // most authority crises are survivable; a rare "brutal" one can topple
-      // even a strong PM
+      // even a strong PM. Under acute pressure the grey suits may instead offer
+      // a face-saving deal: pledge to go by a date (the resignPledge event).
       const severe = rng.chance(0.15);
-      state.forcedQueue.push({ kind: 'pmPressure', payload: { severe } });
+      if (severe && rng.chance(0.4)) {
+        state.forcedQueue.push({ kind: 'resignPledge' });
+      } else {
+        state.forcedQueue.push({ kind: 'pmPressure', payload: { severe } });
+      }
+      nextStep(state, rng);
+      return;
+    }
+  }
+
+  // the same pressures bear on a Leader of the Opposition or a minor-party
+  // leader: a polling mire, rebellions, longevity, or simply failing to improve
+  // on the position they inherited can trigger a heave (partyCoup) — or a deal
+  if (playerIsLeader(state) && !playerInGovernment(state) && state.day >= coupCool) {
+    const polls = partyPolling(state, state.player.partyId);
+    const tenureYears = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
+    const tookOver = (state.player.flags._leaderTookOverPolls as number) ?? polls;
+    const floor = onMinorPartyTrack(state) ? 12 : 25;
+    let pressure = 0;
+    if (polls < floor) pressure += (floor - polls) * 0.8;
+    pressure += state.player.rebellionCount * 4;
+    if (tenureYears > 3) pressure += (tenureYears - 3) * 3;
+    if (polls < tookOver - 2) pressure += (tookOver - polls) * 0.6;
+    const hazard = Math.min(0.1, pressure / 280);
+    if (hazard > 0 && rng.chance(hazard)) {
+      if (rng.chance(0.4)) state.forcedQueue.push({ kind: 'resignPledge' });
+      else state.forcedQueue.push({ kind: 'partyCoup' });
       nextStep(state, rng);
       return;
     }
@@ -317,6 +386,28 @@ export function nextStep(state: GameState, rng: Rng): void {
       if (state.forcedQueue.length > 0) {
         nextStep(state, rng);
         return;
+      }
+    }
+  }
+
+  // positions cycle: after a spell in post (mean ~2 years, with a long tail) a
+  // move comes calling — a lateral switch to a new brief or a promotion, never a
+  // demotion, so the player doesn't stagnate for years in the same department
+  if (onFrontbenchTrack(state) && !playerIsLeader(state) && state.player.officeId) {
+    const t = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
+    if (t > 0.75) {
+      const base = 0.06 + 0.06 * (t - 1);
+      const tierDamp = playerTier(state) === 4 ? 0.6 : 1; // secretaries of state are stickier
+      if (rng.chance(Math.min(0.22, base * tierDamp))) {
+        const target = nextOfficeFor(state, rng);
+        if (target) {
+          state.forcedQueue.push({
+            kind: 'reshuffleOffer',
+            payload: { officeId: target, sideways: OFFICES[target].tier <= playerTier(state) },
+          });
+          nextStep(state, rng);
+          return;
+        }
       }
     }
   }
@@ -371,12 +462,16 @@ export function nextStep(state: GameState, rng: Rng): void {
       nextStep(state, rng);
       return;
     }
-    // a spokesperson/critic offer — a gentler bar than the main parties
+    // a spokesperson/critic offer — a gentler bar than the main parties. But if
+    // the party is in a coalition, this is a real government post, and those are
+    // hard to come by for a junior partner: a stiffer bar than usual.
     if (rng.chance(MINOR_CRITIC_HAZARD)) {
       const target = nextOfficeFor(state, rng);
       if (target) {
         const score = eligibilityScore(state, target) + rng.normal(0, 6);
-        if (score >= (OFFER_THRESHOLDS[OFFICES[target].tier] ?? 60) - 8) {
+        const baseBar = OFFER_THRESHOLDS[OFFICES[target].tier] ?? 60;
+        const bar = playerInGovernmentBloc(state) ? baseBar + 5 : baseBar - 8;
+        if (score >= bar) {
           state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: target } });
           nextStep(state, rng);
           return;
@@ -394,7 +489,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     if (leaderId === 'player') continue;
 
     // leader churn: scandal (any time, rare) or a sustained polling collapse
-    const collapseThreshold = isGov ? 21 : 17;
+    const collapseThreshold = isGov ? 23 : 19;
     const scandalFall = rng.chance(NPC_LEADER_SCANDAL);
     const collapse = partyPolling(state, party) < collapseThreshold && rng.chance(LEADER_COLLAPSE_HAZARD);
     if (scandalFall || collapse) {

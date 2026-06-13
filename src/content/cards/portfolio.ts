@@ -10,7 +10,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The Treasury\'s great steering wheel is in your hands. Officials present the fork in the road: borrow to invest and bet on growth, or balance the books and bet on credibility. Whole careers — and governments — have died on both paths.',
     tags: ['policy', 'serious'],
     weight: 18, cooldownDays: 900,
-    requires: { department: ['treasury'], minTier: 4, flags: { dir_treasury: false } },
+    requires: { inGovernment: true,department: ['treasury'], minTier: 4, flags: { dir_treasury: false } },
     choices: [
       {
         label: 'Borrow to invest — go for growth',
@@ -30,7 +30,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'Eighteen months after your investment budget, the quarterly figures land on your desk an hour before the world sees them. Your private secretary\'s face gives nothing away, which is itself information.',
     tags: ['policy', 'serious'],
     weight: 20, cooldownDays: 9999, oncePerCareer: true,
-    requires: { department: ['treasury'], minTier: 4, flags: { dir_treasury: 1 } },
+    requires: { inGovernment: true,department: ['treasury'], minTier: 4, flags: { dir_treasury: 1 } },
     choices: [
       {
         label: 'Open the envelope',
@@ -53,7 +53,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'Sterling slides on a rumour about your next statement. The Bank is watching, the front pages are sharpening, and a single wrong sentence from you tonight could cost billions by morning.',
     tags: ['crisis', 'policy', 'serious'],
     weight: 12, cooldownDays: 500,
-    requires: { department: ['treasury'], minTier: 4 },
+    requires: { inGovernment: true,department: ['treasury'], minTier: 4 },
     choices: [
       {
         label: 'Calm, boring reassurance',
@@ -78,7 +78,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'A regional conflict is escalating and allies are on the phone hourly. The department wants a doctrine, not a reaction: is Britain, under your Foreign Office, a power that intervenes, sanctions, or brokers?',
     tags: ['policy', 'crisis', 'serious'],
     weight: 18, cooldownDays: 900,
-    requires: { department: ['foreign'], minTier: 4, flags: { dir_foreign: false } },
+    requires: { inGovernment: true,department: ['foreign'], minTier: 4, flags: { dir_foreign: false } },
     choices: [
       {
         label: 'Lead the intervention coalition',
@@ -103,7 +103,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'Six months on, the crisis you set Britain\'s course on reaches its hinge point. The outcome will be read — fairly or not — as the verdict on your doctrine.',
     tags: ['policy', 'crisis', 'serious'],
     weight: 20, cooldownDays: 9999, oncePerCareer: true,
-    requires: { department: ['foreign'], minTier: 4, flags: { dir_foreign: 1 } },
+    requires: { inGovernment: true,department: ['foreign'], minTier: 4, flags: { dir_foreign: 1 } },
     choices: [
       {
         label: 'Hold the coalition together',
@@ -126,7 +126,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'A friendly nation\'s government is furious: a leaked Foreign Office cable describes their leader as "a vain mediocrity surrounded by worse". The ambassador who wrote it is excellent at their job. The summit is next month.',
     tags: ['crisis', 'westminster'],
     weight: 12, cooldownDays: 500,
-    requires: { department: ['foreign'], minTier: 3 },
+    requires: { inGovernment: true,department: ['foreign'], minTier: 3 },
     choices: [
       {
         label: 'Defend your ambassador',
@@ -148,7 +148,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'Crime stats, small boats, police numbers: the Home Office brief is a wall of fires. Your officials need to know which Home Secretary you are — the iron fist the base wants, or the cool head the courts will tolerate.',
     tags: ['policy', 'serious'],
     weight: 18, cooldownDays: 900,
-    requires: { department: ['home'], minTier: 4, flags: { dir_home: false } },
+    requires: { inGovernment: true,department: ['home'], minTier: 4, flags: { dir_home: false } },
     choices: [
       {
         label: 'Tough — enforcement first',
@@ -168,7 +168,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'A year of your Home Office direction, and the annual figures are out tomorrow. Tonight you get the advance copy and a glass of something while you decide how to meet the morning.',
     tags: ['policy', 'serious'],
     weight: 20, cooldownDays: 9999, oncePerCareer: true,
-    requires: { department: ['home'], minTier: 4, flags: { dir_home: 1 } },
+    requires: { inGovernment: true,department: ['home'], minTier: 4, flags: { dir_home: 1 } },
     choices: [
       {
         label: 'Read the numbers',
@@ -191,7 +191,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The prison estate hits capacity on a Tuesday afternoon. By Thursday you must either authorise early releases, ship prisoners to police cells at vast cost, or watch the courts stop sentencing. There is no good option, only a least-bad one with your name on it.',
     tags: ['crisis', 'policy', 'serious'],
     weight: 12, cooldownDays: 550,
-    requires: { department: ['home', 'justice'], minTier: 3 },
+    requires: { inGovernment: true,department: ['home', 'justice'], minTier: 3 },
     choices: [
       {
         label: 'Early release, carefully screened',
@@ -213,7 +213,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The waiting list chart on your office wall goes up and to the right. The department offers two genuine strategies: pour everything into emergency capacity for visible wins, or fund the unglamorous reform of community care that pays out after the next election.',
     tags: ['policy', 'serious'],
     weight: 18, cooldownDays: 900,
-    requires: { department: ['health'], minTier: 4, flags: { dir_health: false } },
+    requires: { inGovernment: true,department: ['health'], minTier: 4, flags: { dir_health: false } },
     choices: [
       {
         label: 'Blitz the waiting lists now',
@@ -233,7 +233,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The first cold snap and the system buckles on schedule: ambulances queuing, corridors full, one trust declaring a critical incident live on the lunchtime news. The cameras want a Health Secretary. Preferably contrite.',
     tags: ['crisis', 'media', 'serious'],
     weight: 13, cooldownDays: 360,
-    requires: { department: ['health'], minTier: 3 },
+    requires: { inGovernment: true,department: ['health'], minTier: 3 },
     choices: [
       {
         label: 'Go to the worst hospital, on camera',
@@ -255,7 +255,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The teaching unions announce rolling strikes over pay. The pickets are sympathetic, the parents are furious, the Treasury is immovable, and you are the face in the middle of the Venn diagram.',
     tags: ['policy', 'crisis'],
     weight: 14, cooldownDays: 500,
-    requires: { department: ['education'], minTier: 3 },
+    requires: { inGovernment: true,department: ['education'], minTier: 3 },
     choices: [
       {
         label: 'Get in the room and settle it',
@@ -285,7 +285,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The flagship procurement programme is late, over budget, and — a colonel tells you privately, at risk to his career — may not actually work. Cancelling it kills jobs in twenty constituencies. Continuing it feeds a fiasco.',
     tags: ['policy', 'scandal', 'serious'],
     weight: 14, cooldownDays: 600,
-    requires: { department: ['defence'], minTier: 3 },
+    requires: { inGovernment: true,department: ['defence'], minTier: 3 },
     choices: [
       {
         label: 'Cancel it and take the heat',
@@ -310,7 +310,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'An ally formally requests British forces for a peacekeeping deployment in a place most of the cabinet cannot point to on a map. The military advice is "feasible, not trivial". The political advice is a shrug in a suit.',
     tags: ['policy', 'serious'],
     weight: 11, cooldownDays: 550,
-    requires: { department: ['defence'], minTier: 4 },
+    requires: { inGovernment: true,department: ['defence'], minTier: 4 },
     choices: [
       {
         label: 'Recommend the deployment',
@@ -335,7 +335,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The court backlog has reached the point where victims wait years for trials and defence barristers schedule around retirements. The system is quietly failing, and quietly is the only reason it isn\'t the lead story.',
     tags: ['policy', 'serious'],
     weight: 13, cooldownDays: 500,
-    requires: { department: ['justice'], minTier: 3 },
+    requires: { inGovernment: true,department: ['justice'], minTier: 3 },
     choices: [
       {
         label: 'Emergency courts, emergency money',
@@ -357,7 +357,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'A review lands on your desk recommending the abolition of three {department} arm\'s-length bodies. One is useless, one is useful, and one is chaired by a former MP with excellent friends in the press.',
     tags: ['westminster', 'policy', 'funny'],
     weight: 11, cooldownDays: 400,
-    requires: { minTier: 3 },
+    requires: { inGovernment: true,minTier: 3 },
     choices: [
       {
         label: 'Abolish all three',
@@ -377,7 +377,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'With six weeks left in the financial year, your {department} officials sheepishly reveal a £40 million underspend. Hand it back to the Treasury and look prudent, or spend it fast and look... fast.',
     tags: ['westminster', 'policy', 'funny'],
     weight: 11, cooldownDays: 450,
-    requires: { minTier: 3 },
+    requires: { inGovernment: true,minTier: 3 },
     choices: [
       {
         label: 'Blitz it on small, ready projects',
@@ -397,7 +397,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'An online petition demanding a change squarely within your {department} brief crosses a million signatures, propelled by a celebrity with more followers than the electorate of Wales. The policy is genuinely complicated. The petition is genuinely not.',
     tags: ['media', 'policy'],
     weight: 12, cooldownDays: 400,
-    requires: { minTier: 3 },
+    requires: { inGovernment: true,minTier: 3 },
     choices: [
       {
         label: 'Meet the celebrity, find the deal',
@@ -417,7 +417,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'Deep in the {department} files, your officials find it: a decision your predecessor signed, legally binding, quietly catastrophic, and timed to detonate within the year. They watched you read it. They are waiting.',
     tags: ['westminster', 'scandal', 'serious'],
     weight: 10, cooldownDays: 600,
-    requires: { minTier: 3 },
+    requires: { inGovernment: true,minTier: 3 },
     choices: [
       {
         label: 'Defuse it publicly — blame attached',
@@ -437,7 +437,7 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
     body: 'The select committee examining your {department} brief has found a devastating witness: a frontline worker, articulate and unimpeachable, whose testimony about your policy will lead the bulletins. You are up directly after them.',
     tags: ['westminster', 'media', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { minTier: 3 },
+    requires: { inGovernment: true,minTier: 3 },
     choices: [
       {
         label: 'Concede what they got right',

@@ -112,6 +112,15 @@ export const useGameStore = create<GameStore>()(
               game.player.flags._peakTier = peak;
             }
           }
+          if (version < 4) {
+            // v4 adds the office-tenure clock and government-arrangement state
+            if (game.player.officeSinceDay === undefined) {
+              game.player.officeSinceDay = game.player.officeId ? game.day : null;
+            }
+            if (game.government.arrangement === undefined) {
+              game.government.arrangement = game.government.majority > 0 ? 'majority' : 'minority';
+            }
+          }
         }
         return store;
       },
