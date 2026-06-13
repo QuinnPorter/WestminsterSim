@@ -82,10 +82,34 @@ export function playerOfficeTitle(state: GameState): string {
   });
 }
 
-/** label an office the player held, for the history/career timeline. Uses the
- *  governing party at `date` for the gov/shadow distinction; minor-party
- *  spokesperson naming is applied when the player currently sits with one. */
-export function playerOfficeLabel(state: GameState, officeId: OfficeId | null, date: number): string {
+export type RoleSide = 'gov' | 'opp' | 'minor';
+
+/** the gov / official-opposition / minor-party framing for the player's CURRENT
+ *  role. Captured when a role change is recorded so the career timeline keeps the
+ *  right framing even after the player later crosses the floor. */
+export function currentRoleSide(state: GameState): RoleSide {
+  if (playerInGovernmentBloc(state)) return 'gov';
+  if (state.player.partyId === state.government.oppositionParty) return 'opp';
+  return 'minor';
+}
+
+/** label an office the player held, for the history/career timeline. Prefer the
+ *  framing recorded on the history entry (`ctx`); fall back to recomputing from
+ *  the current state for pre-v5 saves that lack it. */
+export function playerOfficeLabel(
+  state: GameState,
+  officeId: OfficeId | null,
+  date: number,
+  ctx?: { roleSide?: RoleSide; partyId?: PartyId }
+): string {
+  if (ctx?.roleSide) {
+    return officeTitleFor(officeId, {
+      inGovernment: ctx.roleSide === 'gov',
+      minorPartyName: ctx.roleSide === 'minor'
+        ? PARTIES[ctx.partyId ?? state.player.partyId].name
+        : undefined,
+    });
+  }
   if (onMinorPartyTrack(state)) {
     return officeTitleFor(officeId, {
       inGovernment: false,
@@ -190,7 +214,15 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
     // peak was a whip/PPS — fall through to the normal ladder
   }
 
-  if (tier === 0) return rng.chance(0.55) ? 'pps' : 'whip';
+  if (tier === 0) {
+    // a rare meteoric rise: an exceptional newcomer is handed a ministry without
+    // the usual PPS/whip apprenticeship
+    const s = state.player.stats;
+    if (s.competence > 65 && s.profile > 55 && s.partyStanding > 60 && rng.chance(0.15)) {
+      return deptOfficeId(rng, bg, 3);
+    }
+    return rng.chance(0.55) ? 'pps' : 'whip';
+  }
   if (tier === 1 || tier === 2) {
     const dept = bg.deptAffinity.length > 0 && rng.chance(0.5)
       ? rng.pick(bg.deptAffinity)
@@ -241,7 +273,10 @@ export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 
     // displace the NPC holder
     setFrontbenchPost(state, frontbenchSide(state), officeId, 'player');
   }
-  state.history.push({ kind: 'roleChange', date: state.day, officeId, how });
+  state.history.push({
+    kind: 'roleChange', date: state.day, officeId, how,
+    roleSide: currentRoleSide(state), partyId: state.player.partyId,
+  });
 }
 
 function removePlayerFromFrontbench(state: GameState, rng: Rng): void {
@@ -528,6 +563,17 @@ export function resolveNpcLeadership(
     );
     replaceLeader(state, winner.id, seed);
   }
+
+  // a new NPC leader usually remakes their front bench
+  const isFrontbench =
+    party === state.government.governingParty || party === state.government.oppositionParty;
+  if (isFrontbench && rng.chance(0.65)) {
+    npcReshuffle(state, rng, party);
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${winner.name} reshuffles the ${party === state.government.governingParty ? 'cabinet' : 'shadow cabinet'}`,
+    });
+  }
   return winner;
 }
 
@@ -540,9 +586,14 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
   // and clear any stale resignation pledge from a previous spell as leader
   state.player.flags._leaderTookOverPolls = (state.polling.shares[party] ?? 0) * 100;
   delete state.player.flags._pledgeResignBy;
+  // a new leader usually remakes the bench — soon, but not instantly
+  if (rng.chance(0.65)) {
+    state.player.flags._newLeaderReshuffleBy = state.day + rng.int(14, 90);
+  }
   recordPeakTier(state);
   state.history.push({
     kind: 'roleChange', date: state.day, officeId: 'leader', how: 'electedLeader',
+    roleSide: currentRoleSide(state), partyId: state.player.partyId,
   });
   state.history.push({ kind: 'leadershipContest', date: state.day, won: true, partyId: party });
 
@@ -558,7 +609,10 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
   if (party === state.government.governingParty) {
     state.government.pmId = 'player';
     state.government.pmSinceDay = state.day;
-    state.history.push({ kind: 'roleChange', date: state.day, officeId: 'leader', how: 'becamePM' });
+    state.history.push({
+      kind: 'roleChange', date: state.day, officeId: 'leader', how: 'becamePM',
+      roleSide: 'gov', partyId: state.player.partyId,
+    });
     state.history.push({
       kind: 'event', date: state.day,
       headline: `${state.player.name} enters Number 10`,
@@ -627,6 +681,7 @@ export function applyElectionAftermath(
     if (state.government.pmId === 'player') {
       state.history.push({
         kind: 'roleChange', date: state.day, officeId: 'leader', how: 'becamePM',
+        roleSide: 'gov', partyId: state.player.partyId,
       });
       state.history.push({
         kind: 'event', date: state.day,
@@ -646,6 +701,11 @@ export function applyElectionAftermath(
   const votingSeats = 650 - sfSeats - 1;
   const govSeats = result.seats[newGov] ?? 0;
   state.government.majority = govSeats - (votingSeats - govSeats);
+
+  // incumbent fatigue: count consecutive terms the same party has governed
+  state.government.termsInPower = newGov === prevGov
+    ? (state.government.termsInPower ?? 1) + 1
+    : 1;
 
   // ---- government arrangement & coalition formation ----
   // a fresh parliament starts with no inherited coalition/supply partner
@@ -673,16 +733,17 @@ export function applyElectionAftermath(
         payload: { majorParty: newGov, shortfall, partySeats: playerSeats },
       });
     } else if (partner) {
-      // NPCs settle it: coalitions are rare (~a quarter of sub-majority results)
-      const coalitionChance = result.outcome === 'hung' ? 0.35 : 0.15;
-      if (rng.chance(coalitionChance)) {
+      // NPCs settle it: of sub-majority results, ~10% coalition, ~20% supply &
+      // confidence, ~70% a bare minority
+      const roll = rng.next();
+      if (roll < 0.10) {
         state.government.arrangement = 'coalition';
         state.government.coalitionPartner = partner;
         state.history.push({
           kind: 'event', date: state.day,
           headline: `${PARTIES[newGov].name} forms a coalition with the ${PARTIES[partner].shortName}`,
         });
-      } else if (rng.chance(0.4)) {
+      } else if (roll < 0.30) {
         state.government.arrangement = 'supplyConfidence';
         state.government.confidencePartner = partner;
         state.history.push({
@@ -749,6 +810,7 @@ export function applyElectionAftermath(
     const title = officeTitle(state.player.officeId, nowInGov);
     state.history.push({
       kind: 'roleChange', date: state.day, officeId: state.player.officeId, how: 'continued',
+      roleSide: currentRoleSide(state), partyId: state.player.partyId,
     });
     state.history.push({
       kind: 'event', date: state.day,
@@ -1109,6 +1171,20 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           { label: 'Stay out — pure opposition' },
         ],
         payload: { majorParty, advance: rng.int(7, 14) },
+      };
+    }
+    case 'pmHeave': {
+      const pmName = state.characters[state.government.pmId]?.name ?? 'the Prime Minister';
+      const frontbench = playerTier(state) >= 1;
+      return {
+        cardId: `forced_pmheave_${state.day}`,
+        kind: 'pmHeave',
+        title: 'The PM is wounded',
+        body: `${pmName} is on the ropes — dire polls, worse headlines, and the corridors thick with plotting. Colleagues are quietly sounding you out. Do you move against your own leader?`,
+        choices: frontbench
+          ? [{ label: 'Resign and call for the PM to go' }, { label: 'Stay loyal — for now' }]
+          : [{ label: 'Submit a letter of no confidence' }, { label: 'Keep your head down' }],
+        payload: { advance: rng.int(7, 14) },
       };
     }
     case 'campaign': {
@@ -1979,6 +2055,19 @@ export function resolveForcedChoice(
       };
     }
 
+    case 'pmHeave': {
+      if (choiceIndex === 0) {
+        const res = callForPmResignationCore(state, rng);
+        return { text: res.text, deltas };
+      }
+      adjustRelationship(state, 'leader', 3);
+      push('Leader', 3);
+      return {
+        text: 'You stay your hand and let others wield the knife. Whatever happens to the PM, the leadership notes who held firm.',
+        deltas,
+      };
+    }
+
     default:
       return { text: 'Time passes.', deltas };
   }
@@ -2008,6 +2097,63 @@ export function resignOfficeCore(state: GameState, rng: Rng): void {
     kind: 'event', date: state.day,
     headline: `${state.player.name} returns to the backbenches`,
   });
+}
+
+/** A government-party MP moves against their own (NPC) Prime Minister. A
+ *  frontbencher must resign their post to do so (the high-impact form); a
+ *  backbencher submits a letter. Wrecks relations with the leader and whips,
+ *  pressures the PM, and sometimes topples them — opening a leadership contest
+ *  the player can enter. Impact scales with seniority. Returns narrative text. */
+export function callForPmResignationCore(state: GameState, rng: Rng): { text: string } {
+  if (
+    !playerInGovernment(state) || playerIsLeader(state) || !state.player.hasSeat ||
+    state.government.pmId === 'player'
+  ) {
+    return { text: 'There is no sitting Prime Minister of your party to move against.' };
+  }
+  const tier = playerTier(state);
+  const frontbench = tier >= 1;
+  const pmName = state.characters[state.government.pmId]?.name ?? 'the Prime Minister';
+
+  if (frontbench) stripOffice(state, rng, 'resigned');
+
+  adjustRelationship(state, 'leader', -(10 + tier * 5));
+  adjustRelationship(state, 'chiefWhip', -(8 + tier * 4));
+  gainStat(state, 'partyStanding', -(6 + tier * 2));
+  gainStat(state, 'profile', 3 + tier * 2);
+  gainStat(state, 'integrity', 2);
+
+  const weight = 4 + tier * 6;
+  const prior = state.government.pmHeavePressure ?? 0;
+  state.government.pmHeavePressure = prior + weight;
+
+  const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+  let pmWeakness = 0;
+  if (pollsPct < 30) pmWeakness += (30 - pollsPct) * 0.01;
+  pmWeakness += prior / 200;
+  const p = clamp(0.05 + weight / 120 + pmWeakness, 0.03, 0.85);
+
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: frontbench
+      ? `${state.player.name} resigns and calls on ${pmName} to go`
+      : `${state.player.name} submits a letter of no confidence in ${pmName}`,
+  });
+
+  if (rng.chance(p)) {
+    state.government.pmHeavePressure = 0;
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${pmName} resigns as Prime Minister under pressure`,
+    });
+    openLeadershipVacancy(state, rng, state.government.governingParty);
+    return {
+      text: `Your move lands. Within days ${pmName} concedes the numbers are hopeless and resigns. The leadership is open — and you are free to stand.`,
+    };
+  }
+  return {
+    text: `${pmName} shrugs it off, and the whips mark your card. The wound is real but not yet fatal — and your standing with the leadership is in ruins.`,
+  };
 }
 
 /** the player (as PM or LO) sacks the NPC holding a given cabinet/shadow post */
@@ -2293,7 +2439,10 @@ export function buildLegacy(state: GameState): {
       level = Math.max(level, 3);
     } else if (entry.officeId) {
       const office = OFFICES[entry.officeId];
-      const inGov = governingPartyAt(state, entry.date) === state.player.partyId;
+      // use the framing recorded at the time; fall back for pre-v5 entries
+      const inGov = entry.roleSide
+        ? entry.roleSide === 'gov'
+        : governingPartyAt(state, entry.date) === state.player.partyId;
       const sideTitle = inGov ? office.title : office.shadowTitle;
       if (office.tier === 4) {
         level = Math.max(level, 2);

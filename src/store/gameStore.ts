@@ -6,7 +6,9 @@ import { initCalendar, nextStep } from '../engine/scheduler';
 import {
   acknowledgeElectionCore, continueCore, resolveChoiceCore,
 } from '../engine/turn';
-import { buildLegacy, changeParty, resignOfficeCore, sackMinisterCore } from '../engine/career';
+import {
+  buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
+} from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { OfficeId, PartyId } from '../types/game';
 import { Rng } from '../engine/rng';
@@ -20,6 +22,7 @@ interface GameStore {
   crossFloor: (partyId: PartyId) => void;
   resignOffice: () => void;
   sackMinister: (officeId: OfficeId) => void;
+  callForPmResignation: () => void;
   retire: () => void;
   abandonGame: () => void;
   /** debug helper (used by the ?debug menu) */
@@ -74,6 +77,9 @@ export const useGameStore = create<GameStore>()(
       sackMinister: (officeId) =>
         mutateGame(get, set, (game, rng) => sackMinisterCore(game, rng, officeId)),
 
+      callForPmResignation: () =>
+        mutateGame(get, set, (game, rng) => { callForPmResignationCore(game, rng); }),
+
       retire: () =>
         mutateGame(get, set, (game) => {
           if (game.gameOver) return;
@@ -119,6 +125,12 @@ export const useGameStore = create<GameStore>()(
             }
             if (game.government.arrangement === undefined) {
               game.government.arrangement = game.government.majority > 0 ? 'majority' : 'minority';
+            }
+          }
+          if (version < 5) {
+            // v5 adds incumbent-fatigue tracking
+            if (game.government.termsInPower === undefined) {
+              game.government.termsInPower = 1;
             }
           }
         }

@@ -25,7 +25,13 @@ export function ParliamentScreen({ game }: { game: GameState }) {
       <h2 style={{ marginBottom: 4 }}>The House of Commons</h2>
       <p style={{ color: 'var(--muted)', fontSize: 'var(--fs-sm)', marginBottom: 12 }}>
         {PARTIES[gov.governingParty].name}{' '}
-        {gov.majority > 0 ? `majority of ${gov.majority}` : 'minority government'}
+        {gov.majority > 0
+          ? `majority of ${gov.majority}`
+          : gov.arrangement === 'coalition' && gov.coalitionPartner
+            ? `coalition with the ${PARTIES[gov.coalitionPartner].shortName}`
+            : gov.arrangement === 'supplyConfidence' && gov.confidencePartner
+              ? `minority, with ${PARTIES[gov.confidencePartner].shortName} support`
+              : 'minority government'}
       </p>
 
       <div className="card" style={{ marginBottom: 12 }}>

@@ -75,7 +75,7 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
         : entry.how === 'continued' ? 'Continued as'
         : 'Appointed';
       // party-aware, and historically correct for gov/shadow at that date
-      text = `${verb} ${playerOfficeLabel(game, entry.officeId, entry.date)}`;
+      text = `${verb} ${playerOfficeLabel(game, entry.officeId, entry.date, { roleSide: entry.roleSide, partyId: entry.partyId })}`;
     } else {
       icon = entry.how === 'dismissed' ? '✂️' : entry.how === 'resigned' ? '✉️' : '↩️';
       text = entry.how === 'dismissed' ? 'Dismissed in a reshuffle'

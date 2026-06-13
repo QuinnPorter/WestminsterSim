@@ -27,7 +27,7 @@ export function ElectionNightScreen({ game }: { game: GameState }) {
 
       {stage >= 0 && <ExitPoll result={result} />}
       {stage >= 1 && result.playerResult && <PlayerCount game={game} result={result} />}
-      {stage >= 2 && <NationalPicture result={result} />}
+      {stage >= 2 && <NationalPicture game={game} result={result} />}
 
       <button
         className="btn btn-primary"
@@ -92,10 +92,28 @@ function PlayerCount({ game, result }: { game: GameState; result: ElectionResult
   );
 }
 
-function NationalPicture({ result }: { result: ElectionResult }) {
+function NationalPicture({ game, result }: { game: GameState; result: ElectionResult }) {
   const sorted = (Object.entries(result.seats) as [PartyId, number][])
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1]);
+  const gov = game.government;
+  // a player-led hung result hasn't been resolved yet (coalition talks are queued)
+  const pending = game.forcedQueue.some(
+    (e) => e.kind === 'coalitionTalks' || e.kind === 'coalitionOffer'
+  );
+  const partner = gov.coalitionPartner ?? gov.confidencePartner;
+  let verdict: string;
+  if (result.outcome === 'majority') {
+    verdict = 'wins a majority';
+  } else if (pending) {
+    verdict = 'is the largest party, but no one has a majority — talks to form a government begin';
+  } else if (gov.arrangement === 'coalition' && partner) {
+    verdict = `to govern in coalition with the ${PARTIES[partner].shortName}`;
+  } else if (gov.arrangement === 'supplyConfidence' && partner) {
+    verdict = `to govern with ${PARTIES[partner].shortName} confidence-and-supply`;
+  } else {
+    verdict = 'to govern as a minority';
+  }
   return (
     <div className="card fade-in en-section">
       <h3 className="en-heading">All 650 seats declared</h3>
@@ -103,12 +121,7 @@ function NationalPicture({ result }: { result: ElectionResult }) {
         <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={420} partyId={p} />
       ))}
       <p className="en-outcome" style={{ color: partyTextColour(result.governingParty) }}>
-        {PARTIES[result.governingParty].name}{' '}
-        {result.outcome === 'majority'
-          ? 'wins a majority'
-          : result.outcome === 'hung'
-            ? 'largest party in a hung parliament'
-            : 'to govern in a minority'}.
+        {PARTIES[result.governingParty].name}{' '}{verdict}.
       </p>
     </div>
   );

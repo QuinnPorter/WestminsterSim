@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { GameState, OfficeId, PartyId } from '../types/game';
+import type { RoleSide } from '../engine/career';
 import { useGameStore } from '../store/gameStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { STAT_LABELS } from '../engine/effects';
-import { playerOfficeLabel, playerOfficeTitle, playerIsLeader } from '../engine/career';
+import {
+  playerOfficeLabel, playerOfficeTitle, playerIsLeader, playerInGovernment, playerTier,
+} from '../engine/career';
 import { formatMonthYear, yearsBetween } from '../engine/clock';
 
 interface OfficeSpan {
@@ -14,6 +17,8 @@ interface OfficeSpan {
   start: number;
   end: number | null;
   becamePM: boolean;
+  roleSide?: RoleSide;
+  partyId?: PartyId;
 }
 
 /** chronological portfolio history, derived from roleChange entries */
@@ -33,6 +38,8 @@ function officeSpans(game: GameState): OfficeSpan[] {
         start: entry.date,
         end: null,
         becamePM: entry.how === 'becamePM',
+        roleSide: entry.roleSide,
+        partyId: entry.partyId,
       };
     }
   }
@@ -42,13 +49,16 @@ function officeSpans(game: GameState): OfficeSpan[] {
 
 function spanTitle(game: GameState, span: OfficeSpan): string {
   if (span.becamePM) return 'Prime Minister';
-  return playerOfficeLabel(game, span.officeId, span.start);
+  return playerOfficeLabel(game, span.officeId, span.start, {
+    roleSide: span.roleSide, partyId: span.partyId,
+  });
 }
 
 export function ProfileScreen({ game }: { game: GameState }) {
   const retire = useGameStore((s) => s.retire);
   const crossFloor = useGameStore((s) => s.crossFloor);
   const resignOffice = useGameStore((s) => s.resignOffice);
+  const callForPmResignation = useGameStore((s) => s.callForPmResignation);
   const [pickingParty, setPickingParty] = useState(false);
 
   const player = game.player;
@@ -242,6 +252,23 @@ export function ProfileScreen({ game }: { game: GameState }) {
           }}
         >
           Resign your office
+        </button>
+      )}
+
+      {playerInGovernment(game) && !playerIsLeader(game) && player.hasSeat
+        && game.government.pmId !== 'player' && (
+        <button
+          className="btn"
+          style={{ color: 'var(--danger)', textAlign: 'center', marginBottom: 8 }}
+          onClick={() => {
+            const frontbench = playerTier(game) >= 1;
+            const msg = frontbench
+              ? `Resign as ${playerOfficeTitle(game)} and publicly call for the Prime Minister to go? This will destroy your relationship with the leadership — but a senior resignation carries real weight.`
+              : 'Submit a letter of no confidence in the Prime Minister? It will anger the whips and the leader, and may or may not move the dial.';
+            if (window.confirm(msg)) callForPmResignation();
+          }}
+        >
+          {playerTier(game) >= 1 ? 'Resign and call for the PM to go' : 'Call for the PM to resign'}
         </button>
       )}
 

@@ -11,7 +11,7 @@ import { Avatar } from '../avatar/Avatar';
 import { SwipeCarousel } from '../components/SwipeCarousel';
 import { AVATAR_COUNTS, AvatarLayerKey } from '../avatar/palette';
 import { Rng } from '../engine/rng';
-import { randomAvatar } from '../generation/characters';
+import { randomAvatar, generateName } from '../generation/characters';
 import './NewCareerScreen.css';
 
 const STEPS = ['Era', 'You', 'Party', 'Background', 'Look'] as const;
@@ -100,13 +100,26 @@ export function NewCareerScreen() {
         <div className="fade-in">
           <h2 className="nc-h">Who are you?</h2>
           <label className="nc-label">Name</label>
-          <input
-            className="nc-input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Alex Hartley"
-            maxLength={30}
-          />
+          <div className="nc-name-row">
+            <input
+              className="nc-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Alex Hartley"
+              maxLength={30}
+            />
+            <button
+              type="button"
+              className="nc-dice"
+              title="Randomise name"
+              aria-label="Randomise name"
+              onClick={() =>
+                setName(generateName(new Rng((Math.random() * 0xffffffff) >>> 0), gender, new Set(), region))
+              }
+            >
+              🎲
+            </button>
+          </div>
           <label className="nc-label">Gender</label>
           <div className="nc-seg">
             {([['f', 'Woman'], ['m', 'Man'], ['nb', 'Non-binary']] as [Gender, string][]).map(([g, label]) => (

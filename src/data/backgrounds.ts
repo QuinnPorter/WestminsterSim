@@ -79,6 +79,24 @@ export const BACKGROUNDS: Record<BackgroundId, BackgroundInfo> = {
     statMods: { profile: 8, competence: 5, constituencyApproval: 6, partyStanding: 4 },
     deptAffinity: ['business', 'transport'], deptBonus: 8,
   },
+  tradeUnionist: {
+    id: 'tradeUnionist', name: 'Trade Unionist',
+    blurb: 'You rose through the movement. You can read a room — and a balance sheet of grievances.',
+    statMods: { partyStanding: 8, integrity: 4, constituencyApproval: 3, competence: -2 },
+    deptAffinity: ['dwp', 'business'], deptBonus: 7,
+  },
+  academic: {
+    id: 'academic', name: 'Academic',
+    blurb: 'A career of seminars and peer review. You have read the evidence; now you must win the argument.',
+    statMods: { competence: 9, profile: 2, constituencyApproval: -3 },
+    deptAffinity: ['treasury', 'education'], deptBonus: 8,
+  },
+  police: {
+    id: 'police', name: 'Police Officer',
+    blurb: 'Years on the front line of law and order. You have seen what policy does when it meets the street.',
+    statMods: { constituencyApproval: 7, integrity: 5, competence: 2 },
+    deptAffinity: ['home', 'justice'], deptBonus: 9,
+  },
 };
 
 export const BACKGROUND_IDS = Object.keys(BACKGROUNDS) as BackgroundId[];

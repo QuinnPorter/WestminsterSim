@@ -38,6 +38,8 @@ export interface SimSummary {
   coalitionOfficeWon: boolean;
   /** mean length of the player's office spells, in years (cycling cadence) */
   avgPostTenureYears: number;
+  /** the player was handed a ministry without first being a PPS/whip */
+  directMinistry: boolean;
 }
 
 export interface SimOptions {
@@ -141,7 +143,20 @@ export function simulateCareer(opts: SimOptions): SimSummary {
     }
   }
 
+  // did the player ever reach a ministry without a prior PPS/whip apprenticeship?
+  let directMinistry = false;
+  let hadJunior = false;
+  for (const h of game.history) {
+    if (h.kind !== 'roleChange' || !h.officeId) continue;
+    if (h.officeId === 'pps' || h.officeId === 'whip') hadJunior = true;
+    else if ((h.officeId.startsWith('min_') || h.officeId.startsWith('sos_')) && !hadJunior) {
+      directMinistry = true;
+      break;
+    }
+  }
+
   return {
+    directMinistry,
     electionMajority: outcomes.filter((e) => e.outcome === 'majority').length,
     electionHung: outcomes.filter((e) => e.outcome === 'hung').length,
     electionMinority: outcomes.filter((e) => e.outcome === 'minority').length,

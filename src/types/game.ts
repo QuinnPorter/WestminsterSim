@@ -112,7 +112,8 @@ export interface Relationship {
 
 export type BackgroundId =
   | 'advisor' | 'lawyer' | 'business' | 'foreignService' | 'manualLabour'
-  | 'teacher' | 'doctor' | 'journalist' | 'military' | 'councillor' | 'mayor';
+  | 'teacher' | 'doctor' | 'journalist' | 'military' | 'councillor' | 'mayor'
+  | 'tradeUnionist' | 'academic' | 'police';
 
 export interface PlayerStats {
   /** public/media profile */
@@ -186,6 +187,10 @@ export interface GovernmentState {
   coalitionPartner?: PartyId;
   /** party propping up a minority on supply & confidence — NOT in government */
   confidencePartner?: PartyId;
+  /** consecutive election terms the governing party has held power (incumbent fatigue) */
+  termsInPower: number;
+  /** accumulated backbench/frontbench pressure on a sitting (NPC) PM to go */
+  pmHeavePressure?: number;
 }
 
 // ---- elections & history ----
@@ -224,7 +229,10 @@ export interface ElectionResult {
 
 export type HistoryEntry =
   | { kind: 'roleChange'; date: GameDay; officeId: OfficeId | null;
-      how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' | 'continued' }
+      how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' | 'continued';
+      /** the gov/opposition/minor framing and party AT THE TIME the role was held,
+       *  so the career timeline stays correct after the player crosses the floor */
+      roleSide?: 'gov' | 'opp' | 'minor'; partyId?: PartyId }
   | { kind: 'election'; date: GameDay; resultId: string; heldSeat: boolean }
   | { kind: 'event'; date: GameDay; headline: string }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
@@ -242,7 +250,7 @@ export type ForcedKind =
   | 'campaign' | 'electionNight' | 'lostSeat' | 'wilderness'
   | 'leadershipStand' | 'leadershipBallot' | 'pmReshuffle' | 'pmPressure'
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
-  | 'coalitionTalks' | 'coalitionOffer'
+  | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'calendar';
 
 export interface DrawnCard {

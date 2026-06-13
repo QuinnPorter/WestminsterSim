@@ -28,6 +28,18 @@ export function electionNationalShares(
     out[p] = v;
     total += v;
   }
+  // incumbent fatigue: a slight boost for a first re-election, then a growing
+  // anti-incumbency penalty from the third term on (the public tires of them)
+  const gov = state.government.governingParty;
+  const terms = state.government.termsInPower ?? 1;
+  const fatigue = terms <= 1 ? 0.005
+    : terms === 2 ? 0
+      : -Math.min(0.09, (terms - 2) * 0.020);
+  if (out[gov] !== undefined && fatigue !== 0) {
+    total += -(out[gov] ?? 0);
+    out[gov] = Math.max(0.003, (out[gov] ?? 0) + fatigue);
+    total += out[gov] ?? 0;
+  }
   for (const p of POLLED_PARTIES) out[p] = (out[p] ?? 0) / total;
   return out;
 }

@@ -1,4 +1,4 @@
-import { DrawnCard, GameState, StatDelta } from '../types/game';
+import { DrawnCard, GameState, PartyId, StatDelta } from '../types/game';
 import { ALL_CARDS, FALLBACK_POOL } from '../content/cards';
 import { PARTIES } from '../data/parties';
 import { drawCard, makeDrawnCard, resolveTokens } from './cardEngine';
@@ -291,31 +291,66 @@ export function nextStep(state: GameState, rng: Rng): void {
     }
   }
 
-  // minority/coalition instability: sub-majority governments are fragile and
-  // often fall mid-term — weak minorities far more than strong ones, coalitions
-  // least of all. Applies whether the player or an NPC holds Number 10.
+  // a newly-installed player leader remakes the front bench shortly after
+  {
+    const due = state.player.flags._newLeaderReshuffleBy as number | undefined;
+    if (playerIsLeader(state) && due !== undefined && state.day >= due) {
+      delete state.player.flags._newLeaderReshuffleBy;
+      state.forcedQueue.push({ kind: 'pmReshuffle' });
+      nextStep(state, rng);
+      return;
+    }
+  }
+
+  // minority/coalition instability: stability is dictated by the real
+  // parliamentary arithmetic. A government whose bloc (itself + any coalition or
+  // confidence partner) commands a majority is safe; otherwise it is fragile in
+  // proportion to how far short the bloc is AND how narrow its lead over the
+  // nearest rival — a one-seat lead far from a majority falls fast; a party one
+  // seat short of a majority lasts. Applies whether the player or an NPC governs.
   {
     const arr = state.government.arrangement;
     const yearsSinceFormation = (state.day - state.parliamentStart) / 365;
     const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
     if (arr !== 'majority' && yearsSinceFormation > 1 && state.day >= coupCool) {
-      const shortfall = Math.max(0, Math.ceil(-state.government.majority / 2));
-      let h = 0.012 + 0.0008 * shortfall;
-      if (arr === 'coalition') h *= 0.4;
-      else if (arr === 'supplyConfidence') h *= 0.7;
-      h += 0.0015 * (yearsSinceFormation - 1);
-      if (rng.chance(Math.min(0.09, h))) {
-        if (playerIsPM(state)) {
-          state.forcedQueue.push({ kind: 'confidenceVote' });
-        } else {
-          state.history.push({
-            kind: 'event', date: state.day,
-            headline: `${PARTIES[state.government.governingParty].name} government falls; a general election is called`,
-          });
-          queueGeneralElection(state);
+      const govParty = state.government.governingParty;
+      const sf = state.seats.sf ?? 0;
+      const votingSeats = 650 - sf - 1;
+      const seatsForMajority = Math.floor(votingSeats / 2) + 1;
+      const govSeats = state.seats[govParty] ?? 0;
+      // a coalition partner sits in government; a confidence partner backs supply
+      // votes — both count toward surviving a confidence motion
+      const partner = state.government.coalitionPartner ?? state.government.confidencePartner;
+      const partnerSeats = partner ? (state.seats[partner] ?? 0) : 0;
+      const blocSeats = govSeats + partnerSeats;
+      const trueShortfall = Math.max(0, seatsForMajority - blocSeats);
+      // gap to the largest party that isn't in the governing bloc
+      let topRival = 0;
+      for (const [p, n] of Object.entries(state.seats) as [PartyId, number][]) {
+        if (p === govParty || p === partner || p === 'spk') continue;
+        if ((n ?? 0) > topRival) topRival = n ?? 0;
+      }
+      const rivalGap = govSeats - topRival;
+      if (trueShortfall <= 0) {
+        // the bloc actually commands a majority — effectively stable, skip
+      } else {
+        let h = 0.010 + 0.0010 * trueShortfall + 0.0015 * Math.max(0, 12 - rivalGap);
+        if (arr === 'coalition') h *= 0.5;
+        else if (arr === 'supplyConfidence') h *= 0.75;
+        h += 0.0015 * (yearsSinceFormation - 1);
+        if (rng.chance(Math.min(0.09, h))) {
+          if (playerIsPM(state)) {
+            state.forcedQueue.push({ kind: 'confidenceVote' });
+          } else {
+            state.history.push({
+              kind: 'event', date: state.day,
+              headline: `${PARTIES[govParty].name} government falls; a general election is called`,
+            });
+            queueGeneralElection(state);
+          }
+          nextStep(state, rng);
+          return;
         }
-        nextStep(state, rng);
-        return;
       }
     }
   }
@@ -368,6 +403,22 @@ export function nextStep(state: GameState, rng: Rng): void {
       else state.forcedQueue.push({ kind: 'partyCoup' });
       nextStep(state, rng);
       return;
+    }
+  }
+
+  // the player's own (NPC) PM is wounded — a chance to be drawn into the heave
+  if (
+    playerInGovernment(state) && !playerIsLeader(state) &&
+    state.government.pmId !== 'player' && state.player.hasSeat
+  ) {
+    const polls = partyPolling(state, state.government.governingParty);
+    if (polls < 28) {
+      const hazard = Math.min(0.05, (28 - polls) * 0.004);
+      if (rng.chance(hazard)) {
+        state.forcedQueue.push({ kind: 'pmHeave' });
+        nextStep(state, rng);
+        return;
+      }
     }
   }
 

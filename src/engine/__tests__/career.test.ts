@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { simulateCareer, SimSummary } from '../sim';
 import { createNewGame, CreationInput } from '../newGame';
-import { applyElectionAftermath, buildLegacy, changeParty } from '../career';
-import { runElection } from '../election';
+import {
+  applyElectionAftermath, buildLegacy, changeParty, giveOffice, playerOfficeLabel, nextOfficeFor,
+} from '../career';
+import { runElection, electionNationalShares } from '../election';
 import { Rng } from '../rng';
 
 function makeGame(seed = 42) {
@@ -199,5 +201,52 @@ describe('rebalance targets (difficulty & coalitions)', () => {
   it('positions cycle on a realistic cadence', () => {
     expect(avgTenure).toBeGreaterThan(0.8);
     expect(avgTenure).toBeLessThan(3.5);
+  });
+});
+
+describe('wave 2: realism additions', () => {
+  it('past roles keep their gov/shadow framing after crossing the floor', () => {
+    const game = makeGame(7); // Conservative, 2019 (Conservatives governing)
+    const rng = new Rng(1);
+    giveOffice(game, rng, 'min_treasury', 'appointed');
+    const entry = [...game.history].reverse()
+      .find((h) => h.kind === 'roleChange' && h.officeId === 'min_treasury') as
+      { date: number; roleSide?: 'gov' | 'opp' | 'minor'; partyId?: string } | undefined;
+    expect(entry?.roleSide).toBe('gov');
+    expect(entry?.partyId).toBe('con');
+
+    changeParty(game, rng, 'lab'); // defect to the (opposition) Labour party
+    const label = playerOfficeLabel(game, 'min_treasury', entry!.date,
+      { roleSide: entry!.roleSide, partyId: entry!.partyId as never });
+    expect(label).toContain('Minister of State for Treasury');
+    expect(label).not.toContain('Shadow');
+    expect(buildLegacy(game).highestOfficeTitle).toContain('Treasury');
+  });
+
+  it('incumbent fatigue erodes a long-governing party at the ballot box', () => {
+    const avgGovShare = (terms: number) => {
+      let sum = 0;
+      const N = 200;
+      for (let i = 0; i < N; i++) {
+        const game = makeGame(100 + i);
+        game.government.termsInPower = terms;
+        const shares = electionNationalShares(game, new Rng(500 + i));
+        sum += shares[game.government.governingParty] ?? 0;
+      }
+      return sum / N;
+    };
+    expect(avgGovShare(4)).toBeLessThan(avgGovShare(1) - 0.02);
+  });
+
+  it('an exceptional newcomer can be handed a ministry directly, but rarely', () => {
+    const game = makeGame(3);
+    Object.assign(game.player.stats, { competence: 80, profile: 70, partyStanding: 70 });
+    let direct = 0;
+    for (let i = 0; i < 200; i++) {
+      const o = nextOfficeFor(game, new Rng(900 + i));
+      if (o && (o.startsWith('min_') || o.startsWith('sos_'))) direct++;
+    }
+    expect(direct).toBeGreaterThan(0);   // possible
+    expect(direct).toBeLessThan(120);    // but not the usual path
   });
 });

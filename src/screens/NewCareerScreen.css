@@ -63,6 +63,32 @@
   border-color: transparent;
 }
 
+.nc-name-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.nc-name-row .nc-input {
+  flex: 1;
+}
+.nc-dice {
+  flex-shrink: 0;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  font-size: var(--fs-lg);
+  cursor: pointer;
+  line-height: 1;
+}
+.nc-dice:hover {
+  background: var(--surface-2, var(--surface));
+  border-color: #33415c;
+}
+.nc-dice:active {
+  transform: scale(0.94);
+}
+
 .nc-seg {
   display: flex;
   background: var(--surface-2);

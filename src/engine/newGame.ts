@@ -22,7 +22,7 @@ export interface CreationInput {
   seed?: number;
 }
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -183,6 +183,7 @@ export function createNewGame(input: CreationInput): GameState {
       majority,
       pmSinceDay: startDay,
       arrangement: majority > 0 ? 'majority' : 'minority',
+      termsInPower: 1,
     },
     polling: { shares: { ...data.baselineShares }, lastUpdated: startDay },
     pollHistory: [{ day: startDay, shares: { ...data.baselineShares } }],
