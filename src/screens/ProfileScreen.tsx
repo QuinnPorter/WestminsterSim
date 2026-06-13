@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { GameState, OfficeId, PartyId } from '../types/game';
 import type { RoleSide } from '../engine/career';
 import { useGameStore } from '../store/gameStore';
+import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
 import { REGIONS } from '../data/regions';
@@ -59,7 +60,13 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const crossFloor = useGameStore((s) => s.crossFloor);
   const resignOffice = useGameStore((s) => s.resignOffice);
   const callForPmResignation = useGameStore((s) => s.callForPmResignation);
+  const slots = useGameStore((s) => s.slots);
+  const saveToSlot = useGameStore((s) => s.saveToSlot);
+  const overwriteSlot = useGameStore((s) => s.overwriteSlot);
+  const requestConfirm = useUiStore((s) => s.requestConfirm);
   const [pickingParty, setPickingParty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
 
   const player = game.player;
   const seat = game.seatMap.find((s) => s.id === player.seatId);
@@ -191,13 +198,15 @@ export function ProfileScreen({ game }: { game: GameState }) {
               <button
                 className="btn"
                 style={{ textAlign: 'center' }}
-                onClick={() => {
-                  if (window.confirm(
-                    'Are you sure? Crossing the floor costs you your role, your standing, and possibly your seat at the next election.'
-                  )) {
-                    setPickingParty(true);
-                  }
-                }}
+                onClick={() =>
+                  requestConfirm({
+                    title: 'Cross the floor?',
+                    message: 'Crossing the floor costs you your role, your standing, and possibly your seat at the next election.',
+                    confirmLabel: 'Choose new party',
+                    danger: true,
+                    onConfirm: () => setPickingParty(true),
+                  })
+                }
               >
                 Change party…
               </button>
@@ -245,10 +254,14 @@ export function ProfileScreen({ game }: { game: GameState }) {
           style={{ textAlign: 'center', marginBottom: 8 }}
           onClick={() => {
             const isLeader = playerIsLeader(game);
-            const msg = isLeader
-              ? 'Resign the leadership? A successor will take over and you will return to the backbenches.'
-              : `Resign as ${playerOfficeTitle(game)}? You will stay on as an MP.`;
-            if (window.confirm(msg)) resignOffice();
+            requestConfirm({
+              title: isLeader ? 'Resign the leadership?' : 'Resign your office?',
+              message: isLeader
+                ? 'A successor will take over and you will return to the backbenches.'
+                : `Step down as ${playerOfficeTitle(game)}? You will stay on as an MP.`,
+              confirmLabel: 'Resign',
+              onConfirm: resignOffice,
+            });
           }}
         >
           Resign your office
@@ -262,25 +275,116 @@ export function ProfileScreen({ game }: { game: GameState }) {
           style={{ color: 'var(--danger)', textAlign: 'center', marginBottom: 8 }}
           onClick={() => {
             const frontbench = playerTier(game) >= 1;
-            const msg = frontbench
-              ? `Resign as ${playerOfficeTitle(game)} and publicly call for the Prime Minister to go? This will destroy your relationship with the leadership — but a senior resignation carries real weight.`
-              : 'Submit a letter of no confidence in the Prime Minister? It will anger the whips and the leader, and may or may not move the dial.';
-            if (window.confirm(msg)) callForPmResignation();
+            requestConfirm({
+              title: frontbench ? 'Resign and move against the PM?' : 'Call for the PM to go?',
+              message: frontbench
+                ? `Resign as ${playerOfficeTitle(game)} and publicly call for the Prime Minister to go? It will destroy your relationship with the leadership — but a senior resignation carries real weight.`
+                : 'Submit a letter of no confidence in the Prime Minister? It will anger the whips and the leader, and may or may not move the dial.',
+              confirmLabel: frontbench ? 'Resign and call' : 'Submit letter',
+              danger: true,
+              onConfirm: callForPmResignation,
+            });
           }}
         >
           {playerTier(game) >= 1 ? 'Resign and call for the PM to go' : 'Call for the PM to resign'}
         </button>
       )}
 
+      {player.hasSeat && (
+        <button
+          className="btn"
+          style={{ textAlign: 'center', marginBottom: 8 }}
+          onClick={() => { setSavedMsg(false); setSaving(true); }}
+        >
+          Save game
+        </button>
+      )}
+
       <button
         className="btn"
         style={{ color: 'var(--danger)', textAlign: 'center', marginBottom: 8 }}
-        onClick={() => {
-          if (window.confirm('Retire from politics? This ends your career.')) retire();
-        }}
+        onClick={() =>
+          requestConfirm({
+            title: 'Retire from politics?',
+            message: 'This ends your career for good.',
+            confirmLabel: 'Retire',
+            danger: true,
+            onConfirm: retire,
+          })
+        }
       >
         Retire from politics
       </button>
+
+      {saving && (
+        <SaveModal
+          game={game}
+          slots={slots}
+          onSaveNew={(name) => { saveToSlot(name); finishSave(); }}
+          onOverwrite={(id, name) => { overwriteSlot(id, name); finishSave(); }}
+          onClose={() => setSaving(false)}
+        />
+      )}
+      {savedMsg && (
+        <p style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 600, marginTop: 4 }}>
+          Saved ✓
+        </p>
+      )}
+    </div>
+  );
+
+  function finishSave() {
+    setSaving(false);
+    setSavedMsg(true);
+  }
+}
+
+function SaveModal({
+  game, slots, onSaveNew, onOverwrite, onClose,
+}: {
+  game: GameState;
+  slots: { id: string; name: string; legacyLabel: string }[];
+  onSaveNew: (name: string) => void;
+  onOverwrite: (id: string, name: string) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(`${game.player.name} — ${playerOfficeTitle(game)}`);
+  const full = slots.length >= 3;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <h3 className="modal-title">Save game</h3>
+        <input
+          className="nc-input"
+          style={{ width: '100%', marginBottom: 14 }}
+          value={name}
+          maxLength={40}
+          onChange={(e) => setName(e.target.value)}
+        />
+        {full ? (
+          <>
+            <p className="modal-message" style={{ marginBottom: 10 }}>
+              All 3 save slots are full — choose one to overwrite:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+              {slots.map((s) => (
+                <button key={s.id} className="btn" style={{ textAlign: 'left' }}
+                  onClick={() => onOverwrite(s.id, name)}>
+                  <strong>{s.name}</strong>
+                  <span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>{s.legacyLabel}</span>
+                </button>
+              ))}
+            </div>
+            <button className="btn modal-cancel" style={{ textAlign: 'center' }} onClick={onClose}>Cancel</button>
+          </>
+        ) : (
+          <div className="modal-actions">
+            <button className="btn modal-cancel" onClick={onClose}>Cancel</button>
+            <button className="btn modal-confirm" onClick={() => onSaveNew(name)}>Save</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

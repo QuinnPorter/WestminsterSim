@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useUiStore } from './store/uiStore';
 import { useGameStore } from './store/gameStore';
 import { TabBar } from './components/TabBar';
+import { ConfirmModal } from './components/ConfirmModal';
 import { TitleScreen } from './screens/TitleScreen';
 import { NewCareerScreen } from './screens/NewCareerScreen';
+import { LoadGameScreen } from './screens/LoadGameScreen';
+import { TutorialOverlay } from './components/TutorialOverlay';
 import { PlayScreen } from './screens/PlayScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { CabinetScreen } from './screens/CabinetScreen';
@@ -18,7 +21,10 @@ export default function App() {
   const game = useGameStore((s) => s.game);
   const activeTab = useUiStore((s) => s.activeTab);
   const debug = useUiStore((s) => s.debug);
-  const [creating, setCreating] = useState(false);
+  const started = useUiStore((s) => s.started);
+  const setStarted = useUiStore((s) => s.setStarted);
+  const landing = useUiStore((s) => s.landing);
+  const setLanding = useUiStore((s) => s.setLanding);
 
   // theme the UI with the player's party colour
   useEffect(() => {
@@ -34,39 +40,48 @@ export default function App() {
     }
   }, [game?.player.partyId, game]);
 
-  // leaving a finished game resets the creation flow
+  // if the live game vanishes (abandoned / new game discarded) while "started",
+  // fall back to the landing menu
   useEffect(() => {
-    if (game) setCreating(false);
-  }, [game]);
+    if (started && !game) {
+      setStarted(false);
+      setLanding('menu');
+    }
+  }, [started, game, setStarted, setLanding]);
 
-  if (!game) {
+  // ---- landing flow (always shown first on launch) ----
+  if (!started) {
     return (
       <div className="shell">
-        {creating ? (
-          <NewCareerScreen />
-        ) : (
-          <TitleScreen onNewCareer={() => setCreating(true)} />
-        )}
+        {landing === 'create' && <NewCareerScreen />}
+        {landing === 'tutorial' && <TutorialOverlay onDone={() => setLanding('menu')} />}
+        {landing === 'load' && <LoadGameScreen onBack={() => setLanding('menu')} />}
+        {landing === 'menu' && <TitleScreen />}
+        <ConfirmModal />
       </div>
     );
   }
 
-  if (game.gameOver) {
+  if (game?.gameOver) {
     return (
       <div className="shell">
         <GameOverScreen game={game} />
+        <ConfirmModal />
       </div>
     );
   }
 
-  if (game.pendingElectionId) {
+  if (game?.pendingElectionId) {
     return (
       <div className="shell">
         <ElectionNightScreen game={game} />
         {debug && <DebugMenu />}
+        <ConfirmModal />
       </div>
     );
   }
+
+  if (!game) return null; // transient; the effect above resets to the menu
 
   return (
     <div className="shell">
@@ -77,6 +92,7 @@ export default function App() {
       {activeTab === 'profile' && <ProfileScreen game={game} />}
       <TabBar />
       {debug && <DebugMenu />}
+      <ConfirmModal />
     </div>
   );
 }

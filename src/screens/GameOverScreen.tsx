@@ -1,5 +1,6 @@
 import { GameState } from '../types/game';
 import { useGameStore } from '../store/gameStore';
+import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES } from '../data/parties';
 
@@ -11,7 +12,15 @@ const REASON_TEXT: Record<string, string> = {
 
 export function GameOverScreen({ game }: { game: GameState }) {
   const abandonGame = useGameStore((s) => s.abandonGame);
+  const setStarted = useUiStore((s) => s.setStarted);
+  const setLanding = useUiStore((s) => s.setLanding);
   const legacy = game.gameOver!.legacy;
+
+  const returnToMenu = () => {
+    setStarted(false);
+    setLanding('menu');
+    abandonGame();
+  };
 
   return (
     <div className="screen" style={{ textAlign: 'center', paddingTop: 40 }}>
@@ -46,8 +55,8 @@ export function GameOverScreen({ game }: { game: GameState }) {
         </div>
       )}
 
-      <button className="btn btn-primary" onClick={abandonGame}>
-        Start a new career
+      <button className="btn btn-primary" onClick={returnToMenu}>
+        Return to the menu
       </button>
     </div>
   );

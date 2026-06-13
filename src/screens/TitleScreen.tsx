@@ -1,6 +1,29 @@
+import { useGameStore } from '../store/gameStore';
+import { useUiStore } from '../store/uiStore';
 import './TitleScreen.css';
 
-export function TitleScreen({ onNewCareer }: { onNewCareer: () => void }) {
+export function TitleScreen() {
+  const game = useGameStore((s) => s.game);
+  const slots = useGameStore((s) => s.slots);
+  const setLanding = useUiStore((s) => s.setLanding);
+  const requestConfirm = useUiStore((s) => s.requestConfirm);
+
+  const hasSave = game !== null || slots.length > 0;
+
+  const beginNew = () => {
+    if (game) {
+      requestConfirm({
+        title: 'Start a new career?',
+        message: 'This replaces your current (auto-saved) game. Any named saves are kept.',
+        confirmLabel: 'New career',
+        danger: true,
+        onConfirm: () => setLanding('create'),
+      });
+    } else {
+      setLanding('create');
+    }
+  };
+
   return (
     <div className="screen title-screen">
       <div className="title-crest">
@@ -47,8 +70,16 @@ export function TitleScreen({ onNewCareer }: { onNewCareer: () => void }) {
         </svg>
       </div>
       <h1 className="title-name">WestminsterSim</h1>
-      <button className="btn btn-primary title-start" onClick={onNewCareer}>
+      <button className="btn btn-primary title-start" onClick={beginNew}>
         Begin your career
+      </button>
+      {hasSave && (
+        <button className="btn title-secondary" onClick={() => setLanding('load')}>
+          Load game
+        </button>
+      )}
+      <button className="btn title-secondary" onClick={() => setLanding('tutorial')}>
+        Tutorial
       </button>
       <p className="title-foot">A political simulator · All political figures are fictional</p>
     </div>

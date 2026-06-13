@@ -1,0 +1,53 @@
+.tut {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px;
+  gap: 18px;
+}
+
+.tut-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.tut-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.tut-dot.active {
+  background: var(--party);
+}
+
+.tut-card {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.tut-title {
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.tut-body {
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.tut-nav {
+  display: flex;
+  gap: 10px;
+}
+
+.tut-nav .btn {
+  text-align: center;
+}

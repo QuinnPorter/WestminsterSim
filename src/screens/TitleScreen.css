@@ -34,6 +34,17 @@
   padding: 15px;
 }
 
+.title-secondary {
+  max-width: 260px;
+  margin-top: 10px;
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
+  text-align: center;
+  font-size: var(--fs-sm);
+  padding: 11px;
+}
+
 .title-foot {
   margin-top: 26px;
   font-size: var(--fs-xs);

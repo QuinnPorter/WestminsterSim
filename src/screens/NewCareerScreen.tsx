@@ -3,6 +3,7 @@ import {
   AvatarConfig, BackgroundId, Era, Gender, PartyId, RegionId,
 } from '../types/game';
 import { useGameStore } from '../store/gameStore';
+import { useUiStore } from '../store/uiStore';
 import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
 import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
@@ -49,6 +50,8 @@ const LAYER_PILLS: { key: AvatarLayerKey; label: string }[] = [
 
 export function NewCareerScreen() {
   const startNewGame = useGameStore((s) => s.startNewGame);
+  const setStarted = useUiStore((s) => s.setStarted);
+  const setLanding = useUiStore((s) => s.setLanding);
   const [step, setStep] = useState(0);
 
   const [era, setEra] = useState<Era>('2024');
@@ -83,6 +86,7 @@ export function NewCareerScreen() {
     startNewGame({
       name: name.trim(), gender, age, region, background, partyId, avatar, era,
     });
+    setStarted(true);
   };
 
   return (
@@ -247,9 +251,12 @@ export function NewCareerScreen() {
       )}
 
       <div className="nc-nav">
-        {step > 0 && (
-          <button className="btn" onClick={() => setStep(step - 1)}>Back</button>
-        )}
+        <button
+          className="btn"
+          onClick={() => (step > 0 ? setStep(step - 1) : setLanding('menu'))}
+        >
+          Back
+        </button>
         {step < STEPS.length - 1 ? (
           <button
             className="btn btn-primary"

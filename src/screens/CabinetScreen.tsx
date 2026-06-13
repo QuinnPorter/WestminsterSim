@@ -3,6 +3,7 @@ import { GameState, OfficeId } from '../types/game';
 import { CABINET_OFFICES, OFFICES } from '../data/offices';
 import { PARTIES } from '../data/parties';
 import { useGameStore } from '../store/gameStore';
+import { useUiStore } from '../store/uiStore';
 import { playerIsLeader, playerInGovernment } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import './CabinetScreen.css';
@@ -10,6 +11,7 @@ import './CabinetScreen.css';
 export function CabinetScreen({ game }: { game: GameState }) {
   const [side, setSide] = useState<'gov' | 'opp'>('gov');
   const sackMinister = useGameStore((s) => s.sackMinister);
+  const requestConfirm = useUiStore((s) => s.requestConfirm);
   const isGov = side === 'gov';
   const leaderId = isGov ? game.government.pmId : game.government.loId;
   const posts = isGov ? game.government.cabinet : game.government.shadowCabinet;
@@ -49,9 +51,13 @@ export function CabinetScreen({ game }: { game: GameState }) {
               onSack={canSack && post.characterId !== 'player'
                 ? () => {
                     const name = game.characters[post.characterId]?.name ?? 'this minister';
-                    if (window.confirm(`Sack ${name}? It spends political capital, and they won't forget.`)) {
-                      sackMinister(officeId as OfficeId);
-                    }
+                    requestConfirm({
+                      title: `Sack ${name}?`,
+                      message: "It spends political capital, and they won't forget.",
+                      confirmLabel: 'Sack',
+                      danger: true,
+                      onConfirm: () => sackMinister(officeId as OfficeId),
+                    });
                   }
                 : undefined}
             />

@@ -1,0 +1,56 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(38, 34, 28, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: modal-fade 0.15s ease;
+}
+
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 360px;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-title {
+  font-size: var(--fs-lg);
+  margin-bottom: 8px;
+}
+
+.modal-message {
+  color: var(--ink);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  margin-bottom: 18px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-actions .btn {
+  text-align: center;
+  margin: 0;
+}
+
+.modal-confirm {
+  background: var(--party);
+  color: var(--party-ink);
+  border-color: var(--party);
+}
+
+.modal-confirm.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
