@@ -94,6 +94,22 @@ export function polledPartiesForEra(era: Era): PartyId[] {
   return [...base, 'reform']; // 2024
 }
 
+/** the right-populist party that actually exists in a given era */
+export function populistPartyForEra(era: Era): PartyId {
+  if (era === '2015' || era === '2017') return 'ukip';
+  if (era === '2019') return 'brexit';
+  return 'reform'; // 2024
+}
+
+/** the parties the player can choose at character creation, with the populist
+ *  slot swapped to the era-correct party (UKIP / Brexit Party / Reform UK) */
+export function playablePartiesForEra(era: Era): PartyId[] {
+  const populist = populistPartyForEra(era);
+  return PLAYABLE_PARTIES.map((p) =>
+    p === 'reform' || p === 'brexit' || p === 'ukip' ? populist : p
+  );
+}
+
 export function partyColour(id: PartyId): string {
   return PARTIES[id].colour;
 }

@@ -115,9 +115,8 @@ export function officeTitleFor(
   if (office.id === 'pps') return `Aide to the ${minorPartyName} Leader`;
   if (office.department) {
     const dept = DEPARTMENTS[office.department].casual;
-    return office.tier === 4
-      ? `${minorPartyName} Lead Spokesperson for ${dept}`
-      : `${minorPartyName} Spokesperson for ${dept}`;
+    // a single spokesperson rung for minor parties (no "lead" distinction)
+    return `${minorPartyName} Spokesperson for ${dept}`;
   }
   return officeTitle(officeId, inGovernment);
 }

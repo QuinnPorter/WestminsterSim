@@ -4,7 +4,7 @@ import {
 } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
-import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
+import { PARTIES, playablePartiesForEra, populistPartyForEra } from '../data/parties';
 import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
 import { PARLIAMENTS } from '../data/parliaments';
@@ -106,7 +106,17 @@ export function NewCareerScreen() {
             <button
               key={e}
               className={`card nc-era${era === e ? ' selected' : ''}`}
-              onClick={() => setEra(e)}
+              onClick={() => {
+                setEra(e);
+                // keep a populist selection valid: remap to the era's actual party
+                if (partyId === 'ukip' || partyId === 'brexit' || partyId === 'reform') {
+                  const p = populistPartyForEra(e);
+                  setPartyId(p);
+                  if (!PARTIES[p].contestsRegions.includes(region)) {
+                    setRegion(PARTIES[p].contestsRegions[0] as RegionId);
+                  }
+                }
+              }}
             >
               <strong>{ERA_LABELS[e].title}</strong>
               <span>{ERA_LABELS[e].blurb}</span>
@@ -164,7 +174,7 @@ export function NewCareerScreen() {
         <div className="fade-in">
           <h2 className="nc-h">Pick your colours</h2>
           <div className="nc-parties">
-            {PLAYABLE_PARTIES.map((p) => (
+            {playablePartiesForEra(era).map((p) => (
               <button
                 key={p}
                 className={`nc-party${partyId === p ? ' selected' : ''}`}

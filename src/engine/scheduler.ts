@@ -553,7 +553,8 @@ export function nextStep(state: GameState, rng: Rng): void {
     // hard to come by for a junior partner: a stiffer bar than usual.
     if (rng.chance(MINOR_CRITIC_HAZARD)) {
       const target = nextOfficeFor(state, rng);
-      if (target) {
+      // never re-offer the exact office the player already holds
+      if (target && target !== state.player.officeId) {
         const score = eligibilityScore(state, target) + rng.normal(0, 6);
         const baseBar = OFFER_THRESHOLDS[OFFICES[target].tier] ?? 60;
         const bar = playerInGovernmentBloc(state) ? baseBar + 5 : baseBar - 8;

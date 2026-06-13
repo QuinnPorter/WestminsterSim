@@ -186,6 +186,61 @@ function newFrontbencher(state: GameState, rng: Rng, party: PartyId, officeId: O
   return c;
 }
 
+/** After an election, make the cabinet / shadow-cabinet rosters match the parties
+ *  that actually won government and official-opposition status — so whether a
+ *  party (and the player within it) is the official opposition or a third party
+ *  is driven by results, not baked in. NPC posts held by the wrong party are
+ *  regenerated; correctly-partied NPCs (and the player, while still on that side)
+ *  stay put, so the common two-party swap keeps its continuity. The player is then
+ *  (re)seated on their bench if they hold a cabinet-rank office for that party. */
+function reconcileFrontbenches(state: GameState, rng: Rng, playerWonSeat: boolean): void {
+  const sides: { side: 'cabinet' | 'shadowCabinet'; party: PartyId }[] = [
+    { side: 'cabinet', party: state.government.governingParty },
+    { side: 'shadowCabinet', party: state.government.oppositionParty },
+  ];
+  for (const { side, party } of sides) {
+    for (const post of state.government[side]) {
+      if (post.characterId === 'player') {
+        // keep the player only if they still sit on this side with their seat
+        if (playerWonSeat && state.player.partyId === party) continue;
+        post.characterId = newFrontbencher(state, rng, party, post.officeId).id;
+        continue;
+      }
+      const holder = state.characters[post.characterId];
+      if (!holder || !holder.active || holder.partyId !== party) {
+        if (holder) { holder.officeId = null; holder.active = false; }
+        post.characterId = newFrontbencher(state, rng, party, post.officeId).id;
+      }
+    }
+  }
+  // (re)seat the player on their own bench if they hold a cabinet-rank office —
+  // e.g. a third-party spokesperson whose party has just become the opposition
+  if (
+    playerWonSeat && !playerIsLeader(state) && onFrontbenchTrack(state) &&
+    state.player.officeId && CABINET_OFFICES.includes(state.player.officeId)
+  ) {
+    const side = frontbenchSide(state);
+    const post = state.government[side].find((p) => p.officeId === state.player.officeId);
+    if (post && post.characterId !== 'player') {
+      const displaced = state.characters[post.characterId];
+      if (displaced) { displaced.officeId = null; displaced.active = false; }
+    }
+    setFrontbenchPost(state, side, state.player.officeId, 'player');
+  }
+
+  // the Leader of the Opposition must belong to the (new) opposition party
+  const oppParty = state.government.oppositionParty;
+  const playerLeadsOpp = playerWonSeat && state.player.partyId === oppParty && playerIsLeader(state);
+  if (playerLeadsOpp) {
+    state.government.loId = 'player';
+  } else {
+    const lo = state.characters[state.government.loId];
+    if (state.government.loId === 'player' || !lo || !lo.active || lo.partyId !== oppParty) {
+      state.government.loId = newFrontbencher(state, rng, oppParty, 'leader').id;
+    }
+  }
+}
+
 // ---------- eligibility ----------
 
 export function eligibilityScore(state: GameState, targetOffice: OfficeId): number {
@@ -222,14 +277,21 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
   const tier = playerTier(state);
   const bg = BACKGROUNDS[state.player.background];
 
-  // minor parties have a slim front bench: a backbencher is made a spokesperson
-  // (min_*), a spokesperson is occasionally promoted to lead spokesperson (sos_*).
+  // minor parties have a single spokesperson rung (min_*). A backbencher is made
+  // a spokesperson; an existing spokesperson is only ever offered a DIFFERENT
+  // brief (never the one they already hold), and only occasionally — the next
+  // step up from there is the leadership, via a contest.
   if (onMinorPartyTrack(state)) {
-    if (tier >= 4) return null; // next step up is the leadership, via a contest
-    if (tier === 3) {
-      return rng.chance(0.4) ? deptOfficeId(rng, bg, 4) : deptOfficeId(rng, bg, 3);
+    if (tier >= 3) {
+      if (!rng.chance(0.5)) return null; // keep brief-switches occasional
+      const current = state.player.officeId ? OFFICES[state.player.officeId].department : undefined;
+      const affinity = bg.deptAffinity.filter((d) => d !== current);
+      const others = (Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[])
+        .filter((d) => d !== current);
+      const dept = affinity.length > 0 && rng.chance(0.5) ? rng.pick(affinity) : rng.pick(others);
+      return `min_${dept}`;
     }
-    return deptOfficeId(rng, bg, 3); // tier 0/1/2 → a spokesperson brief
+    return deptOfficeId(rng, bg, 3); // tier 0/1/2 → a first spokesperson brief
   }
 
   // career memory: a returning ex-minister on the backbenches isn't sent back
@@ -744,9 +806,12 @@ export function applyElectionAftermath(
     });
   }
 
-  // new opposition = largest non-governing major party
+  // the official opposition is the largest non-governing party by seats — driven
+  // by the actual result, not a fixed "major party" list, so e.g. the Lib Dems
+  // can take it from a collapsed Conservative or Labour party. Sinn Féin abstain,
+  // and the Speaker / independents sit outside party politics, so none can lead it.
   const ranked = (Object.entries(result.seats) as [PartyId, number][])
-    .filter(([p]) => p !== newGov && PARTIES[p].major)
+    .filter(([p, n]) => p !== newGov && p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] && (n ?? 0) > 0)
     .sort((a, b) => b[1] - a[1]);
   const newOpp = ranked[0]?.[0] ?? (newGov === prevGov ? prevOpp : prevGov);
 
@@ -783,6 +848,8 @@ export function applyElectionAftermath(
 
   state.government.governingParty = newGov;
   state.government.oppositionParty = newOpp;
+  // the rosters (and the player's seat on them) follow the election result
+  reconcileFrontbenches(state, rng, playerWonSeat);
   const sfSeats = result.seats.sf ?? 0;
   const votingSeats = 650 - sfSeats - 1;
   const govSeats = result.seats[newGov] ?? 0;
@@ -879,6 +946,8 @@ export function applyElectionAftermath(
 
   // ---- player kept their seat ----
   // if the player's party fell off the frontbench track, they lose office
+  const wasOnTrack =
+    state.player.partyId === prevGov || state.player.partyId === prevOpp;
   const onTrack =
     state.player.partyId === newGov || state.player.partyId === newOpp;
   if (state.player.officeId && state.player.officeId !== 'speaker' && !playerIsLeader(state) && !onTrack) {
@@ -886,11 +955,12 @@ export function applyElectionAftermath(
   }
 
   // a retained portfolio flips between government and shadow (or vice versa) on a
-  // change of government — record it so the career timeline and history show the
-  // correct current title (e.g. Health Secretary → Shadow Health Secretary, or a
-  // shadow minister taking up the real brief after a win)
+  // change of government — OR when the player's party gains a frontbench track
+  // (e.g. a third party becomes the official opposition) without one. Record it so
+  // the career timeline and history show the correct current title (e.g. Health
+  // Secretary → Shadow Health Secretary, or a spokesperson taking up a shadow brief).
   if (
-    changeOfGovernment &&
+    (changeOfGovernment || !wasOnTrack) &&
     onTrack &&
     state.player.officeId &&
     state.player.officeId !== 'speaker' &&
