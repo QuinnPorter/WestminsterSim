@@ -1,28 +1,54 @@
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
+import { PlayerStats } from '../types/game';
+import { StatChips } from './StatChips';
 import './TutorialOverlay.css';
 
-interface Page { title: string; body: string }
+interface Page { title: string; body: string; visual?: ReactNode }
+
+const SAMPLE_STATS: PlayerStats = {
+  profile: 45, partyStanding: 60, competence: 55, constituencyApproval: 70, integrity: 40,
+};
+
+/** a non-interactive mock of an in-game decision card, for illustration */
+function MockCard() {
+  return (
+    <div className="card tut-mockcard">
+      <h4 className="tut-mockcard-title">Whipped against your patch</h4>
+      <p className="tut-mockcard-body">The party line is unpopular at home, and the whip is on. What do you do?</p>
+      <div className="tut-mockcard-choices">
+        <span className="btn">Vote for the constituency</span>
+        <span className="btn">Hold the line, explain later</span>
+      </div>
+    </div>
+  );
+}
 
 const PAGES: Page[] = [
   {
     title: 'Your story',
-    body: 'You are a newly elected backbench MP. There is no single way to play and no score to chase — you might claw your way toward the Cabinet and Number 10, or make your name as a rebel, a campaigner, a conscience. The path is yours.',
+    body: "You're a newly elected MP. There's no set goal: climb toward the Cabinet and Number 10, or make your name as a rebel, a campaigner, a conscience.",
   },
   {
     title: 'Decisions',
-    body: 'Most turns hand you a card: a dilemma with no perfect answer. Your choice nudges your five stats — profile, party standing, competence, constituency approval and integrity — and your relationships with colleagues, whips and the press. Everything is a trade-off.',
+    body: 'Most turns hand you a card — a dilemma with no perfect answer. Your choice shifts your stats and your relationships. Only trade-offs.',
+    visual: <MockCard />,
+  },
+  {
+    title: 'The five stats',
+    body: 'Five stats track your standing — tap any chip to see what it does. They decide who rises, who is sacked, and who is trusted.',
+    visual: <StatChips stats={SAMPLE_STATS} />,
   },
   {
     title: 'Time passes',
-    body: 'Between your decisions, the political world turns on its own: reshuffles, leadership contests, scandals and general elections come and go. Choices compound — do one thing and doors open, do another and they quietly close.',
+    body: 'Each choice advances the calendar by weeks. Between them the world turns on its own — reshuffles, scandals, leadership contests, elections.',
   },
   {
-    title: 'Many jobs',
-    body: 'Politics is lots of different roles, and each feels different. You might take tough decisions in government, hold ministers to account from opposition, lead a party, or fight your corner from the back benches — sometimes holding the balance of power.',
+    title: 'Many roles',
+    body: 'Politics is many jobs: take hard calls in office, hold the government to account, lead a party, or fight from the back benches.',
   },
   {
     title: 'That’s it',
-    body: 'There is nothing more to learn — the rest you will pick up as you go. Your story is yours to write.',
+    body: "That's all you need — the rest you'll pick up as you go.",
   },
 ];
 
@@ -42,6 +68,7 @@ export function TutorialOverlay({ onDone }: { onDone: () => void }) {
       <div className="card tut-card fade-in" key={page}>
         <h2 className="tut-title">{p.title}</h2>
         <p className="tut-body">{p.body}</p>
+        {p.visual && <div className="tut-visual">{p.visual}</div>}
       </div>
 
       <div className="tut-nav">

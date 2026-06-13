@@ -2,7 +2,7 @@ import {
   CandidateResult, ConstituencyResult, ElectionOutcome, ElectionResult, GameState, PartyId,
   SyntheticSeat,
 } from '../types/game';
-import { PARTIES, POLLED_PARTIES } from '../data/parties';
+import { PARTIES, POLLED_PARTIES, polledPartiesForEra } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { generateName } from '../generation/characters';
 import { lastElectionShares } from './polling';
@@ -18,9 +18,10 @@ export function electionNationalShares(
   rng: Rng
 ): Partial<Record<PartyId, number>> {
   const anchor = lastElectionShares(state);
+  const polledParties = polledPartiesForEra(state.startEra);
   const out: Partial<Record<PartyId, number>> = {};
   let total = 0;
-  for (const p of POLLED_PARTIES) {
+  for (const p of polledParties) {
     const polled = state.polling.shares[p] ?? anchor[p] ?? 0.01;
     const base = anchor[p] ?? 0.01;
     const capped = Math.max(base - MAX_MOVE, Math.min(base + MAX_MOVE, polled));
@@ -40,7 +41,7 @@ export function electionNationalShares(
     out[gov] = Math.max(0.003, (out[gov] ?? 0) + fatigue);
     total += out[gov] ?? 0;
   }
-  for (const p of POLLED_PARTIES) out[p] = (out[p] ?? 0) / total;
+  for (const p of polledParties) out[p] = (out[p] ?? 0) / total;
   return out;
 }
 

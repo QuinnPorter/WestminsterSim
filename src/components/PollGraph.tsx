@@ -1,5 +1,5 @@
 import { GameState, PartyId } from '../types/game';
-import { PARTIES, POLLED_PARTIES, partyTextColour } from '../data/parties';
+import { PARTIES, polledPartiesForEra, partyTextColour } from '../data/parties';
 import { formatMonthYear } from '../engine/clock';
 
 /** a small multi-line poll tracker for the current parliament */
@@ -15,8 +15,8 @@ export function PollGraph({ game, width = 320, height = 140 }: {
     );
   }
 
-  // which parties to plot: those polling meaningfully at any point
-  const parties = POLLED_PARTIES.filter((p) =>
+  // which parties to plot: this era's polled parties that poll meaningfully at any point
+  const parties = polledPartiesForEra(game.startEra).filter((p) =>
     hist.some((s) => (s.shares[p] ?? 0) > 0.03)
   );
 

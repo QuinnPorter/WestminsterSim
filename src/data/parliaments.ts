@@ -94,7 +94,7 @@ export const PARLIAMENTS: Record<Era, ParliamentData> = {
     matrix: MATRIX_2015,
     baselineShares: {
       con: 0.369, lab: 0.304, ukip: 0.126, ld: 0.079, snp: 0.047,
-      green: 0.038, pc: 0.006, reform: 0.002,
+      green: 0.038, pc: 0.006,
     },
     governingParty: 'con',
     oppositionParty: 'lab',
@@ -105,7 +105,7 @@ export const PARLIAMENTS: Record<Era, ParliamentData> = {
     matrix: MATRIX_2017,
     baselineShares: {
       con: 0.424, lab: 0.40, ld: 0.074, snp: 0.030, ukip: 0.018,
-      green: 0.016, pc: 0.005, reform: 0.002,
+      green: 0.016, pc: 0.005,
     },
     governingParty: 'con',
     oppositionParty: 'lab',
@@ -118,7 +118,7 @@ export const PARLIAMENTS: Record<Era, ParliamentData> = {
     matrix: MATRIX_2019,
     baselineShares: {
       con: 0.447, lab: 0.33, ld: 0.118, snp: 0.04,
-      green: 0.028, reform: 0.021, pc: 0.005, ukip: 0.002,
+      green: 0.028, brexit: 0.02, pc: 0.005,
     },
     governingParty: 'con',
     oppositionParty: 'lab',
@@ -129,7 +129,7 @@ export const PARLIAMENTS: Record<Era, ParliamentData> = {
     matrix: MATRIX_2024,
     baselineShares: {
       lab: 0.337, con: 0.237, reform: 0.143, ld: 0.122,
-      green: 0.067, snp: 0.025, pc: 0.007, ukip: 0.002,
+      green: 0.067, snp: 0.025, pc: 0.007,
     },
     governingParty: 'lab',
     oppositionParty: 'con',

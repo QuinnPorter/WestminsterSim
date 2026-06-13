@@ -49,5 +49,42 @@
 }
 
 .tut-nav .btn {
+  flex: 1;
+  width: auto;
   text-align: center;
+}
+
+/* illustration area under the body text */
+.tut-visual {
+  margin-top: 16px;
+  text-align: left;
+}
+
+/* a small non-interactive mock of an in-game decision card */
+.tut-mockcard {
+  text-align: left;
+  padding: 14px;
+  box-shadow: none;
+  border: 1.5px solid var(--line);
+}
+.tut-mockcard-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.tut-mockcard-body {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.tut-mockcard-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tut-mockcard-choices .btn {
+  text-align: center;
+  font-size: var(--fs-sm);
+  padding: 9px 12px;
+  opacity: 0.85;
+  cursor: default;
 }

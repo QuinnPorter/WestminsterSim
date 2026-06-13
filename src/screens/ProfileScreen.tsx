@@ -86,8 +86,12 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const marginality = margin > 20 ? 'Safe' : margin > 8 ? 'Comfortable' : 'Marginal';
   const years = Math.floor(yearsBetween(player.enteredParliament, game.day));
 
-  const switchableParties: PartyId[] = PLAYABLE_PARTIES.filter(
-    (p) => p !== player.partyId && PARTIES[p].contestsRegions.includes(player.region)
+  // defection targets: any playable party that contests the player's region,
+  // plus sitting as an Independent (defection only — never a start option, and
+  // it ends any chance of climbing the ministerial ladder)
+  const switchableParties: PartyId[] = [...PLAYABLE_PARTIES, 'ind' as PartyId].filter(
+    (p) => p !== player.partyId
+      && (p === 'ind' || PARTIES[p].contestsRegions.includes(player.region))
   );
 
   return (

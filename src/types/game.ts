@@ -1,7 +1,7 @@
 // ---- core ids ----
 
 export type PartyId =
-  | 'con' | 'lab' | 'ld' | 'snp' | 'green' | 'reform' | 'pc' | 'ukip'
+  | 'con' | 'lab' | 'ld' | 'snp' | 'green' | 'reform' | 'pc' | 'ukip' | 'brexit'
   | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'spk' | 'ind';
 
 export type RegionId =

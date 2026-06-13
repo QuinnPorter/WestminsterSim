@@ -1,6 +1,6 @@
 import { GameState, PartyId } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
-import { POLLED_PARTIES } from '../data/parties';
+import { polledPartiesForEra } from '../data/parties';
 import { Rng } from './rng';
 
 /** national vote shares at the last election (or game start) — the swing anchor */
@@ -14,7 +14,7 @@ export function lastElectionShares(state: GameState): Partial<Record<PartyId, nu
 function fundamentals(state: GameState): Partial<Record<PartyId, number>> {
   const base = lastElectionShares(state);
   const out: Partial<Record<PartyId, number>> = {};
-  for (const p of POLLED_PARTIES) out[p] = base[p] ?? 0.01;
+  for (const p of polledPartiesForEra(state.startEra)) out[p] = base[p] ?? 0.01;
   return out;
 }
 
@@ -44,12 +44,13 @@ export function samplePolling(state: GameState): void {
 export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
   const shares = state.polling.shares;
   const funds = fundamentals(state);
+  const polled = polledPartiesForEra(state.startEra);
   const gov = state.government.governingParty;
   let day = state.polling.lastUpdated;
 
   while (day + WEEK <= toDay) {
     day += WEEK;
-    for (const p of POLLED_PARTIES) {
+    for (const p of polled) {
       const current = shares[p] ?? funds[p] ?? 0.01;
       let next = current
         + rng.normal(0, WEEKLY_NOISE)
@@ -61,8 +62,8 @@ export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
     }
     // renormalise
     let total = 0;
-    for (const p of POLLED_PARTIES) total += shares[p] ?? 0;
-    for (const p of POLLED_PARTIES) shares[p] = (shares[p] ?? 0) / total;
+    for (const p of polled) total += shares[p] ?? 0;
+    for (const p of polled) shares[p] = (shares[p] ?? 0) / total;
   }
   state.polling.lastUpdated = toDay;
 }

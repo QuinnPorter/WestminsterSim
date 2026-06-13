@@ -3,7 +3,7 @@ import { PARTIES, partyTextColour } from '../data/parties';
 import { Hemicycle } from '../components/Hemicycle';
 import { PollGraph } from '../components/PollGraph';
 import { partyPolling } from '../engine/polling';
-import { POLLED_PARTIES } from '../data/parties';
+import { polledPartiesForEra } from '../data/parties';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
   const sorted = (Object.entries(game.seats) as [PartyId, number][])
@@ -15,7 +15,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const workingTarget = Math.floor((650 - sfSeats - 1) / 2) + 1;
   const govSeats = game.seats[gov.governingParty] ?? 0;
 
-  const polls = POLLED_PARTIES
+  const polls = polledPartiesForEra(game.startEra)
     .map((p) => ({ p, v: partyPolling(game, p) }))
     .sort((a, b) => b.v - a.v)
     .slice(0, 5);

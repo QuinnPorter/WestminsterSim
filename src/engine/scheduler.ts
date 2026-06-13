@@ -7,6 +7,7 @@ import {
   openLeadershipVacancy, playerIsLeader, onFrontbenchTrack, onMinorPartyTrack,
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS,
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
+  canHoldOffice,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { runElection } from './election';
@@ -500,8 +501,9 @@ export function nextStep(state: GameState, rng: Rng): void {
   }
 
   // minor-party career: spokesperson offers (frequent — the bench is thin) and
-  // the occasional leadership vacancy the player can contest
-  if (onMinorPartyTrack(state) && !playerIsLeader(state)) {
+  // the occasional leadership vacancy the player can contest. Independents are
+  // excluded — sitting outside every party means no offers and no contests.
+  if (onMinorPartyTrack(state) && !playerIsLeader(state) && canHoldOffice(state)) {
     const party = state.player.partyId;
     // the party changes its own leader: scandal or a flat, rare churn
     if (rng.chance(NPC_LEADER_SCANDAL) || rng.chance(MINOR_LEADER_CHURN)) {

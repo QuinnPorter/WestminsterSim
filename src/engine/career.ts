@@ -46,6 +46,12 @@ export function onMinorPartyTrack(state: GameState): boolean {
   return state.player.hasSeat && !onFrontbenchTrack(state);
 }
 
+/** an Independent sits outside every party, so can never be offered office or
+ *  contest a leadership — they have given up the ministerial ladder entirely */
+export function canHoldOffice(state: GameState): boolean {
+  return state.player.partyId !== 'ind';
+}
+
 /** in government either as the governing party OR as a formal coalition junior
  *  partner — both hold real government office and govern */
 export function playerInGovernmentBloc(state: GameState): boolean {
@@ -2229,12 +2235,14 @@ export function changeParty(state: GameState, rng: Rng, newParty: PartyId): void
   adjustRelationship(state, 'ally', -15);
   adjustRelationship(state, 'rival', -10);
 
-  // new leader and whips, starting lukewarm at best
-  replaceLeader(state, partyLeaderId(state, rng, newParty), rng.int(-5, 5));
-  const whipRel = state.relationships.find((r) => r.kind === 'chiefWhip');
-  if (whipRel) {
-    whipRel.characterId = partyWhipId(state, rng, newParty);
-    whipRel.value = rng.int(-5, 5);
+  // new leader and whips, starting lukewarm at best — an Independent has neither
+  if (newParty !== 'ind') {
+    replaceLeader(state, partyLeaderId(state, rng, newParty), rng.int(-5, 5));
+    const whipRel = state.relationships.find((r) => r.kind === 'chiefWhip');
+    if (whipRel) {
+      whipRel.characterId = partyWhipId(state, rng, newParty);
+      whipRel.value = rng.int(-5, 5);
+    }
   }
 
   // part of your personal mandate follows you — weakened
@@ -2249,7 +2257,9 @@ export function changeParty(state: GameState, rng: Rng, newParty: PartyId): void
 
   state.history.push({
     kind: 'event', date: state.day,
-    headline: `${state.player.name} crosses the floor to join the ${PARTIES[newParty].name}`,
+    headline: newParty === 'ind'
+      ? `${state.player.name} resigns the whip to sit as an Independent`
+      : `${state.player.name} crosses the floor to join the ${PARTIES[newParty].name}`,
   });
 }
 

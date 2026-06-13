@@ -1,4 +1,4 @@
-import { Party, PartyId, RegionId } from '../types/game';
+import { Era, Party, PartyId, RegionId } from '../types/game';
 
 const GB: RegionId[] = [
   'scotland', 'wales', 'london', 'southEast', 'southWest', 'east',
@@ -35,6 +35,10 @@ export const PARTIES: Record<PartyId, Party> = {
   ukip: {
     id: 'ukip', name: 'UK Independence Party', shortName: 'UKIP', colour: '#70147A',
     ideology: 78, contestsRegions: GB,
+  },
+  brexit: {
+    id: 'brexit', name: 'Brexit Party', shortName: 'Brexit', colour: '#11B0B9',
+    ideology: 80, contestsRegions: GB,
   },
   pc: {
     id: 'pc', name: 'Plaid Cymru', shortName: 'PC', colour: '#005B54',
@@ -75,10 +79,20 @@ export const PLAYABLE_PARTIES: PartyId[] = [
   'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc',
 ];
 
-/** GB parties included in national polling */
+/** GB parties included in national polling (full superset across all eras) */
 export const POLLED_PARTIES: PartyId[] = [
-  'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc', 'ukip',
+  'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc', 'ukip', 'brexit',
 ];
+
+/** the polled GB parties for a given era — the right-populist slot is
+ *  era-specific: UKIP (2015/2017), Brexit Party (2019), Reform UK (2024), so
+ *  only one ever appears in that era's polling and parliament. */
+export function polledPartiesForEra(era: Era): PartyId[] {
+  const base: PartyId[] = ['con', 'lab', 'ld', 'snp', 'green', 'pc'];
+  if (era === '2015' || era === '2017') return [...base, 'ukip'];
+  if (era === '2019') return [...base, 'brexit'];
+  return [...base, 'reform']; // 2024
+}
 
 export function partyColour(id: PartyId): string {
   return PARTIES[id].colour;
