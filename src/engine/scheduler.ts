@@ -181,7 +181,6 @@ const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
 const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
 const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
 const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
-const MINOR_LEADER_CHURN = 0.02;        // a minor party changes its own leader
 
 // ---------- the brain ----------
 
@@ -407,15 +406,19 @@ export function nextStep(state: GameState, rng: Rng): void {
     }
   }
 
-  // the player's own (NPC) PM is wounded — a chance to be drawn into the heave
+  // the player's own (NPC) PM is wounded — a chance to be drawn into the heave.
+  // Rare: a multi-year cooldown stops it recurring every year (the player can
+  // still move against the PM any time via the Profile action).
   if (
     playerInGovernment(state) && !playerIsLeader(state) &&
-    state.government.pmId !== 'player' && state.player.hasSeat
+    state.government.pmId !== 'player' && state.player.hasSeat &&
+    state.day >= ((state.player.flags._pmHeaveCooldownUntil as number) ?? 0)
   ) {
     const polls = partyPolling(state, state.government.governingParty);
     if (polls < 28) {
-      const hazard = Math.min(0.05, (28 - polls) * 0.004);
+      const hazard = Math.min(0.03, (28 - polls) * 0.004);
       if (rng.chance(hazard)) {
+        state.player.flags._pmHeaveCooldownUntil = state.day + rng.int(900, 1400);
         state.forcedQueue.push({ kind: 'pmHeave' });
         nextStep(state, rng);
         return;
@@ -505,8 +508,18 @@ export function nextStep(state: GameState, rng: Rng): void {
   // excluded — sitting outside every party means no offers and no contests.
   if (onMinorPartyTrack(state) && !playerIsLeader(state) && canHoldOffice(state)) {
     const party = state.player.partyId;
-    // the party changes its own leader: scandal or a flat, rare churn
-    if (rng.chance(NPC_LEADER_SCANDAL) || rng.chance(MINOR_LEADER_CHURN)) {
+    // the party changes its own leader. A tenure ramp + cooldown keeps contests
+    // spaced out (not clustered then absent): nothing in the first year after a
+    // contest, then a chance that rises with the leader's tenure.
+    if (state.player.flags._minorContestDay === undefined) {
+      state.player.flags._minorContestDay = state.day;
+    }
+    const yrsSince = (state.day - (state.player.flags._minorContestDay as number)) / 365;
+    const churnHazard = yrsSince > 1
+      ? Math.min(0.08, 0.008 + 0.012 * (yrsSince - 1))
+      : 0;
+    if (yrsSince > 1 && (rng.chance(NPC_LEADER_SCANDAL) || rng.chance(churnHazard))) {
+      state.player.flags._minorContestDay = state.day;
       state.history.push({
         kind: 'event', date: state.day,
         headline: `The ${PARTIES[party].name} leadership falls vacant`,

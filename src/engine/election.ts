@@ -8,11 +8,14 @@ import { generateName } from '../generation/characters';
 import { lastElectionShares } from './polling';
 import { Rng } from './rng';
 
-/** cap on how far national shares can move in one election (pts) */
-const MAX_MOVE = 0.18;
 const PER_SEAT_NOISE = 0.015;
+/** election-day campaign wobble (sd) — the only gap between polling and result */
+const CAMPAIGN_NOISE = 0.012;
 
-/** compute this election's national GB vote shares from current polling */
+/** compute this election's national GB vote shares — anchored to CURRENT POLLING
+ *  (not to the last election), so the ballot box reflects the polls within a few
+ *  points of campaign noise. The seat-level uniform swing in computeSeat then
+ *  translates these into seats. */
 export function electionNationalShares(
   state: GameState,
   rng: Rng
@@ -23,9 +26,7 @@ export function electionNationalShares(
   let total = 0;
   for (const p of polledParties) {
     const polled = state.polling.shares[p] ?? anchor[p] ?? 0.01;
-    const base = anchor[p] ?? 0.01;
-    const capped = Math.max(base - MAX_MOVE, Math.min(base + MAX_MOVE, polled));
-    const v = Math.max(0.003, capped + rng.normal(0, 0.008));
+    const v = Math.max(0.003, polled + rng.normal(0, CAMPAIGN_NOISE));
     out[p] = v;
     total += v;
   }

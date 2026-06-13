@@ -51,7 +51,9 @@ describe('election calibration', () => {
     }
     const avgLab = labTotal / runs;
     expect(avgLab).toBeGreaterThan(330);
-    expect(avgLab).toBeLessThan(480);
+    // uncapped swing tracks polling, so a full 2024-style swing now produces a
+    // larger (still plausible) landslide than the old ±18pt-clamped model
+    expect(avgLab).toBeLessThan(540);
   });
 
   it('2024 baseline polling keeps Labour in government', () => {
@@ -59,6 +61,31 @@ describe('election calibration', () => {
     const { result } = runElection(game, new Rng(42));
     expect(result.governingParty).toBe('lab');
     expect(result.seats.lab ?? 0).toBeGreaterThan(300);
+  });
+
+  it('results track polling: the poll leader wins, a collapsed incumbent loses its majority', () => {
+    // Reproduce the reported bug scenario: a 2019 Conservative parliament where
+    // polling has the Conservatives crashing to 17% and the opposition surging.
+    let conTotal = 0, conWins = 0, leaderWins = 0;
+    const runs = 12;
+    for (let i = 0; i < runs; i++) {
+      const game = makeGame('2019', 'con', 800 + i);
+      // poll leader = Labour on 38%; the incumbent Conservatives collapse to 17%
+      game.polling.shares = {
+        lab: 0.38, con: 0.17, ld: 0.18, brexit: 0.12, green: 0.08, snp: 0.04, pc: 0.03,
+      };
+      const { result } = runElection(game, new Rng(2600 + i));
+      conTotal += result.seats.con ?? 0;
+      if (result.governingParty === 'con') conWins++;
+      if (result.governingParty === 'lab') leaderWins++;
+      // a party crashing to 17% can never hold a 360-seat landslide
+      expect(result.seats.con ?? 0).toBeLessThan(300);
+    }
+    // the poll leader (Labour) forms the government essentially every time
+    expect(leaderWins).toBeGreaterThan(runs - 2);
+    expect(conWins).toBe(0);
+    // the collapsed incumbent is a shadow of its 365-seat self
+    expect(conTotal / runs).toBeLessThan(200);
   });
 
   it('2015 baseline reproduces a Conservative win and an SNP sweep of Scotland', () => {
