@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { GameState, OfficeId } from '../types/game';
-import { CABINET_OFFICES, OFFICES } from '../data/offices';
+import { CABINET_OFFICES } from '../data/offices';
 import { PARTIES } from '../data/parties';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
-import { playerIsLeader, playerInGovernment } from '../engine/career';
+import { playerIsLeader, playerInGovernment, cabinetTitleFor } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import './CabinetScreen.css';
 
@@ -42,12 +42,14 @@ export function CabinetScreen({ game }: { game: GameState }) {
         {CABINET_OFFICES.map((officeId) => {
           const post = posts.find((p) => p.officeId === officeId);
           if (!post) return null;
+          // the deputy PM / First Secretary doubles up an existing cabinet seat
+          const isDeputy = isGov && game.government.deputyPmId === post.characterId;
           return (
             <MemberCard
               key={officeId}
               game={game}
               characterId={post.characterId}
-              title={isGov ? OFFICES[officeId].title : OFFICES[officeId].shadowTitle}
+              title={cabinetTitleFor(officeId, isGov, isDeputy, game.government.deputyTitle)}
               onSack={canSack && post.characterId !== 'player'
                 ? () => {
                     const name = game.characters[post.characterId]?.name ?? 'this minister';

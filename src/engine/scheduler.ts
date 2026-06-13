@@ -10,6 +10,7 @@ import {
   canHoldOffice,
 } from './career';
 import { OFFICES } from '../data/offices';
+import { relationshipValue } from './relationships';
 import { runElection } from './election';
 import { gainStat } from './effects';
 import { partyPolling, pollingLead } from './polling';
@@ -181,6 +182,7 @@ const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
 const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
 const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
 const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
+const DEPUTY_PM_HAZARD = 0.01;          // very rare: the PM elevates a star SoS to deputy
 
 // ---------- the brain ----------
 
@@ -410,7 +412,7 @@ export function nextStep(state: GameState, rng: Rng): void {
   // Rare: a multi-year cooldown stops it recurring every year (the player can
   // still move against the PM any time via the Profile action).
   if (
-    playerInGovernment(state) && !playerIsLeader(state) &&
+    playerInGovernment(state) && !playerIsLeader(state) && canHoldOffice(state) &&
     state.government.pmId !== 'player' && state.player.hasSeat &&
     state.day >= ((state.player.flags._pmHeaveCooldownUntil as number) ?? 0)
   ) {
@@ -426,13 +428,31 @@ export function nextStep(state: GameState, rng: Rng): void {
     }
   }
 
+  // the deputy's job: very rarely, an exceptional Secretary of State who is close
+  // to the PM is elevated to Deputy Prime Minister / First Secretary of State
+  if (
+    playerInGovernment(state) && !playerIsLeader(state) &&
+    state.government.pmId !== 'player' && playerTier(state) === 4 &&
+    !state.player.flags._isDeputyPM && canHoldOffice(state) &&
+    state.day >= ((state.player.flags._deputyPmCooldownUntil as number) ?? 0)
+  ) {
+    const s = state.player.stats;
+    const excellent = s.competence > 70 && s.profile > 60 && s.partyStanding > 65;
+    if (excellent && relationshipValue(state, 'leader') > 40 && rng.chance(DEPUTY_PM_HAZARD)) {
+      state.player.flags._deputyPmCooldownUntil = state.day + rng.int(700, 1100);
+      state.forcedQueue.push({ kind: 'deputyPmOffer' });
+      nextStep(state, rng);
+      return;
+    }
+  }
+
   // reshuffles — the player-leader runs their own; everyone else is subject to them
   if (onFrontbenchTrack(state) && playerIsLeader(state) && rng.chance(PM_RESHUFFLE_HAZARD)) {
     state.forcedQueue.push({ kind: 'pmReshuffle' });
     nextStep(state, rng);
     return;
   }
-  if (onFrontbenchTrack(state) && !playerIsLeader(state)) {
+  if (onFrontbenchTrack(state) && !playerIsLeader(state) && canHoldOffice(state)) {
     // a party deep in the polling mire reshuffles in desperation
     const inTheMire = partyPolling(state, state.player.partyId) < 28;
     const hazard = RESHUFFLE_HAZARD + (inTheMire ? EMERGENCY_RESHUFFLE_BONUS : 0);
@@ -448,7 +468,7 @@ export function nextStep(state: GameState, rng: Rng): void {
   // positions cycle: after a spell in post (mean ~2 years, with a long tail) a
   // move comes calling — a lateral switch to a new brief or a promotion, never a
   // demotion, so the player doesn't stagnate for years in the same department
-  if (onFrontbenchTrack(state) && !playerIsLeader(state) && state.player.officeId) {
+  if (onFrontbenchTrack(state) && !playerIsLeader(state) && canHoldOffice(state) && state.player.officeId) {
     const t = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
     if (t > 0.75) {
       const base = 0.06 + 0.06 * (t - 1);
@@ -471,7 +491,7 @@ export function nextStep(state: GameState, rng: Rng): void {
   const playerTierNow = playerTier(state);
   if (
     state.player.officeId === null &&
-    onFrontbenchTrack(state) &&
+    onFrontbenchTrack(state) && canHoldOffice(state) &&
     state.player.stats.partyStanding >= 45 &&
     (state.day - state.player.enteredParliament) > 180 &&
     rng.chance(FIRST_RUNG_HAZARD)
@@ -489,7 +509,7 @@ export function nextStep(state: GameState, rng: Rng): void {
   // accelerated path from PPS/whip into a ministry for strong performers
   if (
     (playerTierNow === 1 || playerTierNow === 2) &&
-    onFrontbenchTrack(state) &&
+    onFrontbenchTrack(state) && canHoldOffice(state) &&
     rng.chance(MINISTER_RUNG_HAZARD)
   ) {
     const target = nextOfficeFor(state, rng);

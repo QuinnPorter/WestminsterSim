@@ -61,6 +61,11 @@ function buildOffices(): Record<OfficeId, Office> {
       title: 'Prime Minister',
       shadowTitle: 'Leader of the Opposition',
     },
+    speaker: {
+      id: 'speaker', tier: 0,
+      title: 'Speaker of the House of Commons',
+      shadowTitle: 'Speaker of the House of Commons',
+    },
   };
   for (const dept of DEPT_IDS) {
     offices[`min_${dept}`] = {

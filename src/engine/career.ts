@@ -46,10 +46,25 @@ export function onMinorPartyTrack(state: GameState): boolean {
   return state.player.hasSeat && !onFrontbenchTrack(state);
 }
 
-/** an Independent sits outside every party, so can never be offered office or
- *  contest a leadership — they have given up the ministerial ladder entirely */
+/** an Independent sits outside every party, and the Speaker is non-partisan —
+ *  neither can be offered ministerial/shadow office or contest a leadership */
 export function canHoldOffice(state: GameState): boolean {
-  return state.player.partyId !== 'ind';
+  return state.player.partyId !== 'ind' && !state.player.flags._isSpeaker;
+}
+
+/** the deputy-PM title prefix for a given variant ('dpm' | 'firstSec') */
+function deputyPrefix(variant?: string): string {
+  return variant === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister';
+}
+
+/** combined title for a cabinet office, applying the Deputy-PM overlay when the
+ *  holder doubles as Deputy PM / First Secretary. Used for both player and NPCs. */
+export function cabinetTitleFor(officeId: OfficeId, inGovernment: boolean, isDeputy: boolean, variant?: string): string {
+  const base = officeTitle(officeId, inGovernment);
+  if (isDeputy && OFFICES[officeId]?.tier === 4) {
+    return `${deputyPrefix(variant)} and ${base}`;
+  }
+  return base;
 }
 
 /** in government either as the governing party OR as a formal coalition junior
@@ -82,10 +97,17 @@ function minorPartyNameOf(state: GameState): string | undefined {
 }
 
 export function playerOfficeTitle(state: GameState): string {
-  return officeTitleFor(state.player.officeId, {
+  // the Speaker is non-partisan — neither government nor opposition framing
+  if (state.player.officeId === 'speaker') return 'Speaker of the House of Commons';
+  const base = officeTitleFor(state.player.officeId, {
     inGovernment: playerInGovernmentBloc(state),
     minorPartyName: minorPartyNameOf(state),
   });
+  // Deputy-PM / First-Secretary overlay on a sitting Secretary of State
+  if (state.player.flags._isDeputyPM && state.player.officeId && OFFICES[state.player.officeId]?.tier === 4) {
+    return `${deputyPrefix(state.government.deputyTitle)} and ${base}`;
+  }
+  return base;
 }
 
 export type RoleSide = 'gov' | 'opp' | 'minor';
@@ -270,6 +292,7 @@ export function recordPeakTier(state: GameState): void {
 export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 'appointed' | 'promoted'): void {
   // vacate any cabinet-level post the player held
   removePlayerFromFrontbench(state, rng);
+  clearPlayerDeputyPM(state);
   state.player.officeId = officeId;
   state.player.officeSinceDay = state.day;
   recordPeakTier(state);
@@ -299,9 +322,54 @@ export function stripOffice(
   how: 'dismissed' | 'resigned' | 'leftOffice'
 ): void {
   removePlayerFromFrontbench(state, rng);
+  clearPlayerDeputyPM(state);
   state.player.officeId = null;
   state.player.officeSinceDay = null;
   state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how });
+}
+
+/** clear the Deputy-PM overlay when the player loses the underlying SoS post */
+function clearPlayerDeputyPM(state: GameState): void {
+  if (state.player.flags._isDeputyPM) {
+    delete state.player.flags._isDeputyPM;
+    if (state.government.deputyPmId === 'player') {
+      state.government.deputyPmId = undefined;
+      state.government.deputyTitle = undefined;
+    }
+  }
+}
+
+/** ~75% of NPC governments run a single deputy (≈2/3 Deputy PM, ≈1/3 First
+ *  Secretary of State), drawn from the strongest cabinet hand. Re-rolling this
+ *  whole decision keeps the aggregate chance of a deputy at 75% at any snapshot,
+ *  whether it runs at the start of a parliament or at a mid-term reshuffle. */
+function appointNpcDeputyPm(state: GameState, rng: Rng): void {
+  state.government.deputyPmId = undefined;
+  state.government.deputyTitle = undefined;
+  if (!rng.chance(0.75)) return;
+  const candidates = state.government.cabinet
+    .filter((p) => p.characterId !== 'player' && OFFICES[p.officeId]?.tier === 4)
+    .map((p) => state.characters[p.characterId])
+    .filter((c): c is Character => !!c && c.active)
+    .sort((a, b) => b.competence - a.competence);
+  if (candidates.length === 0) return;
+  state.government.deputyPmId = candidates[0].id;
+  state.government.deputyTitle = rng.chance(0.67) ? 'dpm' : 'firstSec';
+}
+
+/** the start-of-parliament re-decision: clears any holder (including a player
+ *  deputy — re-earned each term) and re-rolls the NPC appointment */
+function redecideNpcDeputyPm(state: GameState, rng: Rng): void {
+  delete state.player.flags._isDeputyPM;
+  appointNpcDeputyPm(state, rng);
+}
+
+/** a reshuffle of the governing cabinet may add, drop or move the deputy — but
+ *  never disturbs a sitting PLAYER deputy (whose tenure is governed elsewhere,
+ *  to keep the player's odds of holding it exactly as before) */
+function reshuffleNpcDeputyPm(state: GameState, rng: Rng): void {
+  if (state.government.deputyPmId === 'player') return;
+  appointNpcDeputyPm(state, rng);
 }
 
 // ---------- reshuffles ----------
@@ -341,6 +409,9 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
         : `${fresh.name} appointed ${postTitle}`,
     });
   }
+
+  // a reshuffle of the governing cabinet may add/drop/move the deputy PM
+  if (inGov) reshuffleNpcDeputyPm(state, rng);
 
   // is the player for the chop?
   if (state.player.officeId && !playerIsLeader(state)) {
@@ -405,6 +476,9 @@ export function npcReshuffle(state: GameState, rng: Rng, party: PartyId): void {
     kind: 'event', date: state.day,
     headline: `${leaderName} reshuffles the ${inGov ? PARTIES[party].shortName + ' cabinet' : PARTIES[party].shortName + ' front bench'}; ${newName} appointed ${title}`,
   });
+
+  // a reshuffle of the governing cabinet may add/drop/move the deputy PM
+  if (inGov) reshuffleNpcDeputyPm(state, rng);
 }
 
 /** very rare: an NPC frontbencher steps back from public life */
@@ -426,11 +500,16 @@ export function npcFrontbencherRetires(state: GameState, rng: Rng, party: PartyI
     kind: 'event', date: state.day,
     headline: `${old?.name ?? 'A senior figure'} steps down from front-line politics; ${fresh.name} takes over as ${title}`,
   });
+
+  // if the deputy PM was the one who retired, the post is re-decided
+  if (inGov && old && state.government.deputyPmId === old.id) {
+    reshuffleNpcDeputyPm(state, rng);
+  }
 }
 
 // ---------- leadership ----------
 
-function leadershipBaseSupport(state: GameState): number {
+export function leadershipBaseSupport(state: GameState): number {
   const s = state.player.stats;
   const pastLosses = (state.player.flags._contestLosses as number) ?? 0;
   return clamp(
@@ -438,7 +517,8 @@ function leadershipBaseSupport(state: GameState): number {
       0.18 * s.profile +
       0.15 * (50 + averageColleagueWarmth(state) / 2) +
       0.14 * s.competence +
-      (playerTier(state) >= 4 ? 6 : 0) -
+      (playerTier(state) >= 4 ? 6 : 0) +
+      (state.player.flags._isDeputyPM ? 12 : 0) -
       3 * state.player.rebellionCount -
       7 * pastLosses,
     5, 90
@@ -451,7 +531,7 @@ const LEADERSHIP_WIN_THRESHOLD = 59;
  *  even a backbencher. Whether they get anywhere is decided by support in the
  *  ballots (a long-shot is usually eliminated in the early rounds), not here. */
 export function playerCanStandForLeader(state: GameState): boolean {
-  return state.player.hasSeat && !playerIsLeader(state);
+  return state.player.hasSeat && !playerIsLeader(state) && canHoldOffice(state);
 }
 
 /** assemble the named field for a leadership contest: 3-6 heavyweight rivals */
@@ -770,6 +850,9 @@ export function applyElectionAftermath(
     }
   }
 
+  // the deputy-PM job is re-decided for the new parliament
+  redecideNpcDeputyPm(state, rng);
+
   state.parliamentStart = state.day;
   state.nextElectionBy = state.day + Math.round(4.75 * 365);
   state.player.rebellionCount = 0;
@@ -798,7 +881,7 @@ export function applyElectionAftermath(
   // if the player's party fell off the frontbench track, they lose office
   const onTrack =
     state.player.partyId === newGov || state.player.partyId === newOpp;
-  if (state.player.officeId && !playerIsLeader(state) && !onTrack) {
+  if (state.player.officeId && state.player.officeId !== 'speaker' && !playerIsLeader(state) && !onTrack) {
     stripOffice(state, rng, 'leftOffice');
   }
 
@@ -810,6 +893,7 @@ export function applyElectionAftermath(
     changeOfGovernment &&
     onTrack &&
     state.player.officeId &&
+    state.player.officeId !== 'speaker' &&
     !playerIsLeader(state)
   ) {
     const nowInGov = state.player.partyId === newGov;
@@ -833,6 +917,19 @@ export function applyElectionAftermath(
       payload: { reason: 'electionDefeat' },
     });
   }
+
+  // every parliament opens with the election of a Speaker. Offer it to an eligible
+  // player: a sitting backbencher (or the incumbent Speaker recontesting). Solid
+  // integrity is the price of entry — unqualified backbenchers aren't pestered.
+  const isSpeaker = !!state.player.flags._isSpeaker;
+  const eligibleForChair =
+    state.player.hasSeat &&
+    (isSpeaker || state.player.officeId === null) &&
+    (isSpeaker || state.player.stats.integrity > 55);
+  if (eligibleForChair) {
+    state.forcedQueue.push({ kind: 'speakerContest' });
+  }
+
   settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
 }
 
@@ -1275,6 +1372,33 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         ],
         payload: { advance: rng.int(150, 200) },
       };
+    case 'deputyPmOffer': {
+      const pmName = state.characters[state.government.pmId]?.name ?? 'the Prime Minister';
+      return {
+        cardId: `forced_deputypm_${state.day}`,
+        kind: 'deputyPmOffer',
+        title: 'Number 10 calls',
+        body: `${pmName} wants to see you alone. The offer, when it comes, is the one every senior minister dreams of: to serve as the government's number two — Deputy Prime Minister and First Secretary, deputising at PMQs, chairing Cabinet in the PM's absence. It is a vote of total confidence. It also makes you the obvious successor, which not everyone will love.`,
+        choices: [{ label: 'Accept — become the deputy' }, { label: 'Decline, with thanks' }],
+        payload: { advance: rng.int(7, 14) },
+      };
+    }
+    case 'speakerContest': {
+      const incumbent = !!state.player.flags._isSpeaker;
+      return {
+        cardId: `forced_speaker_${state.day}`,
+        kind: 'speakerContest',
+        title: incumbent ? 'Re-electing the Speaker' : 'The election of the Speaker',
+        body: incumbent
+          ? 'A new parliament has assembled, and the House must decide whether to keep you in the Chair. The convention favours a sitting Speaker, but you still need the House to carry you. Do you put yourself forward again?'
+          : 'Before any other business, the House must elect its Speaker — the impartial referee of the Commons, who gives up party allegiance for the authority of the Chair. To win you would need the respect of all sides: a record of scrupulous integrity and a serious public profile. Do you let your name go forward?',
+        choices: [
+          { label: incumbent ? 'Seek re-election to the Chair' : 'Stand for Speaker' },
+          { label: 'Stay on the benches' },
+        ],
+        payload: { advance: rng.int(7, 14) },
+      };
+    }
     case 'calendar':
     case 'electionNight':
       // produced/handled by the scheduler, not here
@@ -1650,74 +1774,68 @@ export function resolveForcedChoice(
       const headline = (text: string) =>
         state.history.push({ kind: 'event', date: state.day, headline: text });
 
-      if (choiceIndex === 0) {
-        // loyalists in, competence be damned
-        for (const post of rng.shuffle(posts).slice(0, 2)) {
-          const old = state.characters[post.characterId];
-          if (old) old.officeId = null;
-          const fresh = newFrontbencher(state, rng, party, post.officeId);
-          fresh.competence = Math.round(clamp(rng.normal(50, 8), 30, 75));
-          fresh.traits = ['loyal', rng.chance(0.5) ? 'dull' : 'fixer'];
-          post.characterId = fresh.id;
-          headline(`${fresh.name}, a close ${state.player.name} ally, appointed ${titleOf(post.officeId)}`);
+      const text = (() => {
+        if (choiceIndex === 0) {
+          // loyalists in, competence be damned
+          for (const post of rng.shuffle(posts).slice(0, 2)) {
+            const old = state.characters[post.characterId];
+            if (old) old.officeId = null;
+            const fresh = newFrontbencher(state, rng, party, post.officeId);
+            fresh.competence = Math.round(clamp(rng.normal(50, 8), 30, 75));
+            fresh.traits = ['loyal', rng.chance(0.5) ? 'dull' : 'fixer'];
+            post.characterId = fresh.id;
+            headline(`${fresh.name}, a close ${state.player.name} ally, appointed ${titleOf(post.officeId)}`);
+          }
+          adjustRelationship(state, 'ally', 8);
+          adjustRelationship(state, 'rival', -6);
+          push('Ally', 8);
+          push('Rival', -6);
+          gain('partyStanding', 3, 'Standing');
+          applyPollingShock(state, party, -0.2);
+          return 'The team around the table is now unmistakably yours — government by people who answer your texts. The sketch writers reach for "chumocracy"; the excluded factions retreat to the tearoom to begin the long, patient work of resenting you.';
         }
-        adjustRelationship(state, 'ally', 8);
-        adjustRelationship(state, 'rival', -6);
-        push('Ally', 8);
-        push('Rival', -6);
-        gain('partyStanding', 3, 'Standing');
-        applyPollingShock(state, party, -0.2);
-        return {
-          text: 'The team around the table is now unmistakably yours — government by people who answer your texts. The sketch writers reach for "chumocracy"; the excluded factions retreat to the tearoom to begin the long, patient work of resenting you.',
-          deltas,
-        };
-      }
-      if (choiceIndex === 1) {
-        // big tent: bring in talented critics
-        const post = rng.shuffle(posts)[0];
-        if (post) {
-          const old = state.characters[post.characterId];
-          if (old) old.officeId = null;
-          const critic = newFrontbencher(state, rng, party, post.officeId);
-          critic.competence = Math.round(clamp(rng.normal(66, 8), 50, 90));
-          critic.traits = ['ambitious', rng.chance(0.5) ? 'maverick' : 'principled'];
-          post.characterId = critic.id;
-          headline(`${critic.name}, a prominent internal critic, brought into the fold as ${titleOf(post.officeId)}`);
+        if (choiceIndex === 1) {
+          // big tent: bring in talented critics
+          const post = rng.shuffle(posts)[0];
+          if (post) {
+            const old = state.characters[post.characterId];
+            if (old) old.officeId = null;
+            const critic = newFrontbencher(state, rng, party, post.officeId);
+            critic.competence = Math.round(clamp(rng.normal(66, 8), 50, 90));
+            critic.traits = ['ambitious', rng.chance(0.5) ? 'maverick' : 'principled'];
+            post.characterId = critic.id;
+            headline(`${critic.name}, a prominent internal critic, brought into the fold as ${titleOf(post.officeId)}`);
+          }
+          adjustRelationship(state, 'rival', 8);
+          push('Rival', 8);
+          gain('integrity', 3, 'Integrity');
+          applyPollingShock(state, party, 0.2);
+          return 'You hand your critics serious jobs, on the ancient theory about tents and the direction of urination. The commentariat calls it confident; the appointees, disarmed and slightly suspicious, start being useful.';
         }
-        adjustRelationship(state, 'rival', 8);
-        push('Rival', 8);
-        gain('integrity', 3, 'Integrity');
-        applyPollingShock(state, party, 0.2);
-        return {
-          text: 'You hand your critics serious jobs, on the ancient theory about tents and the direction of urination. The commentariat calls it confident; the appointees, disarmed and slightly suspicious, start being useful.',
-          deltas,
-        };
-      }
-      // sack the weakest, promote talent
-      const weakest = state.characters[card.payload?.weakestId as string];
-      const weakPost = weakest ? posts.find((p) => p.characterId === weakest.id) : undefined;
-      if (weakest && weakPost) {
-        weakest.officeId = null;
-        const fresh = newFrontbencher(state, rng, party, weakPost.officeId);
-        fresh.competence = Math.round(clamp(rng.normal(68, 7), 55, 92));
-        weakPost.characterId = fresh.id;
-        headline(`${weakest.name} sacked; rising star ${fresh.name} appointed ${titleOf(weakPost.officeId)}`);
-      }
-      const backfire = rng.chance(0.3);
-      applyPollingShock(state, party, backfire ? -0.2 : 0.35);
-      gain('competence', 2, 'Competence');
-      if (backfire) {
-        adjustRelationship(state, 'rival', -4);
-        push('Rival', -4);
-        return {
-          text: `${weakest?.name ?? 'The departed minister'} does not go quietly: a wounded interview on the Sunday shows, a pointed resignation letter "released to friends". The refresh was right — the handling, the papers agree, was not.`,
-          deltas,
-        };
-      }
-      return {
-        text: 'Ruthless, swift, and — crucially — correct. The commentators call it a government with renewed purpose, and the new appointment is hailed as inspired. Somewhere, your old mentor smiles at the headlines.',
-        deltas,
-      };
+        // sack the weakest, promote talent
+        const weakest = state.characters[card.payload?.weakestId as string];
+        const weakPost = weakest ? posts.find((p) => p.characterId === weakest.id) : undefined;
+        if (weakest && weakPost) {
+          weakest.officeId = null;
+          const fresh = newFrontbencher(state, rng, party, weakPost.officeId);
+          fresh.competence = Math.round(clamp(rng.normal(68, 7), 55, 92));
+          weakPost.characterId = fresh.id;
+          headline(`${weakest.name} sacked; rising star ${fresh.name} appointed ${titleOf(weakPost.officeId)}`);
+        }
+        const backfire = rng.chance(0.3);
+        applyPollingShock(state, party, backfire ? -0.2 : 0.35);
+        gain('competence', 2, 'Competence');
+        if (backfire) {
+          adjustRelationship(state, 'rival', -4);
+          push('Rival', -4);
+          return `${weakest?.name ?? 'The departed minister'} does not go quietly: a wounded interview on the Sunday shows, a pointed resignation letter "released to friends". The refresh was right — the handling, the papers agree, was not.`;
+        }
+        return 'Ruthless, swift, and — crucially — correct. The commentators call it a government with renewed purpose, and the new appointment is hailed as inspired. Somewhere, your old mentor smiles at the headlines.';
+      })();
+
+      // a PM remaking the cabinet may add, drop or move their deputy
+      if (inGov) reshuffleNpcDeputyPm(state, rng);
+      return { text, deltas };
     }
 
     case 'pmPressure': {
@@ -2074,9 +2192,118 @@ export function resolveForcedChoice(
       };
     }
 
+    case 'deputyPmOffer': {
+      if (choiceIndex === 0) {
+        state.player.flags._isDeputyPM = true;
+        state.player.flags._everDeputyPM = true;
+        // becoming deputy displaces any incumbent — there is only ever one
+        state.government.deputyPmId = 'player';
+        state.government.deputyTitle = rng.chance(0.67) ? 'dpm' : 'firstSec';
+        gain('partyStanding', 8, 'Standing');
+        gain('profile', 10, 'Profile');
+        adjustRelationship(state, 'leader', 6);
+        push('Leader', 6);
+        const title = playerOfficeTitle(state);
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} appointed ${title}`,
+        });
+        return {
+          text: `You accept. By the evening bulletin you are the government's number two — ${title}. The red box feels heavier, and the corridor watches you differently now.`,
+          deltas,
+        };
+      }
+      adjustRelationship(state, 'leader', -3);
+      push('Leader', -3);
+      gain('integrity', 2, 'Integrity');
+      return {
+        text: 'You thank the PM but ask to stay focused on your own brief. Some read it as loyalty without ambition; you call it knowing your own mind.',
+        deltas,
+      };
+    }
+
+    case 'speakerContest': {
+      const wasSpeaker = !!state.player.flags._isSpeaker;
+      if (choiceIndex === 1) {
+        // declined — an incumbent who steps aside relinquishes the Chair
+        if (wasSpeaker) {
+          loseSpeakership(state, rng, 'resigned');
+          return {
+            text: 'You let your name fall away and return to the green benches as an ordinary Member. The House thanks you for your service from the Chair.',
+            deltas,
+          };
+        }
+        gain('profile', 2, 'Profile');
+        return { text: 'You decide the Chair is not for you, at least not now, and stay among your colleagues on the benches.', deltas };
+      }
+      const s = state.player.stats;
+      const score = 0.4 * s.integrity + 0.3 * s.profile + 0.3 * s.competence
+        + (wasSpeaker ? 15 : 0) + rng.normal(0, 8);
+      if (score >= 78) {
+        // vacate any party office and take the Chair
+        if (state.player.officeId && state.player.officeId !== 'speaker') {
+          removePlayerFromFrontbench(state, rng);
+          clearPlayerDeputyPM(state);
+        }
+        state.player.officeId = 'speaker';
+        state.player.officeSinceDay = state.day;
+        state.player.flags._isSpeaker = true;
+        state.player.flags._wasSpeaker = true;
+        state.player.flags._speakerTerms = ((state.player.flags._speakerTerms as number) ?? 0) + 1;
+        recordPeakTier(state);
+        gain('profile', 6, 'Profile');
+        gain('integrity', 4, 'Integrity');
+        state.history.push({
+          kind: 'roleChange', date: state.day, officeId: 'speaker', how: wasSpeaker ? 'continued' : 'appointed',
+        });
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: wasSpeaker
+            ? `${state.player.name} re-elected Speaker of the House of Commons`
+            : `${state.player.name} elected Speaker of the House of Commons`,
+        });
+        return {
+          text: wasSpeaker
+            ? '"The Right Honourable Member will now resume the Chair." The House carries you again, and the gavel is yours for another parliament.'
+            : 'The division is called, the names are read, and the result is yours. You are dragged — by tradition, reluctantly — to the Chair. From this moment you are above party: the Speaker of the House of Commons.',
+          deltas,
+        };
+      }
+      // lost the contest
+      if (wasSpeaker) {
+        // an incumbent who fails to be re-elected loses the Chair
+        loseSpeakership(state, rng, 'leftOffice');
+        return {
+          text: 'The House looks elsewhere this time. You step down from the Chair and return to the benches — an unusual fate for a sitting Speaker.',
+          deltas,
+        };
+      }
+      gain('profile', 3, 'Profile');
+      return {
+        text: 'The House chooses another. Your candidacy was respectfully heard, but the Chair goes elsewhere. You remain on the backbenches.',
+        deltas,
+      };
+    }
+
     default:
       return { text: 'Time passes.', deltas };
   }
+}
+
+/** strip the Speakership and return the player to their own party's backbenches,
+ *  with the respect an ex-Speaker carries (a one-off profile/standing head-start) */
+function loseSpeakership(state: GameState, _rng: Rng, how: 'resigned' | 'leftOffice'): void {
+  delete state.player.flags._isSpeaker;
+  state.player.officeId = null;
+  state.player.officeSinceDay = null;
+  state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how });
+  // the comeback edge: a former Speaker is widely respected on return to the fray
+  gainStat(state, 'profile', 6);
+  gainStat(state, 'partyStanding', 8);
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} returns to the backbenches as ${PARTIES[state.player.partyId].shortName} MP`,
+  });
 }
 
 // ---------- resign office / sack ministers (player-initiated, from the UI) ----------
@@ -2085,6 +2312,10 @@ export function resolveForcedChoice(
  *  As leader/PM this opens a succession (an NPC takes over). */
 export function resignOfficeCore(state: GameState, rng: Rng): void {
   if (!state.player.officeId) return;
+  if (state.player.officeId === 'speaker') {
+    loseSpeakership(state, rng, 'resigned');
+    return;
+  }
   if (playerIsLeader(state)) {
     const party = state.player.partyId;
     state.player.officeId = null;
@@ -2441,13 +2672,15 @@ export function buildLegacy(state: GameState): {
   let level = 0;
   let cabinetTitle = '';
   let ministerTitle = '';
+  let everSpeaker = !!state.player.flags._wasSpeaker;
   for (const entry of state.history) {
     if (entry.kind !== 'roleChange') continue;
+    if (entry.officeId === 'speaker') everSpeaker = true;
     if (entry.how === 'becamePM') {
       level = Math.max(level, 4);
     } else if (entry.how === 'electedLeader') {
       level = Math.max(level, 3);
-    } else if (entry.officeId) {
+    } else if (entry.officeId && entry.officeId !== 'speaker') {
       const office = OFFICES[entry.officeId];
       // use the framing recorded at the time; fall back for pre-v5 entries
       const inGov = entry.roleSide
@@ -2463,9 +2696,14 @@ export function buildLegacy(state: GameState): {
       }
     }
   }
+  const everDeputyPM = !!state.player.flags._everDeputyPM;
+  // the Speaker's Chair is a distinct top-tier honour; Deputy PM ranks just below
+  // a party leader. Both outrank a plain cabinet seat.
   const bestTitle =
     level === 4 ? 'Prime Minister'
+    : everSpeaker ? 'Speaker of the House of Commons'
     : level === 3 ? 'Party Leader'
+    : everDeputyPM ? 'Deputy Prime Minister'
     : level === 2 ? `Cabinet — ${cabinetTitle}`
     : level === 1 ? ministerTitle
     : 'Backbench MP';

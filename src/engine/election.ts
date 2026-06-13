@@ -171,9 +171,25 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
   const seats: Partial<Record<PartyId, number>> = {};
   let playerResult: ConstituencyResult | null = null;
   let playerWonSeat = false;
+  // by convention a sitting Speaker is not opposed by the major parties and is
+  // returned to their seat — effectively a guaranteed hold while in the Chair
+  const playerIsSpeaker = state.player.flags._isSpeaker === true;
 
   for (const seat of state.seatMap) {
     const isPlayerSeat = seat.id === playerSeat.id;
+
+    if (isPlayerSeat && playerIsSpeaker) {
+      const prevShare = seat.shares[playerParty] ?? 0;
+      const outcome: SeatOutcome = { shares: { ...seat.shares }, winner: playerParty };
+      outcome.shares[playerParty] = Math.max(prevShare, 0.55);
+      playerResult = buildConstituencyResult(state, seat, outcome, prevShare, rng);
+      playerWonSeat = true;
+      seat.shares = outcome.shares;
+      seat.winner = playerParty;
+      seats[playerParty] = (seats[playerParty] ?? 0) + 1;
+      continue;
+    }
+
     const outcome = computeSeat(
       seat, national, anchor, rng,
       isPlayerSeat

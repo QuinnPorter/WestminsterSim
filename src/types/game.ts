@@ -191,6 +191,10 @@ export interface GovernmentState {
   termsInPower: number;
   /** accumulated backbench/frontbench pressure on a sitting (NPC) PM to go */
   pmHeavePressure?: number;
+  /** the cabinet minister (or 'player') currently doubling as Deputy PM / First Secretary */
+  deputyPmId?: string;
+  /** which deputy title the current deputy holds */
+  deputyTitle?: 'dpm' | 'firstSec';
 }
 
 // ---- elections & history ----
@@ -251,6 +255,7 @@ export type ForcedKind =
   | 'leadershipStand' | 'leadershipBallot' | 'pmReshuffle' | 'pmPressure'
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
+  | 'deputyPmOffer' | 'speakerContest'
   | 'calendar';
 
 export interface DrawnCard {
