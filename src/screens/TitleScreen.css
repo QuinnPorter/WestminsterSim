@@ -34,7 +34,9 @@
   padding: 15px;
 }
 
-.title-secondary {
+/* .btn.title-secondary beats the base .btn rule (equal-specificity tie would
+   otherwise leave the label left-aligned depending on CSS load order) */
+.btn.title-secondary {
   max-width: 260px;
   margin-top: 10px;
   background: var(--surface-2);
