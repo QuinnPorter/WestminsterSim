@@ -64,10 +64,16 @@ export function GameOverScreen({ game }: { game: GameState }) {
         <LegacyRow label="Years in public life" value={`${legacy.yearsServed}`} />
         <LegacyRow label="Highest office" value={legacy.highestOfficeTitle} />
         {legacy.becamePM && (legacy.pmStints ?? 0) > 0 && (
-          <LegacyRow
-            label="Spells as Prime Minister"
-            value={`${legacy.pmStints}`}
-          />
+          <>
+            <LegacyRow
+              label="Years as Prime Minister"
+              value={`${legacy.yearsAsPM ?? 0}`}
+            />
+            <LegacyRow
+              label="Spells as Prime Minister"
+              value={`${legacy.pmStints}`}
+            />
+          </>
         )}
         <LegacyRow
           label="Elections won"

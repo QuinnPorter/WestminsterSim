@@ -4,6 +4,7 @@ import {
   recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
   nextOfficeFor, callForLeaderResignationCore, seatPlayerJuniorPartner, setDeputyPmCore,
   sackMinisterCore, playerOfficeTitle, playerInGovernmentBloc, startBacking,
+  applyElectionAftermath,
 } from '../career';
 import { initCalendar, nextStep, resolveCalendarChoice } from '../scheduler';
 import { runElection } from '../election';
@@ -13,7 +14,7 @@ import { getRelationship } from '../relationships';
 import { ALL_CARDS } from '../../content/cards';
 import { OFFICES } from '../../data/offices';
 import { DecisionCard } from '../../types/content';
-import { GameState, DrawnCard } from '../../types/game';
+import { GameState, DrawnCard, ElectionResult } from '../../types/game';
 import { Rng } from '../rng';
 
 const byId = (id: string): DecisionCard => ALL_CARDS.find((c) => c.id === id)!;
@@ -486,5 +487,49 @@ describe('wave 15 — backing a candidate in a leadership contest', () => {
     startBacking(g, new Rng(1), 'lab', [only]);
     expect(g.forcedQueue.some((e) => e.kind === 'leadershipBacking')).toBe(false);
     expect(getRelationship(g, 'leader')!.characterId).toBe(only);
+  });
+});
+
+describe('wave 16 — fixes', () => {
+  it('a 2024 seat map carries only Reform, never UKIP/Brexit', () => {
+    const g = makeGame(); // 2024
+    const seen = new Set<string>();
+    for (const seat of g.seatMap) for (const p of Object.keys(seat.shares)) seen.add(p);
+    expect(seen.has('ukip')).toBe(false);
+    expect(seen.has('brexit')).toBe(false);
+    expect(seen.has('reform')).toBe(true);
+  });
+
+  it('on a change of government the WINNING party leader becomes PM (not the old LO)', () => {
+    const g = makeGame(); // lab governs, con is opposition
+    const oldLoId = g.government.loId; // a Conservative
+    // a third party (Lib Dems) wins the most seats outright
+    const seats = { ld: 330, lab: 180, con: 110, sf: 7, spk: 1 } as Record<string, number>;
+    g.seats = { ...seats };
+    const result: ElectionResult = {
+      id: 'e_test', date: g.day, seats: { ...seats },
+      voteShares: { ld: 0.42, lab: 0.30, con: 0.22 },
+      playerResult: null, outcome: 'majority', governingParty: 'ld', playerHeldSeat: false,
+    };
+    g.elections[result.id] = result;
+    applyElectionAftermath(g, new Rng(2), result, false);
+    expect(g.government.pmId).not.toBe(oldLoId);
+    expect(g.characters[g.government.pmId]?.partyId).toBe('ld');
+    expect(g.government.governingParty).toBe('ld');
+  });
+
+  it('buildLegacy reports whole years as PM from the player\'s tenures', () => {
+    const g = makeGame();
+    g.day = 5000;
+    g.pmHistory = [
+      { characterId: 'player', name: g.player.name, partyId: 'lab', startDay: 1000, endDay: 1800 },
+      { characterId: 'player', name: g.player.name, partyId: 'lab', startDay: 4000, endDay: null },
+    ];
+    // becamePM is derived from history; force a becamePM roleChange so the field is populated
+    g.history.push({ kind: 'roleChange', date: 1000, officeId: 'leader', how: 'becamePM', roleSide: 'gov', partyId: 'lab' });
+    const legacy = buildLegacy(g);
+    // 800 days + 1000 days = 1800 days -> 4 whole years
+    expect(legacy.yearsAsPM).toBe(4);
+    expect(legacy.pmStints).toBe(2);
   });
 });

@@ -88,7 +88,7 @@ describe('seat map generation', () => {
     for (const era of ['2015', '2017', '2019', '2024'] as const) {
       const rng = new Rng(42);
       const { seatMap, playerSeatId } = generateSeatMap(
-        rng, PARLIAMENTS[era].matrix, era === '2019' ? 'con' : 'lab', 'southEast'
+        rng, PARLIAMENTS[era].matrix, era === '2019' ? 'con' : 'lab', 'southEast', era
       );
       expect(seatMap).toHaveLength(650);
       expect(seatMap.find((s) => s.id === playerSeatId)?.isPlayerSeat).toBe(true);
@@ -104,7 +104,7 @@ describe('seat map generation', () => {
   it('flips a seat when the player party has none in the region', () => {
     const rng = new Rng(7);
     const { seatMap, playerSeatId } = generateSeatMap(
-      rng, PARLIAMENTS['2019'].matrix, 'green', 'northEast'
+      rng, PARLIAMENTS['2019'].matrix, 'green', 'northEast', '2019'
     );
     const seat = seatMap.find((s) => s.id === playerSeatId)!;
     expect(seat.winner).toBe('green');
@@ -113,7 +113,7 @@ describe('seat map generation', () => {
 
   it('seat names are unique', () => {
     const rng = new Rng(99);
-    const { seatMap } = generateSeatMap(rng, PARLIAMENTS['2024'].matrix, 'lab', 'london');
+    const { seatMap } = generateSeatMap(rng, PARLIAMENTS['2024'].matrix, 'lab', 'london', '2024');
     const names = new Set(seatMap.map((s) => s.name));
     expect(names.size).toBe(650);
   });

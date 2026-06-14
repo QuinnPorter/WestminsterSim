@@ -329,6 +329,8 @@ export interface LegacySummary {
   wasSpeaker?: boolean;
   wasDeputyPM?: boolean;
   pmStints?: number;
+  /** whole years the player spent as Prime Minister (summed across spells) */
+  yearsAsPM?: number;
   /** general elections the player led their party to government */
   electionsWonAsLeader?: number;
   /** leadership contests won / fought (shown as "won of fought") */

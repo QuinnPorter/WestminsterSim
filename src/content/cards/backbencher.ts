@@ -395,7 +395,10 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
       },
       {
         label: 'Save it for a rainy day',
-        effects: { relationships: [{ kind: 'chiefWhip', delta: 4 }] },
+        effects: {
+          relationships: [{ kind: 'chiefWhip', delta: 4 }],
+          grantFavour: { kind: 'chiefWhip', note: 'The Chief Whip owes you a favour.' },
+        },
         outcomeText: 'You thank them and bank it. An unspent favour with the Chief Whip is worth more in the having than the using — and they respect a colleague who understands that.',
       },
     ],

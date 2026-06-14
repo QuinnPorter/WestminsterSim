@@ -10,6 +10,7 @@ import { playerIsPM } from '../engine/career';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
+  const setElectionsOpen = useUiStore((s) => s.setElectionsOpen);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const callSnapElection = useGameStore((s) => s.callSnapElection);
   const sorted = (Object.entries(game.seats) as [PartyId, number][])
@@ -30,10 +31,15 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const electionImminent = game.day >= game.nextElectionBy - 60
     || game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight');
 
-  const polls = polledPartiesForEra(game.startEra)
+  const ranked = polledPartiesForEra(game.startEra)
     .map((p) => ({ p, v: partyPolling(game, p) }))
-    .sort((a, b) => b.v - a.v)
-    .slice(0, 5);
+    .sort((a, b) => b.v - a.v);
+  // always keep the Lib Dems on the board, even if they slip out of the top five
+  const ldIncluded = ranked.some((x, i) => i < 5 && x.p === 'ld');
+  const ldEntry = ranked.find((x) => x.p === 'ld');
+  const polls = ldIncluded || !ldEntry
+    ? ranked.slice(0, 5)
+    : [...ranked.filter((x) => x.p !== 'ld').slice(0, 4), ldEntry].sort((a, b) => b.v - a.v);
 
   return (
     <div className="screen">
@@ -57,6 +63,15 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           }}
         >
           Prime Ministers ›
+        </button>
+        <button
+          onClick={() => setElectionsOpen(true)}
+          style={{
+            background: 'none', border: 'none', padding: 0,
+            color: partyTextColour(gov.governingParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+          }}
+        >
+          Elections ›
         </button>
         {isPM && !electionImminent && (
           <button

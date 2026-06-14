@@ -376,7 +376,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     const arr = state.government.arrangement;
     const yearsSinceFormation = (state.day - state.parliamentStart) / 365;
     const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
-    if (arr !== 'majority' && yearsSinceFormation > 1 && state.day >= coupCool) {
+    if (arr !== 'majority' && yearsSinceFormation > 0.6 && state.day >= coupCool) {
       const govParty = state.government.governingParty;
       const sf = state.seats.sf ?? 0;
       const votingSeats = 650 - sf - 1;
@@ -398,11 +398,12 @@ export function nextStep(state: GameState, rng: Rng): void {
       if (trueShortfall <= 0) {
         // the bloc actually commands a majority — effectively stable, skip
       } else {
-        let h = 0.010 + 0.0010 * trueShortfall + 0.0015 * Math.max(0, 12 - rivalGap);
+        // a small minority (large shortfall) is clearly fragile; a near-majority lasts
+        let h = 0.011 + 0.0016 * trueShortfall + 0.0016 * Math.max(0, 12 - rivalGap);
         if (arr === 'coalition') h *= 0.5;
         else if (arr === 'supplyConfidence') h *= 0.75;
-        h += 0.0015 * (yearsSinceFormation - 1);
-        if (rng.chance(Math.min(0.09, h))) {
+        h += 0.0015 * (yearsSinceFormation - 0.6);
+        if (rng.chance(Math.min(0.13, h))) {
           if (playerIsPM(state)) {
             state.forcedQueue.push({ kind: 'confidenceVote' });
           } else {

@@ -62,7 +62,7 @@ export function createNewGame(input: CreationInput): GameState {
   const startDay = isoToDay(data.firstSitting);
 
   const { seatMap, playerSeatId } = generateSeatMap(
-    rng, data.matrix, input.partyId, input.region
+    rng, data.matrix, input.partyId, input.region, input.era
   );
   const seats = countSeats(seatMap);
 

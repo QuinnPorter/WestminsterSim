@@ -4,6 +4,7 @@ import { useGameStore } from './store/gameStore';
 import { TabBar } from './components/TabBar';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PmHistoryModal } from './components/PmHistoryModal';
+import { ElectionsModal } from './components/ElectionsModal';
 import { AgendaEditor } from './components/AgendaEditor';
 import { TitleScreen } from './screens/TitleScreen';
 import { NewCareerScreen } from './screens/NewCareerScreen';
@@ -96,6 +97,7 @@ export default function App() {
       {debug && <DebugMenu />}
       <ConfirmModal />
       <PmHistoryModal game={game} />
+      <ElectionsModal game={game} />
       <AgendaEditor game={game} />
     </div>
   );

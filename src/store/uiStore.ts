@@ -33,6 +33,9 @@ interface UiState {
   /** whether the in-game agenda editor modal is open */
   agendaEditorOpen: boolean;
   setAgendaEditorOpen: (v: boolean) => void;
+  /** whether the general-elections history modal is open */
+  electionsOpen: boolean;
+  setElectionsOpen: (v: boolean) => void;
   debug: boolean;
 }
 
@@ -50,6 +53,8 @@ export const useUiStore = create<UiState>((set) => ({
   setPmHistoryOpen: (v) => set({ pmHistoryOpen: v }),
   agendaEditorOpen: false,
   setAgendaEditorOpen: (v) => set({ agendaEditorOpen: v }),
+  electionsOpen: false,
+  setElectionsOpen: (v) => set({ electionsOpen: v }),
   debug:
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('debug'),

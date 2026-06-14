@@ -1,13 +1,16 @@
-import { PartyId, RegionId, SyntheticSeat } from '../types/game';
-import { PARTIES } from '../data/parties';
+import { Era, PartyId, RegionId, SyntheticSeat } from '../types/game';
+import { PARTIES, populistPartyForEra } from '../data/parties';
 import { SeatMatrix } from '../data/parliaments';
 import { CONSTITUENCY_POOLS } from '../data/constituencyNames';
 import { Rng } from '../engine/rng';
 
-/** parties that realistically appear on a ballot in a region */
-function contestants(region: RegionId): PartyId[] {
+/** parties that realistically appear on a ballot in a region — only the era's
+ *  right-populist party (UKIP / Brexit / Reform) ever contests, never the others */
+function contestants(region: RegionId, era: Era): PartyId[] {
+  const populist = populistPartyForEra(era);
+  const wrongPopulists = (['ukip', 'brexit', 'reform'] as PartyId[]).filter((p) => p !== populist);
   return (Object.keys(PARTIES) as PartyId[]).filter((p) =>
-    PARTIES[p].contestsRegions.includes(region)
+    PARTIES[p].contestsRegions.includes(region) && !wrongPopulists.includes(p)
   );
 }
 
@@ -43,9 +46,10 @@ function sampleMargin(rng: Rng): number {
  *  small parties still poll a few percent everywhere they stand */
 function regionalClimate(
   region: RegionId,
-  regionSeats: Partial<Record<PartyId, number>>
+  regionSeats: Partial<Record<PartyId, number>>,
+  era: Era
 ): Partial<Record<PartyId, number>> {
-  const parties = contestants(region);
+  const parties = contestants(region, era);
   const totalSeats = Object.values(regionSeats).reduce((a, b) => a + (b ?? 0), 0) || 1;
   const climate: Partial<Record<PartyId, number>> = {};
   let sum = 0;
@@ -63,12 +67,13 @@ function buildSeatShares(
   rng: Rng,
   winner: PartyId,
   region: RegionId,
-  climate: Partial<Record<PartyId, number>>
+  climate: Partial<Record<PartyId, number>>,
+  era: Era
 ): Partial<Record<PartyId, number>> {
   // Speaker / independent seats: conventionally odd ballots, kept simple
   if (winner === 'spk') return { spk: 0.72, ind: 0.28 };
 
-  const parties = contestants(region).filter((p) => p !== winner && p !== 'spk');
+  const parties = contestants(region, era).filter((p) => p !== winner && p !== 'spk');
   const margin = sampleMargin(rng);
 
   // winner share scaled by how dominant their party is locally
@@ -106,7 +111,8 @@ export function generateSeatMap(
   rng: Rng,
   matrix: SeatMatrix,
   playerParty: PartyId,
-  playerRegion: RegionId
+  playerRegion: RegionId,
+  era: Era
 ): SeatMapResult {
   const usedNames = new Set<string>();
   const seatMap: SyntheticSeat[] = [];
@@ -114,7 +120,7 @@ export function generateSeatMap(
 
   for (const [regionKey, regionSeats] of Object.entries(matrix)) {
     const region = regionKey as RegionId;
-    const climate = regionalClimate(region, regionSeats);
+    const climate = regionalClimate(region, regionSeats, era);
     for (const [partyKey, count] of Object.entries(regionSeats)) {
       const winner = partyKey as PartyId;
       for (let i = 0; i < (count ?? 0); i++) {
@@ -123,7 +129,7 @@ export function generateSeatMap(
           name: generateName(rng, region, usedNames),
           region,
           winner,
-          shares: buildSeatShares(rng, winner, region, climate),
+          shares: buildSeatShares(rng, winner, region, climate, era),
         });
       }
     }

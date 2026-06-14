@@ -925,7 +925,7 @@ export function applyElectionAftermath(
 ): void {
   const prevGov = state.government.governingParty;
   const prevOpp = state.government.oppositionParty;
-  const newGov = result.governingParty;
+  let newGov = result.governingParty;
   // snapshot the outgoing seat counts before they're overwritten — used to scale
   // NPC leader resignations by how much each party gained or lost
   const prevSeats = { ...state.seats };
@@ -950,7 +950,24 @@ export function applyElectionAftermath(
   const ranked = (Object.entries(result.seats) as [PartyId, number][])
     .filter(([p, n]) => p !== newGov && p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] && (n ?? 0) > 0)
     .sort((a, b) => b[1] - a[1]);
-  const newOpp = ranked[0]?.[0] ?? (newGov === prevGov ? prevOpp : prevGov);
+  let newOpp = ranked[0]?.[0] ?? (newGov === prevGov ? prevOpp : prevGov);
+
+  // rare "rainbow coalition": in a CLOSE hung result the runner-up occasionally
+  // forms a coalition and governs instead of the largest party (~4% of the time).
+  // The former largest party is bumped into opposition.
+  let forceCoalition = false;
+  if (result.outcome !== 'majority' && newOpp && newOpp !== newGov) {
+    const lead = (result.seats[newGov] ?? 0) - (result.seats[newOpp] ?? 0);
+    const partner = pickCoalitionPartner(result, rng, newOpp);
+    if (lead <= 18 && partner && rng.chance(0.04)) {
+      newGov = newOpp;
+      newOpp = (Object.entries(result.seats) as [PartyId, number][])
+        .filter(([p, n]) => p !== newGov && p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] && (n ?? 0) > 0)
+        .sort((a, b) => b[1] - a[1])[0]?.[0] ?? newGov;
+      result.governingParty = newGov; // keep the stored result + PM history consistent
+      forceCoalition = true;
+    }
+  }
 
   // "elections won as leader": the player led their party into this election and
   // it formed the government (winning from opposition, or an incumbent re-elected)
@@ -966,10 +983,16 @@ export function applyElectionAftermath(
     state.government.cabinet = state.government.shadowCabinet;
     state.government.shadowCabinet = oldCabinet;
     const oldPmId = state.government.pmId;
-    state.government.pmId = state.government.loId;
+    // the new PM is the leader of the party that actually WON (newGov) — not
+    // necessarily the old Leader of the Opposition (a third/runner-up party can
+    // leap to government). The defeated PM usually becomes LO.
+    const newPmId = (playerWonSeat && playerIsLeader(state) && state.player.partyId === newGov)
+      ? 'player'
+      : partyLeaderId(state, rng, newGov);
+    state.government.pmId = newPmId;
     state.government.loId = oldPmId;
     state.government.pmSinceDay = state.day;
-    recordPmChange(state, state.government.pmId);
+    recordPmChange(state, newPmId);
     state.history.push({
       kind: 'event', date: state.day,
       headline: `${PARTIES[newGov].name} wins the general election`,
@@ -1029,6 +1052,16 @@ export function applyElectionAftermath(
       state.forcedQueue.push({
         kind: 'coalitionOffer',
         payload: { majorParty: newGov, shortfall, partySeats: playerSeats },
+      });
+    } else if (forceCoalition && partner) {
+      // the runner-up's rainbow coalition seizes government from the largest party
+      state.government.arrangement = 'coalition';
+      state.government.coalitionPartner = partner;
+      seatCoalitionCabinet(state, rng);
+      recomputeOpposition(state, rng);
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${PARTIES[newGov].name} forms a coalition with the ${PARTIES[partner].shortName} to govern, despite finishing second`,
       });
     } else if (partner) {
       // NPCs settle it: of sub-majority results, ~10% coalition, ~20% supply &
@@ -1416,7 +1449,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           : 'Several heavyweights are circling';
       // if a senior friend owes you, you can cash that in to shore up your launch
       const favour = (state.player.favours ?? []).find(
-        (f) => f.kind === 'ally' || f.kind === 'mentor'
+        (f) => f.kind === 'ally' || f.kind === 'mentor' || f.kind === 'chiefWhip'
       );
       const choices = [{ label: 'Stand for leader' }];
       if (favour) {
@@ -3634,7 +3667,11 @@ export function buildLegacy(state: GameState): LegacySummary {
     .slice(-10)
     .map((h) => (h as { headline: string }).headline);
   const yearsServed = Math.max(1, Math.round((state.day - state.player.enteredParliament) / 365));
-  const pmStints = (state.pmHistory ?? []).filter((t) => t.characterId === 'player').length;
+  const playerPmSpells = (state.pmHistory ?? []).filter((t) => t.characterId === 'player');
+  const pmStints = playerPmSpells.length;
+  const yearsAsPM = Math.floor(
+    playerPmSpells.reduce((a, t) => a + ((t.endDay ?? state.day) - t.startDay), 0) / 365
+  );
   const leadershipContestsFought = state.history.filter((h) => h.kind === 'leadershipContest').length;
   const leadershipContestsWon = state.history.filter((h) => h.kind === 'leadershipContest' && h.won).length;
   const electionsWonAsLeader = (state.player.flags._electionsWonAsLeader as number) ?? 0;
@@ -3653,6 +3690,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     wasSpeaker: everSpeaker,
     wasDeputyPM: everDeputyPM,
     pmStints,
+    yearsAsPM,
     electionsWonAsLeader,
     leadershipContestsWon,
     leadershipContestsFought,
