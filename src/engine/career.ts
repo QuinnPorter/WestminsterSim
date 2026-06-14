@@ -843,6 +843,24 @@ export function resolveNpcLeadership(
   return winner;
 }
 
+/** the player isn't standing (or has just been knocked out): run the rest of the
+ *  contest as a BACKER. Each round they get behind a candidate; the per-candidate
+ *  tally (carried in the forced-event payload) decides how warm the new leader is
+ *  with them. Strengths are fixed once so the field whittles consistently. */
+export function startBacking(state: GameState, rng: Rng, party: PartyId, survivors: string[]): void {
+  const field = survivors.filter((id) => state.characters[id]?.active);
+  if (field.length <= 1) {
+    resolveNpcLeadership(state, rng, party, field[0]);
+    return;
+  }
+  const strengths: Record<string, number> = {};
+  for (const id of field) strengths[id] = rivalStrengthOf(state.characters[id], rng);
+  state.forcedQueue.unshift({
+    kind: 'leadershipBacking',
+    payload: { party, survivors: field, strengths, backing: {}, round: 1 },
+  });
+}
+
 function makePlayerLeader(state: GameState, rng: Rng): void {
   const party = state.player.partyId;
   removePlayerFromFrontbench(state, rng);
@@ -1488,6 +1506,30 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         payload: pass,
       };
     }
+    case 'leadershipBacking': {
+      const survivors = (ev.payload?.survivors as string[]) ?? [];
+      const strengths = (ev.payload?.strengths as Record<string, number>) ?? {};
+      const round = (ev.payload?.round as number) ?? 1;
+      // offer the leading contenders to back (cap so the card stays tidy)
+      const backable = [...survivors]
+        .sort((a, b) => (strengths[b] ?? 0) - (strengths[a] ?? 0))
+        .slice(0, 4);
+      const names = backable.map((id) => characterName(state, id));
+      const field = names.length > 1
+        ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+        : names[0] ?? 'the survivors';
+      const body = round === 1
+        ? `You are not in the running, but a leadership contest is a market in loyalty. ${field} are the serious names. Whom do you get behind?`
+        : `The field narrows to ${field}. A leader will emerge within days. Where do you throw your weight now?`;
+      return {
+        cardId: `forced_backing_${round}_${state.day}`,
+        kind: 'leadershipBacking',
+        title: 'Leadership contest',
+        body,
+        choices: backable.map((id) => ({ label: `Back ${characterName(state, id)}` })),
+        payload: { ...ev.payload, candidateIds: backable, advance: rng.int(7, 12) },
+      };
+    }
     case 'pmReshuffle': {
       const side = playerInGovernment(state) ? 'cabinet' : 'shadowCabinet';
       const posts = state.government[side].filter((p) =>
@@ -2063,11 +2105,11 @@ export function resolveForcedChoice(
           deltas,
         };
       }
-      resolveNpcLeadership(state, rng, state.player.partyId);
-      gain('partyStanding', 2, 'Standing');
-      const newLeader = characterName(state, getRelationship(state, 'leader')?.characterId);
+      // not standing — but you won't sit on your hands: get behind a candidate,
+      // round by round, and the new leader will remember which side you took
+      startBacking(state, rng, state.player.partyId, candidateIds);
       return {
-        text: `You stay out of it and quietly back the winner. ${newLeader} takes the crown — and notes who was helpful.`,
+        text: 'You decide not to run. But a leadership contest is a market in loyalty, and you mean to be a buyer — whom do you get behind?',
         deltas,
       };
     }
@@ -2090,7 +2132,8 @@ export function resolveForcedChoice(
         const bar = avg * [0.62, 0.82, 1.0][round - 1] + rng.normal(0, 5);
         const current = (state.player.flags._ldrSupport as number) ?? support;
         if (current >= bar) return null;
-        // eliminated — the strongest survivor (the finalist) goes on to win
+        // eliminated — but you're not done: get behind one of the survivors for
+        // the rest of the contest (the same backing mini-game as not standing)
         delete state.player.flags._ldrSupport;
         state.forcedQueue = state.forcedQueue.filter((e) => e.kind !== 'leadershipBallot');
         state.history.push({
@@ -2099,11 +2142,13 @@ export function resolveForcedChoice(
         state.player.flags._contestLossDay = state.day;
         state.player.flags._contestLosses =
           (((state.player.flags._contestLosses as number) ?? 0) + 1);
-        resolveNpcLeadership(state, rng, state.player.partyId, card.payload?.finalistId as string);
+        const eliminatedNow = (card.payload?.eliminatedIds as string[]) ?? [];
+        const survivors = ((card.payload?.candidateIds as string[]) ?? [])
+          .filter((id) => !eliminatedNow.includes(id) && state.characters[id]?.active);
+        startBacking(state, rng, state.player.partyId, survivors);
         gain('profile', 2, 'Profile');
-        const winner = characterName(state, getRelationship(state, 'leader')?.characterId);
         return {
-          text: `${preface} It is not enough: you are eliminated in round ${round}, your support draining to stronger names. ${winner} goes on to take the crown. You return to the benches, your moment noted if not seized.`,
+          text: `${preface} It is not enough: you are eliminated in round ${round}, your support draining to stronger names. You are out of the running — but the contest goes on, and your endorsement is suddenly worth having. Whom do you get behind?`,
           deltas,
         };
       };
@@ -2212,6 +2257,84 @@ export function resolveForcedChoice(
       const winner = characterName(state, getRelationship(state, 'leader')?.characterId);
       return {
         text: `So close. ${winner} edges it on the final ballot. You give a generous concession speech that everyone agrees was leadership material — which stings.`,
+        deltas,
+      };
+    }
+
+    case 'leadershipBacking': {
+      const party = card.payload?.party as PartyId;
+      const survivors = [...((card.payload?.survivors as string[]) ?? [])];
+      const strengths = { ...((card.payload?.strengths as Record<string, number>) ?? {}) };
+      const backing = { ...((card.payload?.backing as Record<string, number>) ?? {}) };
+      const backable = (card.payload?.candidateIds as string[]) ?? survivors;
+      const round = (card.payload?.round as number) ?? 1;
+      const chosen = backable[choiceIndex];
+
+      // tally: a buff to the backed candidate, a SMALLER debuff to the rest, so
+      // backing is recoverable (switch and the new pick's buffs offset old debuffs)
+      const BACK_GAIN = 12, BACK_LOSS = 5;
+      if (chosen) {
+        backing[chosen] = (backing[chosen] ?? 0) + BACK_GAIN;
+        for (const id of survivors) if (id !== chosen) backing[id] = (backing[id] ?? 0) - BACK_LOSS;
+      }
+      const chosenName = chosen ? characterName(state, chosen) : 'no one';
+
+      // kingmaker: a small, seniority-scaled lift to the player's pick — tilts but
+      // never decides the contest
+      const king = 2 + (state.player.stats.partyStanding > 60 ? 3 : 0) + (playerTier(state) >= 4 ? 2 : 0);
+      const eff = (id: string) => (strengths[id] ?? 0) + (id === chosen ? king : 0);
+
+      // knock out the weakest survivor
+      let remaining = [...survivors];
+      if (remaining.length > 2) {
+        const weakest = remaining.reduce((a, b) => (eff(a) <= eff(b) ? a : b));
+        remaining = remaining.filter((id) => id !== weakest);
+      }
+
+      if (remaining.length > 2) {
+        state.forcedQueue.unshift({
+          kind: 'leadershipBacking',
+          payload: { party, survivors: remaining, strengths, backing, round: round + 1 },
+        });
+        return {
+          text: `You get behind ${chosenName}. The weakest hopeful drops away as the votes are counted, and the contest moves to another ballot.`,
+          deltas,
+        };
+      }
+
+      // the final two go to the membership (or a single survivor walks it)
+      let winnerId: string;
+      if (remaining.length === 2) {
+        const [a, b] = remaining;
+        winnerId = eff(a) + rng.normal(0, 7) >= eff(b) + rng.normal(0, 7) ? a : b;
+      } else {
+        winnerId = remaining[0];
+      }
+
+      resolveNpcLeadership(state, rng, party, winnerId);
+
+      if (party === state.player.partyId) {
+        // the new leader's warmth reflects how loyally the player backed them
+        const rel = getRelationship(state, 'leader');
+        if (rel && rel.characterId === winnerId) {
+          rel.value = clamp(rel.value + (backing[winnerId] ?? 0), -100, 100);
+        }
+        // realise the tally against any tracked relationship that was in the field
+        for (const kind of ['rival', 'ally', 'mentor'] as RelationshipKind[]) {
+          const r = getRelationship(state, kind);
+          if (r && r.characterId !== winnerId && backing[r.characterId] !== undefined) {
+            adjustRelationship(state, kind, Math.round((backing[r.characterId] as number) * 0.5));
+          }
+        }
+      }
+
+      const winnerName = characterName(state, winnerId);
+      const backedWinner = (backing[winnerId] ?? 0) > 0;
+      gain('partyStanding', backedWinner ? 3 : -1, 'Standing');
+      return {
+        text: backedWinner
+          ? `${winnerName} takes the crown — and remembers, warmly, that you were on the right side. A friend at the top is worth a great deal.`
+          : `${winnerName} takes the crown. You backed the other horse, and the new leader knows it. There are fences to mend.`,
         deltas,
       };
     }

@@ -3,7 +3,7 @@ import { createNewGame, CreationInput } from '../newGame';
 import {
   recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
   nextOfficeFor, callForLeaderResignationCore, seatPlayerJuniorPartner, setDeputyPmCore,
-  sackMinisterCore, playerOfficeTitle, playerInGovernmentBloc,
+  sackMinisterCore, playerOfficeTitle, playerInGovernmentBloc, startBacking,
 } from '../career';
 import { initCalendar, nextStep, resolveCalendarChoice } from '../scheduler';
 import { runElection } from '../election';
@@ -428,5 +428,63 @@ describe('wave 14 — coalition junior partner & leader fixes', () => {
     const legacy = buildLegacy(g);
     expect(legacy.verdict).not.toMatch(/\bA a\b/);
     expect(legacy.verdict).toContain('Household Name');
+  });
+});
+
+describe('wave 15 — backing a candidate in a leadership contest', () => {
+  // two Labour candidates: A is overwhelmingly strong (always wins), B is weak.
+  function labPair(g: GameState): [string, string] {
+    const ids = Object.values(g.characters)
+      .filter((c) => c.partyId === 'lab' && c.active && c.id !== 'player' && c.id !== g.government.pmId)
+      .map((c) => c.id);
+    return [ids[0], ids[1]];
+  }
+  function backOnce(backWinner: boolean): number {
+    const g = makeGame();
+    const [A, B] = labPair(g);
+    g.forcedQueue.unshift({
+      kind: 'leadershipBacking',
+      payload: { party: 'lab', survivors: [A, B], strengths: { [A]: 100, [B]: 10 }, backing: {}, round: 1 },
+    });
+    const ev = g.forcedQueue.shift()!;
+    const card = materializeForced(g, new Rng(2), ev);
+    const backable = card.payload!.candidateIds as string[];
+    const idx = backable.indexOf(backWinner ? A : B);
+    resolveForcedChoice(g, new Rng(2), card, idx);
+    const rel = getRelationship(g, 'leader')!;
+    expect(rel.characterId).toBe(A); // the strong candidate always wins
+    return rel.value;
+  }
+
+  it('backing the winner leaves a warmer relationship than backing their opponent', () => {
+    const warm = backOnce(true);
+    const cold = backOnce(false);
+    expect(warm).toBeGreaterThan(cold);
+    expect(warm).toBeGreaterThan(0);
+  });
+
+  it('a backing contest of any size always narrows to one installed leader', () => {
+    const g = makeGame();
+    const field = Object.values(g.characters)
+      .filter((c) => c.partyId === 'lab' && c.active && c.id !== 'player' && c.id !== g.government.pmId)
+      .slice(0, 5).map((c) => c.id);
+    startBacking(g, new Rng(3), 'lab', field);
+    let safety = 0;
+    while (g.forcedQueue[0]?.kind === 'leadershipBacking' && safety++ < 20) {
+      const ev = g.forcedQueue.shift()!;
+      const card = materializeForced(g, new Rng(3 + safety), ev);
+      resolveForcedChoice(g, new Rng(3 + safety), card, 0); // back the top contender each round
+    }
+    expect(g.forcedQueue.some((e) => e.kind === 'leadershipBacking')).toBe(false);
+    expect(field).toContain(getRelationship(g, 'leader')!.characterId);
+  });
+
+  it('startBacking installs the lone survivor directly', () => {
+    const g = makeGame();
+    const only = Object.values(g.characters)
+      .find((c) => c.partyId === 'lab' && c.active && c.id !== 'player' && c.id !== g.government.pmId)!.id;
+    startBacking(g, new Rng(1), 'lab', [only]);
+    expect(g.forcedQueue.some((e) => e.kind === 'leadershipBacking')).toBe(false);
+    expect(getRelationship(g, 'leader')!.characterId).toBe(only);
   });
 });

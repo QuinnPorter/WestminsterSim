@@ -17,6 +17,7 @@ export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
     card.kind === 'campaign' ||
     card.kind === 'leadershipStand' ||
     card.kind === 'leadershipBallot' ||
+    card.kind === 'leadershipBacking' ||
     card.kind === 'pmPressure' ||
     card.kind === 'resignPledge' ||
     card.kind === 'confidenceVote' ||
@@ -29,7 +30,7 @@ export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
 /** short label for the key-moment banner */
 export function keyMomentLabel(card: DrawnCard): string {
   if (card.kind === 'campaign') return 'General election';
-  if (card.kind === 'leadershipStand' || card.kind === 'leadershipBallot') return 'Leadership contest';
+  if (card.kind === 'leadershipStand' || card.kind === 'leadershipBallot' || card.kind === 'leadershipBacking') return 'Leadership contest';
   if (card.kind === 'pmPressure') return 'Crisis in Number 10';
   if (card.kind === 'confidenceVote') return 'Confidence vote';
   if (card.kind === 'partyCoup') return 'Leadership challenge';

@@ -289,7 +289,7 @@ export interface StatDelta {
 export type ForcedKind =
   | 'reshuffleOffer' | 'dismissal' | 'resignPrompt'
   | 'campaign' | 'electionNight' | 'lostSeat' | 'wilderness'
-  | 'leadershipStand' | 'leadershipBallot' | 'pmReshuffle' | 'pmPressure'
+  | 'leadershipStand' | 'leadershipBallot' | 'leadershipBacking' | 'pmReshuffle' | 'pmPressure'
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'speakerContest'
