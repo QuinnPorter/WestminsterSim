@@ -5,7 +5,7 @@ import { StatChips } from '../components/StatChips';
 import { RelationshipBadges } from '../components/RelationshipBadges';
 import { SituationPanel } from '../components/SituationPanel';
 import { DecisionCardView } from '../components/DecisionCardView';
-import { playerIsPM } from '../engine/career';
+import { playerIsLeader } from '../engine/career';
 
 export function PlayScreen({ game }: { game: GameState }) {
   const resolveChoice = useGameStore((s) => s.resolveChoice);
@@ -18,7 +18,7 @@ export function PlayScreen({ game }: { game: GameState }) {
         <StatChips stats={game.player.stats} />
       </div>
       <RelationshipBadges game={game} />
-      {playerIsPM(game) && <SituationPanel game={game} />}
+      {playerIsLeader(game) && <SituationPanel game={game} />}
       {game.currentCard ? (
         <DecisionCardView
           game={game}

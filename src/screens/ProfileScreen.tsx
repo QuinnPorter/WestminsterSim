@@ -133,7 +133,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
 
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ fontSize: 'var(--fs-sm)' }}>Your agenda</h3>
+          <h3 style={{ fontSize: 'var(--fs-sm)' }}>Your Agenda</h3>
           <button
             onClick={() => setAgendaEditorOpen(true)}
             style={{

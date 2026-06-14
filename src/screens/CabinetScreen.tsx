@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { GameState, OfficeId } from '../types/game';
 import { CABINET_OFFICES, OFFICES } from '../data/offices';
-import { PARTIES } from '../data/parties';
+import { PARTIES, partyTextColour } from '../data/parties';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
-import { playerIsLeader, playerInGovernment, cabinetTitleFor } from '../engine/career';
+import { playerIsLeader, playerIsPM, cabinetTitleFor } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import './CabinetScreen.css';
 
@@ -18,12 +18,13 @@ export function CabinetScreen({ game }: { game: GameState }) {
   const leaderId = isGov ? game.government.pmId : game.government.loId;
   const posts = isGov ? game.government.cabinet : game.government.shadowCabinet;
   const party = isGov ? game.government.governingParty : game.government.oppositionParty;
-  // the player can sack ministers on the side they lead
-  const canSack =
-    playerIsLeader(game) &&
-    ((isGov && playerInGovernment(game)) || (!isGov && !playerInGovernment(game)));
+  // only the PM controls the government cabinet; only the official Leader of the
+  // Opposition controls the shadow cabinet. A minor-party / junior-coalition leader
+  // controls neither.
+  const leadsOpposition = playerIsLeader(game) && game.player.partyId === game.government.oppositionParty;
+  const canSack = (isGov && playerIsPM(game)) || (!isGov && leadsOpposition);
   // only a sitting Prime Minister names the Deputy PM
-  const canMakeDeputy = canSack && isGov && playerInGovernment(game);
+  const canMakeDeputy = isGov && playerIsPM(game);
 
   return (
     <div className="screen">
@@ -41,6 +42,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
         characterId={leaderId}
         title={isGov ? 'Prime Minister' : 'Leader of the Opposition'}
         onTitleClick={isGov ? () => setPmHistoryOpen(true) : undefined}
+        titleColour={isGov ? partyTextColour(game.government.governingParty) : undefined}
       />
 
       <div className="cab-grid">
@@ -54,8 +56,9 @@ export function CabinetScreen({ game }: { game: GameState }) {
           // a coalition partner's minister sits in the governing cabinet
           const coalitionOf = isGov && memberParty && memberParty !== game.government.governingParty
             ? PARTIES[memberParty].shortName : undefined;
-          // deputy PM is a departmental Secretary of State, never the Chief Whip
-          const deputyEligible = !!OFFICES[officeId]?.department && !coalitionOf;
+          // deputy PM is a departmental Secretary of State — never the Chief Whip,
+          // the Chief Secretary, or a coalition partner's minister
+          const deputyEligible = !!OFFICES[officeId]?.department && officeId !== 'chief_sec' && !coalitionOf;
           return (
             <MemberCard
               key={officeId}
@@ -99,8 +102,8 @@ export function CabinetScreen({ game }: { game: GameState }) {
   );
 }
 
-function FeaturedMember({ game, characterId, title, onTitleClick }: {
-  game: GameState; characterId: string; title: string; onTitleClick?: () => void;
+function FeaturedMember({ game, characterId, title, onTitleClick, titleColour }: {
+  game: GameState; characterId: string; title: string; onTitleClick?: () => void; titleColour?: string;
 }) {
   const isPlayer = characterId === 'player';
   const char = isPlayer ? null : game.characters[characterId];
@@ -118,7 +121,11 @@ function FeaturedMember({ game, characterId, title, onTitleClick }: {
           {name} {isPlayer && <span className="cab-you">YOU</span>}
         </div>
         {onTitleClick ? (
-          <button className="cab-featured-title cab-title-link" onClick={onTitleClick}>
+          <button
+            className="cab-featured-title cab-title-link"
+            onClick={onTitleClick}
+            style={titleColour ? { color: titleColour } : undefined}
+          >
             {title} <span aria-hidden>›</span>
           </button>
         ) : (
@@ -153,7 +160,7 @@ function MemberCard({ game, characterId, title, onSack, onMakeDeputy, coalitionO
         )}
         {rel && (
           <span className="cab-rel" title="Your relationship">
-            {rel.value >= 25 ? '🙂' : rel.value <= -25 ? '😠' : '😐'}
+            {rel.value > 0 ? '+' : ''}{Math.round(rel.value)}
           </span>
         )}
       </div>

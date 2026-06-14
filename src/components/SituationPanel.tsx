@@ -2,34 +2,38 @@ import { useState } from 'react';
 import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { partyPolling } from '../engine/polling';
+import { playerIsPM } from '../engine/career';
 import './SituationPanel.css';
 
-/** A PM's-eye view: the government's polling against the official opposition, plus
- *  a warning when a heave against the leader is brewing. Only rendered when the
- *  player is Prime Minister. */
+/** A leader's-eye view: the player's party against the field (the governing party
+ *  and the official opposition), plus a heave warning for a sitting PM. Rendered
+ *  for any party leader — PM sees gov vs opp, the LO sees themselves vs the
+ *  government, a minor-party leader sees their party plus the two largest. */
 export function SituationPanel({ game }: { game: GameState }) {
   const [open, setOpen] = useState(true);
 
-  const govParty = game.government.governingParty;
-  const oppParty = game.government.oppositionParty;
-  const govVal = partyPolling(game, govParty);
-  const oppVal = partyPolling(game, oppParty);
-  const pollMax = Math.max(govVal, oppVal, 1);
+  const own = game.player.partyId;
+  // "you vs the field": your party plus the two big benches, de-duplicated
+  const parties = [...new Set<PartyId>([own, game.government.governingParty, game.government.oppositionParty])]
+    .map((p) => ({ p, v: partyPolling(game, p) }))
+    .sort((a, b) => b.v - a.v);
+  const pollMax = Math.max(...parties.map((x) => x.v), 1);
 
-  const plotting = (game.government.pmHeavePressure ?? 0) > 0;
+  const plotting = playerIsPM(game) && (game.government.pmHeavePressure ?? 0) > 0;
 
   return (
     <div className="card sit-panel">
       <button className="sit-head" onClick={() => setOpen((o) => !o)}>
-        <span>The lie of the land</span>
+        <span>The Lie of the Land</span>
         <span className="sit-toggle">{open ? '▾' : '▸'}</span>
       </button>
 
       {open && (
         <div className="sit-body">
           <div className="sit-polls">
-            <PollLine label={PARTIES[govParty].shortName} value={govVal} max={pollMax} partyId={govParty} you />
-            <PollLine label={PARTIES[oppParty].shortName} value={oppVal} max={pollMax} partyId={oppParty} />
+            {parties.map(({ p, v }) => (
+              <PollLine key={p} label={PARTIES[p].shortName} value={v} max={pollMax} partyId={p} you={p === own} />
+            ))}
           </div>
 
           {plotting && (

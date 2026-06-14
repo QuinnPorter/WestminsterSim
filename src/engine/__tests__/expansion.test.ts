@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import {
   recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
-  nextOfficeFor, callForLeaderResignationCore,
+  nextOfficeFor, callForLeaderResignationCore, seatPlayerJuniorPartner, setDeputyPmCore,
+  sackMinisterCore, playerOfficeTitle, playerInGovernmentBloc,
 } from '../career';
 import { initCalendar, nextStep, resolveCalendarChoice } from '../scheduler';
 import { runElection } from '../election';
@@ -359,5 +360,73 @@ describe('wave 12 — Budget routes to the Chancellor, not the PM', () => {
     dueBudget(g);
     nextStep(g, new Rng(1));
     expect(g.currentCard?.kind).not.toBe('budget');
+  });
+});
+
+describe('wave 14 — coalition junior partner & leader fixes', () => {
+  // build a state where the player leads 'lab' as the JUNIOR partner under 'con',
+  // with 'reform' as the largest party outside the government bloc
+  function juniorGame(labSeats: number): GameState {
+    const g = makeGame();
+    const conLeader = g.government.loId; // con leads the opposition in 2024
+    g.government.governingParty = 'con';
+    g.government.pmId = conLeader;
+    g.government.coalitionPartner = 'lab';
+    g.government.arrangement = 'coalition';
+    g.player.officeId = 'leader';
+    g.seats = { con: 300, lab: labSeats, reform: 180, green: 10 };
+    return g;
+  }
+
+  it('seats a significant junior partner as Deputy PM on the government side', () => {
+    const g = juniorGame(40);
+    seatPlayerJuniorPartner(g, new Rng(1));
+    expect(g.government.pmId).not.toBe('player');         // the senior leader is PM
+    expect(playerInGovernmentBloc(g)).toBe(true);
+    expect(g.government.cabinet.some((p) => p.characterId === 'player')).toBe(true);
+    expect(g.player.flags._isDeputyPM).toBe(true);
+    expect(g.government.oppositionParty).toBe('reform');  // the 3rd party, not the player
+    const title = playerOfficeTitle(g);
+    expect(title).toContain('Deputy Prime Minister');
+    expect(title).toContain('Leader of the');
+  });
+
+  it('gives a small junior partner a cabinet brief, still leading their party', () => {
+    const g = juniorGame(8);
+    seatPlayerJuniorPartner(g, new Rng(1));
+    expect(g.player.flags._isDeputyPM).toBeFalsy();
+    expect(g.government.cabinet.some((p) => p.characterId === 'player')).toBe(true);
+    expect(playerOfficeTitle(g)).toMatch(/and Leader of the/);
+  });
+
+  it('will not make the Chief Secretary Deputy PM', () => {
+    const g = makeGame();
+    g.player.officeId = 'leader';
+    g.government.pmId = 'player';
+    const cs = g.government.cabinet.find((p) => p.officeId === 'chief_sec')!;
+    setDeputyPmCore(g, new Rng(1), cs.characterId);
+    expect(g.government.deputyPmId).not.toBe(cs.characterId);
+    // a normal Secretary of State is fine
+    const health = g.government.cabinet.find((p) => p.officeId === 'sos_health')!;
+    setDeputyPmCore(g, new Rng(1), health.characterId);
+    expect(g.government.deputyPmId).toBe(health.characterId);
+  });
+
+  it('a minor-party leader cannot sack the opposition shadow cabinet', () => {
+    const g = makeGame();
+    g.player.partyId = 'green'; // neither governing (lab) nor opposition (con)
+    g.player.officeId = 'leader';
+    const before = g.government.shadowCabinet.map((p) => p.characterId);
+    sackMinisterCore(g, new Rng(1), 'sos_home');
+    expect(g.government.shadowCabinet.map((p) => p.characterId)).toEqual(before);
+  });
+
+  it('end-screen verdict is grammatical and title-cased', () => {
+    const g = makeGame();
+    g.player.stats.profile = 80;
+    g.player.stats.integrity = 80;
+    const legacy = buildLegacy(g);
+    expect(legacy.verdict).not.toMatch(/\bA a\b/);
+    expect(legacy.verdict).toContain('Household Name');
   });
 });

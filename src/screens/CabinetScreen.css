@@ -97,6 +97,9 @@
 
 .cab-rel {
   margin-left: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .cab-coalition {

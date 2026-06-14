@@ -92,7 +92,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
       {legacy.finalStats && (
         <div className="card" style={{ textAlign: 'left', marginBottom: 14 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginBottom: 8 }}>
-            Final standing
+            Final Standing
           </h3>
           {STAT_ROWS.map(({ key, label }) => (
             <div key={key} style={{
@@ -121,7 +121,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
       {causes.length > 0 && (
         <div className="card" style={{ textAlign: 'left', marginBottom: 14 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginBottom: 8 }}>
-            Causes they fought for
+            Causes They Fought For
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {causes.map((c) => (
@@ -137,7 +137,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
       {legacy.headlines.length > 0 && (
         <div className="card" style={{ textAlign: 'left', marginBottom: 18 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginBottom: 8 }}>
-            How they'll remember it
+            How They'll Remember It
           </h3>
           {legacy.headlines.map((h, i) => (
             <p key={i} style={{ fontSize: 'var(--fs-sm)', padding: '4px 0', fontWeight: 600 }}>

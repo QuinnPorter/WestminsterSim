@@ -53,7 +53,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           onClick={() => setPmHistoryOpen(true)}
           style={{
             background: 'none', border: 'none', padding: 0,
-            color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+            color: partyTextColour(gov.governingParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
           }}
         >
           Prime Ministers ›
