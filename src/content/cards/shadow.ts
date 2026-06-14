@@ -125,4 +125,65 @@ export const SHADOW_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'sh_opposition_day',
+    title: 'Opposition day',
+    body: 'You have one of the rare opposition-day debates to yourself, and a motion of your choosing. You can pick a wedge issue designed to split the government\'s benches — or a serious failure that deserves a serious airing.',
+    tags: ['westminster', 'media'],
+    weight: 12, cooldownDays: 360,
+    requires: { inGovernment: false, minTier: 1 },
+    choices: [
+      {
+        label: 'Lay a trap to split their benches',
+        effects: { stats: { profile: 4, partyStanding: 2 }, pollingShock: { party: 'own', delta: 0.3 } },
+        outcomeText: 'You choose a motion their own backbenchers can barely vote against. A dozen of them abstain in agony, the story writes itself, and the government spends the evening explaining its own divisions.',
+      },
+      {
+        label: 'Force a real failure onto the record',
+        effects: { stats: { competence: 3, integrity: 3 } },
+        outcomeText: 'You use the day to drag a genuine scandal into the light, on the record, with witnesses. Less theatrical, more lasting — the kind of debate a future inquiry quotes back to the minister.',
+      },
+    ],
+  },
+  {
+    id: 'sh_shadow_audition',
+    title: 'The audition',
+    body: 'The whispering has started: the leader looks tired, the polls won\'t move, and the shadow cabinet has quietly become a casting call. A flattering profile wants to make you its subject. {rival} is, of course, doing the same.',
+    speaker: 'rival',
+    tags: ['party', 'media', 'serious'],
+    weight: 10, cooldownDays: 500,
+    requires: { inGovernment: false, minTier: 3 },
+    choices: [
+      {
+        label: 'Build your profile, loyally deniable',
+        effects: { stats: { profile: 4, partyStanding: 1 }, relationships: [{ kind: 'leader', delta: -3 }, { kind: 'rival', delta: -4 }] },
+        outcomeText: 'You cooperate with the profile while professing total loyalty, the oldest dance in the building. Your stock rises; the leader\'s office, which can read, marks you as a runner.',
+      },
+      {
+        label: 'Conspicuously back the leader',
+        effects: { stats: { partyStanding: 4 }, relationships: [{ kind: 'leader', delta: 6 }] },
+        outcomeText: 'You spike the profile and spend the week shoring the leader up. If they recover, you are indispensable; if they fall, you are the loyal lieutenant with clean hands — not the worst place to start a contest.',
+      },
+    ],
+  },
+  {
+    id: 'sh_govt_in_flames',
+    title: 'The government is burning',
+    body: 'A genuine government crisis is unfolding live — a resignation, a market wobble, a policy in flames. This is the moment opposition exists for. Do you go for the jugular, or rise above it and look like the calm government-in-waiting?',
+    tags: ['media', 'crisis', 'serious'],
+    weight: 12, cooldownDays: 400,
+    requires: { inGovernment: false, minTier: 1 },
+    choices: [
+      {
+        label: 'Go for the jugular',
+        effects: { stats: { profile: 4, integrity: -2 }, pollingShock: { party: 'own', delta: 0.4 } },
+        outcomeText: 'You twist the knife on every channel and the government bleeds all day. Effective, satisfying, and a touch unseemly — and somewhere a future opponent is saving the clip of you enjoying it.',
+      },
+      {
+        label: 'Look like the calm alternative',
+        effects: { stats: { competence: 3, integrity: 3, profile: 2 } },
+        outcomeText: 'You decline to gloat and instead sketch, soberly, what you would do differently. It denies you the day\'s best clip and buys you something rarer: the look of a government-in-waiting.',
+      },
+    ],
+  },
 ];

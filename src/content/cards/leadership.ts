@@ -736,4 +736,131 @@ export const LEADERSHIP_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'pm_the_summit',
+    title: 'The summit',
+    body: 'A fraught international summit, and the cameras want the family photo before the deal is done. The other leaders are circling: one wants a concession you cannot give at home, another wants you to isolate a difficult ally. The communiqué is blank.',
+    tags: ['westminster', 'serious'],
+    weight: 12, cooldownDays: 420,
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
+    choices: [
+      {
+        label: 'Broker the deal — give a little to get a lot',
+        effects: { stats: { competence: 4, profile: 2 }, pollingShock: { party: 'own', delta: 0.3 } },
+        outcomeText: 'You trade a small, survivable concession for a communiqué that has your fingerprints all over it. You come home a statesman — and spend a fortnight explaining the concession to your own backbenchers.',
+      },
+      {
+        label: 'Stand firm and play to the gallery at home',
+        effects: { stats: { profile: 4, partyStanding: 2, competence: -1 } },
+        outcomeText: 'You refuse to budge and let the summit fail rather than yield. The tabloids love the bulldog photo; the other capitals quietly note that you are easier to admire than to work with.',
+      },
+    ],
+  },
+  {
+    id: 'pm_hostage_crisis',
+    title: 'The phone call at 3am',
+    body: 'A security crisis abroad: nationals taken hostage, a hijacking, a coup against an ally — the details change, the 3am call does not. The cabinet-room options range from bad to worse, and whatever you choose, you will own forever.',
+    tags: ['crisis', 'serious'],
+    weight: 11, cooldownDays: 600,
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
+    choices: [
+      {
+        label: 'Authorise the operation',
+        effects: { stats: { profile: 3, competence: 1 } },
+        outcomeText: [
+          { weight: 2, text: 'The operation works. You stand at the lectern as the leader who acted, and the country exhales. For a week, the politics stops; you have done the only part of the job nobody auditions for.', extra: { stats: { partyStanding: 3 }, pollingShock: { party: 'own', delta: 0.5 } } },
+          { weight: 1, text: 'It goes wrong, as these things can, and the cost is counted in lives and in the inquiry that follows you for years. You made the call on the best information you had. That sentence will be tested to destruction.', extra: { stats: { profile: -2 }, pollingShock: { party: 'own', delta: -0.7 } } },
+        ],
+      },
+      {
+        label: 'Pursue the patient, diplomatic route',
+        effects: { stats: { integrity: 3, competence: 2 } },
+        outcomeText: 'You choose the long, quiet channels over the dramatic strike. It is the harder kind of courage — invisible, unthanked, and second-guessed daily by people who will never see the cables.',
+      },
+    ],
+  },
+  {
+    id: 'pm_run_on_the_pound',
+    title: 'The markets turn',
+    body: 'The pound is falling, the gilt markets are spooked, and the screens in the Number 10 study are all the wrong colour. The Governor is on the line, the Chancellor is grey, and the next few hours will decide whether this is a wobble or a crisis.',
+    tags: ['crisis', 'policy', 'serious'],
+    weight: 11, cooldownDays: 600,
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
+    choices: [
+      {
+        label: 'Reassure the markets — reverse course publicly',
+        effects: { stats: { competence: 3, profile: -2 }, pollingShock: { party: 'own', delta: -0.3 } },
+        outcomeText: 'You swallow your pride, ditch the policy that spooked them, and let the grown-ups calm the markets. The pound steadies; the U-turn is brutal; survival, on a day like this, is the only win available.',
+      },
+      {
+        label: 'Hold your nerve and tough it out',
+        effects: { stats: { profile: 2, partyStanding: -2 } },
+        outcomeText: [
+          { weight: 1, text: 'You hold the line and the markets, eventually, blink first. Vindication — and a reputation for steel that will be worth a great deal the next time the screens turn red.', extra: { stats: { competence: 3 } } },
+          { weight: 2, text: 'The markets do not blink. The cost climbs, the backbenches panic, and you are forced into the same retreat days later from a far weaker position. The worst of both worlds, bought at the worst price.', extra: { pollingShock: { party: 'own', delta: -0.8 }, stats: { competence: -2 } } },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'pm_the_proprietor',
+    title: 'The proprietor wants a word',
+    body: 'A newspaper proprietor whose titles can make a week miserable requests a private dinner. The ask, when it comes over the second course, is unmistakable: back the policy they want, or watch their front pages turn on you.',
+    tags: ['media', 'party', 'serious'],
+    weight: 11, cooldownDays: 540,
+    requires: { minTier: 5, inGovernment: true, leaderRole: ['pm'] },
+    choices: [
+      {
+        label: 'Refuse to be bought',
+        effects: { stats: { integrity: 5, profile: 1 }, relationships: [{ kind: 'journalist', delta: -6 }] },
+        outcomeText: 'You thank them for dinner and decline the bargain. The front pages turn, as promised, and the week is miserable — but you have a spine, a clear conscience, and a story to tell the day it matters.',
+      },
+      {
+        label: 'Give them just enough to stay onside',
+        effects: { stats: { profile: 2, integrity: -4 }, relationships: [{ kind: 'journalist', delta: 5 }] },
+        outcomeText: 'You concede a sliver — enough to keep the titles sweet, not enough to feel bought, or so you tell yourself. The coverage stays warm. The price is a small, permanent question about who really sets your agenda.',
+      },
+    ],
+  },
+  {
+    id: 'lo_country_listening',
+    title: 'The country is listening',
+    body: 'The government is faltering and, for the first time, the country is actually listening to you. Your team is split: some want relentless attack to finish the wounded government off; others want you to look like a prime minister already.',
+    tags: ['media', 'party', 'serious'],
+    weight: 13, cooldownDays: 360,
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
+    choices: [
+      {
+        label: 'Pivot to government-in-waiting',
+        effects: { stats: { competence: 3, profile: 3, integrity: 2 }, pollingShock: { party: 'own', delta: 0.5 } },
+        outcomeText: 'You stop merely attacking and start sounding like the answer — sober, prepared, prime-ministerial. The shift is felt in the polls and in the room; people begin, cautiously, to picture you in the job.',
+      },
+      {
+        label: 'Keep the blowtorch on the government',
+        effects: { stats: { profile: 4, partyStanding: 2 }, pollingShock: { party: 'own', delta: 0.3 } },
+        outcomeText: 'You judge the kill more important than the coronation and keep up the assault. The government bleeds — but the "what would you actually do?" question goes on hanging in the air, waiting for an answer you have not yet given.',
+      },
+    ],
+  },
+  {
+    id: 'lo_shadow_rival',
+    title: 'The shadow who shines too bright',
+    body: 'One of your shadow cabinet is having a very good war — better headlines than you, a louder cheer at conference, and a suspiciously well-briefed profile about their "leadership qualities". {rival} is enjoying this enormously.',
+    speaker: 'rival',
+    tags: ['party', 'serious'],
+    weight: 11, cooldownDays: 420,
+    requires: { minTier: 5, inGovernment: false, leaderRole: ['lo'] },
+    choices: [
+      {
+        label: 'Promote them closer — keep them inside the tent',
+        effects: { stats: { competence: 2, partyStanding: 2 }, relationships: [{ kind: 'rival', delta: 5 }] },
+        outcomeText: 'You give the rising star a bigger job and a share of the credit, binding them to your fortunes. Magnanimous, shrewd, and a gamble: you have either neutralised a rival or armed an heir.',
+      },
+      {
+        label: 'Clip their wings before they grow',
+        effects: { stats: { partyStanding: 1, profile: 1 }, relationships: [{ kind: 'rival', delta: -8 }] },
+        outcomeText: 'You quietly trim their brief and their airtime. They get the message — and so does the wider party, which now has a martyr-in-waiting and a fresh reason to wonder whether you lead from strength or from fear.',
+      },
+    ],
+  },
 ];

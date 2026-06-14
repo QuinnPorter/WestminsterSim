@@ -40,6 +40,8 @@ export function replaceLeader(state: GameState, characterId: string, startValue:
   } else {
     state.relationships.push({ characterId, kind: 'leader', value: startValue });
   }
+  // a fresh leader wipes the slate: any accumulated heave pressure is gone
+  state.government.oppLeaderPressure = 0;
 }
 
 export function characterName(state: GameState, id: string | undefined): string {

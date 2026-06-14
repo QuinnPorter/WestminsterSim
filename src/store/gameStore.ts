@@ -9,7 +9,7 @@ import {
 } from '../engine/turn';
 import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
-  setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
+  callForLeaderResignationCore, setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -40,6 +40,8 @@ interface GameStore {
   /** player-PM names a cabinet Secretary of State as Deputy PM / First Secretary */
   setDeputyPm: (characterId: string) => void;
   callForPmResignation: () => void;
+  /** in opposition: the player moves against their own (NPC) party leader */
+  callForLeaderResignation: () => void;
   /** player-PM dissolves Parliament; the campaign fires at the next decision */
   callSnapElection: () => void;
   /** update the player's chosen causes (the agenda) mid-career */
@@ -168,6 +170,9 @@ export const useGameStore = create<GameStore>()(
 
       callForPmResignation: () =>
         mutateGame(get, set, (game, rng) => { callForPmResignationCore(game, rng); }),
+
+      callForLeaderResignation: () =>
+        mutateGame(get, set, (game, rng) => { callForLeaderResignationCore(game, rng); }),
 
       callSnapElection: () =>
         mutateGame(get, set, (game) => {

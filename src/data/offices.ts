@@ -78,17 +78,17 @@ function buildOffices(): Record<OfficeId, Office> {
     // territorial Secretaries of State — only offered to a player from that nation
     sos_scotland: {
       id: 'sos_scotland', tier: 4, region: 'scotland',
-      title: 'Secretary of State for Scotland',
+      title: 'Scotland Secretary',
       shadowTitle: 'Shadow Scotland Secretary',
     },
     sos_wales: {
       id: 'sos_wales', tier: 4, region: 'wales',
-      title: 'Secretary of State for Wales',
+      title: 'Wales Secretary',
       shadowTitle: 'Shadow Wales Secretary',
     },
     sos_ni: {
       id: 'sos_ni', tier: 4, region: 'ni',
-      title: 'Secretary of State for Northern Ireland',
+      title: 'Northern Ireland Secretary',
       shadowTitle: 'Shadow Northern Ireland Secretary',
     },
     leader: {
@@ -128,10 +128,10 @@ export const GREAT_OFFICES: OfficeId[] = ['sos_treasury', 'sos_home', 'sos_forei
 
 /** offices that make up the cabinet / shadow cabinet display, in rank order */
 export const CABINET_OFFICES: OfficeId[] = [
-  'sos_treasury', 'chief_sec', 'sos_home', 'sos_foreign', 'sos_health', 'sos_education',
+  'sos_treasury', 'sos_home', 'sos_foreign', 'sos_health', 'sos_education',
   'sos_defence', 'sos_justice', 'sos_business', 'sos_dwp', 'sos_transport',
   'sos_environment', 'sos_culture', 'sos_housing',
-  'sos_scotland', 'sos_wales', 'sos_ni', 'chiefWhip',
+  'sos_scotland', 'sos_wales', 'sos_ni', 'chief_sec', 'chiefWhip',
 ];
 
 export function officeTitle(officeId: OfficeId | null, inGovernment: boolean): string {

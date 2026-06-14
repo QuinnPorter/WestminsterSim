@@ -205,4 +205,124 @@ export const SOS_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'sos_spending_review',
+    title: 'The spending review',
+    body: 'The Treasury wants 10% from every department, and your settlement letter is brutal. You can fight it in the room with the Chancellor — at the cost of goodwill you may need later — or take the hit and protect what matters most.',
+    tags: ['policy', 'serious'],
+    weight: 14, cooldownDays: 720,
+    requires: { minTier: 4, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Fight the Chancellor for every penny',
+        effects: { stats: { profile: 3, partyStanding: 2, competence: 1 }, relationships: [{ kind: 'rival', delta: -4 }] },
+        outcomeText: 'You dig in, threaten to take it to the PM, and claw back half the cut. Your department is grateful; the Chancellor adds you to a list that is not the friendly one.',
+      },
+      {
+        label: 'Take the settlement, protect the front line',
+        effects: { stats: { competence: 4, integrity: 2, partyStanding: -1 } },
+        outcomeText: 'You swallow the number and do the grim arithmetic of where it falls, shielding the things that matter most. Quietly responsible, entirely thankless, and noticed by the people who run the place.',
+      },
+    ],
+  },
+  {
+    id: 'sos_budget_raid',
+    title: 'The raid on your budget',
+    body: 'Mid-year, the Treasury wants to claw back an underspend you were relying on for next year. It is technically theirs to take. Letting it go is the path of least resistance; fighting it means a cabinet-level row.',
+    tags: ['policy', 'westminster'],
+    weight: 11, cooldownDays: 600,
+    requires: { minTier: 4, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Make it a resignation-adjacent fight',
+        effects: { stats: { profile: 4, partyStanding: -2 }, relationships: [{ kind: 'leader', delta: -2 }] },
+        outcomeText: 'You let it be known, loudly, that this is a line. The money mostly stays — but you have spent capital and signalled you will go to the brink, which the centre files away for later.',
+      },
+      {
+        label: 'Trade it for a future favour',
+        effects: { stats: { competence: 4 } },
+        outcomeText: 'You give up the underspend in exchange for a written promise on next year. Less satisfying than a fight, more reliable than one — the difference between a minister and a martyr.',
+      },
+    ],
+  },
+  {
+    id: 'sos_permsec_clash',
+    title: 'The permanent secretary',
+    body: 'Your permanent secretary is, with exquisite politeness, refusing to deliver your flagship the way you want it — too risky, too fast, too political. They have outlasted six of your predecessors. One of you is going to have to bend.',
+    tags: ['westminster', 'serious'],
+    weight: 12, cooldownDays: 540,
+    requires: { minTier: 4, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Move to replace them',
+        effects: { stats: { profile: 3, competence: -1 }, relationships: [{ kind: 'leader', delta: 1 }] },
+        outcomeText: 'You force the issue with the Cabinet Secretary. It works, eventually, and it teaches the building that you mean it — at the cost of a war the unions and the commentariat enjoy enormously.',
+      },
+      {
+        label: 'Win them over to your delivery plan',
+        effects: { stats: { competence: 4, integrity: 2 } },
+        outcomeText: 'You spend the political capital to understand their objection, then redesign the plan around it. Slower, sturdier, and a partnership rather than a hostage situation. The flagship sails.',
+      },
+    ],
+  },
+  {
+    id: 'sos_whitehall_leak',
+    title: 'The cabinet leak',
+    body: 'A confidential account of a cabinet discussion — including your blunt private view of a colleague\'s policy — is splashed across the papers. It is accurate, which is the problem. Number 10 wants to know how you will handle it.',
+    tags: ['scandal', 'westminster', 'serious'],
+    weight: 11, cooldownDays: 600,
+    requires: { minTier: 4, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Deny, deflect, demand an inquiry',
+        effects: { stats: { profile: 1, integrity: -2 }, relationships: [{ kind: 'rival', delta: -5 }] },
+        outcomeText: 'You disown the quote and call for the leaker\'s head. The denial fools no one but draws a line; the search poisons two departments and finds, as ever, nobody.',
+      },
+      {
+        label: 'Own it, smooth it over privately',
+        effects: { stats: { integrity: 3, competence: 1 } },
+        outcomeText: 'You ring the colleague, take the hit, and refuse to feed the story. It costs you a wince and a favour, and it earns you the thing leaks usually destroy — a little trust.',
+      },
+    ],
+  },
+  {
+    id: 'sos_lobby_register',
+    title: 'The register of interests',
+    body: 'A transparency group has cross-referenced your diary with an industry\'s donations and found a pattern that "raises questions". Nothing is illegal. Everything is awkward. The story runs on Sunday unless you get ahead of it.',
+    tags: ['scandal', 'media'],
+    weight: 10, cooldownDays: 700,
+    requires: { minTier: 4, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Publish everything first, pre-empt the story',
+        effects: { stats: { integrity: 4, profile: 1, competence: 1 } },
+        outcomeText: 'You release the diary, the meetings and a plain account of the decisions before the paper can frame them. The story lands as a damp squib; the transparency people, grudgingly, move on.',
+      },
+      {
+        label: 'Tough it out and lawyer up',
+        effects: { stats: { integrity: -3, profile: -1 }, setFlags: { scandal: true } },
+        outcomeText: 'You retreat behind a stiff statement and an expensive solicitor. It slows the story and confirms it in the same breath — and the word "questions" now follows your name into every reshuffle.',
+      },
+    ],
+  },
+  {
+    id: 'sos_interest_ultimatum',
+    title: 'The ultimatum',
+    body: 'A powerful sector — energy, farming, finance, take your pick — has delivered a quiet ultimatum: water down the reform, or they pull investment, jobs and a great deal of friendly briefing. The threat is real. So is the reform.',
+    tags: ['policy', 'serious'],
+    weight: 11, cooldownDays: 640,
+    requires: { minTier: 4, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Call the bluff and press on',
+        effects: { stats: { integrity: 4, profile: 2, partyStanding: -1 }, pollingShock: { party: 'own', delta: 0.4 } },
+        outcomeText: 'You refuse to be governed by the threat and deliver the reform intact. Some of the investment really does wobble; most of it was always staying; and you have shown the sector who is minister.',
+      },
+      {
+        label: 'Quietly soften it to keep the peace',
+        effects: { stats: { competence: 2, integrity: -3 } },
+        outcomeText: 'You take the edges off where the cameras aren\'t looking. The jobs stay, the briefing turns friendly, and a thinner reform limps onto the statute book. Pragmatic — and the campaigners noticed the climbdown.',
+      },
+    ],
+  },
 ];

@@ -12,6 +12,7 @@ import { STAT_LABELS } from '../engine/effects';
 import {
   playerOfficeLabel, playerOfficeTitle, playerIsLeader, playerInGovernment, playerTier,
 } from '../engine/career';
+import { relationshipName, getRelationship } from '../engine/relationships';
 import { formatMonthYear, yearsBetween } from '../engine/clock';
 
 interface OfficeSpan {
@@ -61,6 +62,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const crossFloor = useGameStore((s) => s.crossFloor);
   const resignOffice = useGameStore((s) => s.resignOffice);
   const callForPmResignation = useGameStore((s) => s.callForPmResignation);
+  const callForLeaderResignation = useGameStore((s) => s.callForLeaderResignation);
   const slots = useGameStore((s) => s.slots);
   const saveToSlot = useGameStore((s) => s.saveToSlot);
   const overwriteSlot = useGameStore((s) => s.overwriteSlot);
@@ -324,6 +326,29 @@ export function ProfileScreen({ game }: { game: GameState }) {
           }}
         >
           {playerTier(game) >= 1 ? 'Resign and call for the PM to go' : 'Call for the PM to resign'}
+        </button>
+      )}
+
+      {!playerInGovernment(game) && !playerIsLeader(game) && player.hasSeat
+        && getRelationship(game, 'leader')?.characterId !== 'player' && (
+        <button
+          className="btn"
+          style={{ color: 'var(--danger)', textAlign: 'center', marginBottom: 8 }}
+          onClick={() => {
+            const frontbench = playerTier(game) >= 1;
+            const leaderName = relationshipName(game, 'leader');
+            requestConfirm({
+              title: frontbench ? 'Resign and move against the leader?' : 'Call for the leader to go?',
+              message: frontbench
+                ? `Resign as ${playerOfficeTitle(game)} and publicly call for ${leaderName} to go? It will destroy your relationship with the leadership — but a senior resignation carries real weight.`
+                : `Submit a letter of no confidence in ${leaderName}? It will anger the whips and the leadership, and may or may not move the dial.`,
+              confirmLabel: frontbench ? 'Resign and call' : 'Submit letter',
+              danger: true,
+              onConfirm: callForLeaderResignation,
+            });
+          }}
+        >
+          {playerTier(game) >= 1 ? 'Resign and call for the leader to go' : 'Call for the leader to resign'}
         </button>
       )}
 

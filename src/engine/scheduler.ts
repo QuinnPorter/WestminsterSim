@@ -70,17 +70,19 @@ function makeCalendarCard(state: GameState, rng: Rng, key: string): DrawnCard {
           { label: 'Skip it for constituency week' },
         ],
       };
-    case 'budget':
+    case 'budget': {
+      const govBloc = playerInGovernmentBloc(state);
       return {
         ...base,
         title: 'Budget day',
-        body: resolveTokens(state,
-          'Budget day. The Chancellor performs for an hour while everyone scans the fine print for the trap. Your inbox will want a verdict by teatime.'),
-        choices: [
-          { label: 'Champion it loudly' },
-          { label: 'Pick at the fine print' },
-        ],
+        body: resolveTokens(state, govBloc
+          ? 'Budget day, and it is your side at the despatch box. The Chancellor performs for an hour; your job is to sell it on the airwaves — or quietly read the small print.'
+          : "Budget day. The government's Chancellor performs for an hour while everyone hunts for the trap in the fine print. Your inbox will want a verdict by teatime."),
+        choices: govBloc
+          ? [{ label: 'Champion it loudly' }, { label: 'Pick at the fine print' }]
+          : [{ label: 'Attack it on the airwaves' }, { label: 'Pick at the fine print' }],
       };
+    }
     case 'locals':
       return {
         ...base,
@@ -135,16 +137,28 @@ export function resolveCalendarChoice(
       stat('partyStanding', -2, 'Standing');
       return { text: 'While colleagues network at the bar, you open a community centre and visit three schools. {constituency} approves. The party notes your absence.', deltas };
 
-    case 'budget':
+    case 'budget': {
+      const bumpLeader = (d: number) => {
+        const lead = state.relationships.find((r) => r.kind === 'leader');
+        if (lead) { lead.value += d; deltas.push({ label: 'Leader', delta: d }); }
+      };
       if (choiceIndex === 0) {
-        deltas.push({ label: 'Leader', delta: 3 });
-        state.relationships.find((r) => r.kind === 'leader')!.value += 3;
-        stat('constituencyApproval', -1, 'Approval');
-        return { text: 'You defend the numbers on regional radio with conviction you mostly feel. The leadership clips your best line.', deltas };
+        if (playerInGovernmentBloc(state)) {
+          // champion your own government's budget — loyalty rewarded
+          bumpLeader(3);
+          stat('constituencyApproval', -1, 'Approval');
+          return { text: 'You defend the numbers on regional radio with conviction you mostly feel. The leadership clips your best line.', deltas };
+        }
+        // attack the government's budget — your own side cheers you on
+        stat('profile', 3, 'Profile');
+        stat('partyStanding', 2, 'Standing');
+        bumpLeader(2);
+        return { text: 'You tear into the buried tax rises across the morning round, and the clip plays well with your side. The leadership notes a reliable attack dog.', deltas };
       }
       stat('competence', 3, 'Competence');
       stat('profile', 2, 'Profile');
       return { text: 'You find the buried table on page 84 that everyone else missed. Your thread explaining it does respectable numbers and earns a nod from the serious commentators.', deltas };
+    }
 
     case 'locals':
       if (choiceIndex === 0) {

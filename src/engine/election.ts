@@ -30,13 +30,13 @@ export function electionNationalShares(
     out[p] = v;
     total += v;
   }
-  // incumbent fatigue: a slight boost for a first re-election, then a growing
-  // anti-incumbency penalty from the third term on (the public tires of them)
+  // incumbent fatigue: a slight boost for a first full term, then a growing
+  // anti-incumbency penalty from the first re-election on (the public tires of a
+  // long-governing party). ~-3% per term, capped at -15%.
   const gov = state.government.governingParty;
   const terms = state.government.termsInPower ?? 1;
   const fatigue = terms <= 1 ? 0.005
-    : terms === 2 ? 0
-      : -Math.min(0.09, (terms - 2) * 0.020);
+    : -Math.min(0.15, (terms - 1) * 0.03);
   if (out[gov] !== undefined && fatigue !== 0) {
     total += -(out[gov] ?? 0);
     out[gov] = Math.max(0.003, (out[gov] ?? 0) + fatigue);
@@ -69,7 +69,11 @@ function computeSeat(
     const p = partyKey as PartyId;
     let v = base ?? 0;
     if (POLLED_PARTIES.includes(p)) {
-      const swing = ((national[p] ?? 0) - (anchor[p] ?? 0)) * sens;
+      let swing = ((national[p] ?? 0) - (anchor[p] ?? 0)) * sens;
+      // a party making real gains converts votes to seats faster: amplify only the
+      // portion of a positive swing above ~2pts, so a genuine surge wins more seats
+      // while ordinary campaign noise (and a flat vote) stays FPTP-punished
+      if (swing > 0.02) swing = 0.02 + (swing - 0.02) * 1.6;
       v += swing;
     } else if (p === 'ind') {
       v -= 0.02; // independents' personal vote fades

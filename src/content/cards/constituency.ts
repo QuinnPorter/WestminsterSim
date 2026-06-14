@@ -387,4 +387,84 @@ export const CONSTITUENCY_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'con_asylum_hotel',
+    title: 'The hotel',
+    body: 'The Home Office has, without warning, block-booked a hotel in {constituency} to house asylum seekers. Half the town is furious, the other half is organising a welcome committee, and a small knot of agitators from outside is heading in with placards and cameras.',
+    tags: ['constituency', 'crisis', 'serious'],
+    weight: 11, cooldownDays: 560,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Channel the anger at Whitehall, not the people',
+        effects: { stats: { integrity: 3, profile: 3, constituencyApproval: 2 } },
+        outcomeText: 'You blast the Home Office for dumping the policy on the town with no consultation, while facing down the outside agitators. A narrow, principled path — and one that leaves nobody entirely happy, which is often the sign you got it right.',
+      },
+      {
+        label: 'Ride the anger hard against the hotel',
+        effects: { stats: { profile: 4, constituencyApproval: 3, integrity: -3 } },
+        outcomeText: 'You put yourself at the front of the campaign to close it, and the local feeling carries you. The clips travel further than you would like; somewhere, a montage of the angriest moments is being saved with your face in it.',
+      },
+    ],
+  },
+  {
+    id: 'con_crime_wave',
+    title: 'The town feels unsafe',
+    body: 'A spate of violence — county-lines drugs, a stabbing outside the school, shops shutting early out of fear — has {constituency} rattled. The police plead under-resourced, the papers demand action, and a packed public meeting wants to know what you are going to do.',
+    tags: ['constituency', 'crisis', 'serious'],
+    weight: 11, cooldownDays: 520,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Demand more police, loudly',
+        effects: { stats: { profile: 4, constituencyApproval: 4, partyStanding: -1 } },
+        outcomeText: 'You make noise — more officers, more patrols, a meeting with the Home Office. It reassures the public meeting and the front page, even if the deeper causes shrug it off. Visible is half the job.',
+      },
+      {
+        label: 'Back youth services and the long fix',
+        effects: { stats: { integrity: 3, competence: 2, constituencyApproval: -1 } },
+        outcomeText: 'You make the harder, less satisfying case for prevention — youth clubs, schools, the things that stop the next stabbing rather than punish the last. Brave, unflashy, and a gift to any opponent who prefers "soft on crime".',
+      },
+    ],
+  },
+  {
+    id: 'con_gp_crisis',
+    title: 'Eight in the morning',
+    body: 'Nobody in {constituency} can get a GP appointment. The surgery phone lines jam at 8am, two partners have quit, and your casework inbox is a wall of people who waited weeks to be told to call back tomorrow. A retired doctor offers to stand against you on the issue alone.',
+    tags: ['constituency', 'policy', 'serious'],
+    weight: 11, cooldownDays: 540,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Make it a public, named campaign',
+        effects: { stats: { profile: 4, constituencyApproval: 4, partyStanding: -1 } },
+        outcomeText: 'You put names and faces to the figures, drag the integrated care board to a public meeting, and win extra appointments and a recruitment drive. Loud, local, and exactly the fight people remember you for.',
+      },
+      {
+        label: 'Work the system quietly for more capacity',
+        effects: { stats: { competence: 4, constituencyApproval: 2 } },
+        outcomeText: 'You spend the political capital behind closed doors — a new partner recruited, a pharmacy scheme expanded, the phone system actually fixed. No headline, real appointments. The trade of an MP who would rather help than be seen helping.',
+      },
+    ],
+  },
+  {
+    id: 'con_council_bankrupt',
+    title: 'Section 114',
+    body: 'The county council has effectively declared itself bankrupt — a Section 114 notice, all non-essential spending frozen. Libraries, buses, social care and bin collections are all suddenly in question, and the council and the government are busy blaming each other. The town wants you to blame someone too.',
+    tags: ['constituency', 'crisis', 'policy'],
+    weight: 10, cooldownDays: 600,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Demand a government bailout for the services',
+        effects: { stats: { profile: 3, constituencyApproval: 4, partyStanding: -2 } },
+        outcomeText: 'You lobby hard for emergency funding to keep the buses running and the care packages intact. It puts you at odds with the Treasury line — but the pensioner who keeps her day centre will not forget who fought for it.',
+      },
+      {
+        label: 'Back a credible recovery plan over a blank cheque',
+        effects: { stats: { competence: 4, integrity: 2, constituencyApproval: -2 } },
+        outcomeText: 'You resist the easy promise of a bailout and back a hard-edged recovery plan instead — commissioners, cuts, and honesty about what the council can no longer do. Responsible, unpopular, and the version most likely to leave anything standing.',
+      },
+    ],
+  },
 ];

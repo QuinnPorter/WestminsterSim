@@ -208,4 +208,105 @@ export const JUNIOR_MINISTER_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'jm_the_leak',
+    title: 'A submission, leaked',
+    body: 'A confidential submission from your private office is on the front page, complete with the bit where officials warned you and you overruled them. Someone in the building wanted you embarrassed. The question is what you do about it.',
+    tags: ['westminster', 'scandal', 'serious'],
+    weight: 11, cooldownDays: 420,
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Order a leak inquiry',
+        effects: { stats: { profile: 2, competence: 1 }, relationships: [{ kind: 'rival', delta: -4 }] },
+        outcomeText: 'You demand the leak be hunted down. It rarely finds the culprit and always sours the department — but it signals you will not be briefed against for free. The building grows a little more careful around you.',
+      },
+      {
+        label: 'Own the decision, ignore the leak',
+        effects: { stats: { integrity: 3, competence: 2 } },
+        outcomeText: 'You defend the call on its merits and refuse to be drawn on the leak. Denied the drama, the story dies in a day, and your officials note — with surprise — a minister who does not panic.',
+      },
+    ],
+  },
+  {
+    id: 'jm_going_native',
+    title: 'Going native',
+    body: 'Six months in, your mentor takes you aside: the lobby is starting to say you have "gone native" — captured by your department, parroting the officials\' line instead of the government\'s. It stings because there is something in it.',
+    speaker: 'mentor',
+    tags: ['westminster', 'party'],
+    weight: 9, cooldownDays: 480,
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Reassert the political direction',
+        effects: { stats: { partyStanding: 4, competence: -1 }, relationships: [{ kind: 'leader', delta: 3 }] },
+        outcomeText: 'You make a point of overruling the officials on something visible and political. The leadership is reassured; the department mutters that you have stopped listening just as you started understanding.',
+      },
+      {
+        label: 'Defend your officials and your grip',
+        effects: { stats: { competence: 4, integrity: 2, partyStanding: -2 } },
+        outcomeText: 'You tell your mentor that mastering the brief is not the same as surrender, and that a minister who ignores the evidence is no use to anyone. True — and not what ambition wants to hear.',
+      },
+    ],
+  },
+  {
+    id: 'jm_spending_bid',
+    title: 'The bid for money',
+    body: 'There is a small pot of cross-government money up for grabs and your brief has a strong claim to it. Winning it would fund your flagship; losing it would quietly kill the policy. The Treasury wants to see your working.',
+    tags: ['policy', 'westminster'],
+    weight: 11, cooldownDays: 400,
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Make the hard-headed value-for-money case',
+        effects: { stats: { competence: 4, partyStanding: 1 } },
+        outcomeText: 'You speak the Treasury\'s language — returns, evidence, deliverability — and you win the pot. Unglamorous, decisive, and the kind of win that gets a junior minister talked about as a coming force.',
+      },
+      {
+        label: 'Lobby the centre and the press',
+        effects: { stats: { profile: 3, competence: -1 }, relationships: [{ kind: 'leader', delta: 2 }] },
+        outcomeText: 'You go round the Treasury, working the centre and a friendly columnist. You get the money — and a lasting reputation in the building as someone who plays politics with the budget. Useful, until it isn\'t.',
+      },
+    ],
+  },
+  {
+    id: 'jm_industry_lobby',
+    title: 'The industry comes calling',
+    body: 'A powerful industry — and its very expensive representatives — want a quiet word about the regulation you are drafting. There is a reception, a report "you really should see", and the unmistakable warmth of people who want something.',
+    tags: ['policy', 'westminster'],
+    weight: 10, cooldownDays: 420,
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Hear them out, declare everything, decide on merit',
+        effects: { stats: { integrity: 4, competence: 2 } },
+        outcomeText: 'You take the meeting, register it to the minute, and write the rules on the evidence. The industry leaves charming and disappointed; your name stays clean for the day it is tested.',
+      },
+      {
+        label: 'Soften the regulation to keep them sweet',
+        effects: { stats: { profile: 2, integrity: -4 }, setFlags: { developerMoney: true } },
+        outcomeText: 'You take the edges off the rules and the industry purrs. It buys you allies and donations and a paragraph in a future story that begins "documents seen by this newspaper".',
+      },
+    ],
+  },
+  {
+    id: 'jm_union_deputation',
+    title: 'The deputation',
+    body: 'A union — or a coalition of charities, depending on the day — has marched a deputation into your office, cameras waiting outside. They want a concession you can half-afford and a photograph you cannot avoid.',
+    tags: ['policy', 'media'],
+    weight: 9, cooldownDays: 420,
+    requires: { minTier: 3, maxTier: 4, inGovernment: true },
+    choices: [
+      {
+        label: 'Find a genuine, modest concession',
+        effects: { stats: { competence: 2, integrity: 3, constituencyApproval: 2 } },
+        outcomeText: 'You give them something real but contained, and mean it. The deputation leaves with a win it can sell to its members; you leave with a reputation for being someone worth negotiating with.',
+      },
+      {
+        label: 'Hold the line, weather the placards',
+        effects: { stats: { partyStanding: 3, profile: -1 }, relationships: [{ kind: 'leader', delta: 2 }] },
+        outcomeText: 'You smile, take the photo, and concede nothing. The leadership likes a minister who can take the heat; the placards outside will be back, with your face on them.',
+      },
+    ],
+  },
 ];

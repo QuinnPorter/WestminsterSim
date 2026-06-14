@@ -808,7 +808,7 @@ export function resolveNpcLeadership(
     // a new leader of the player's own party soon remakes the team — schedule a
     // player-facing reshuffle so they are more likely to be moved, promoted or sacked
     if (state.player.hasSeat && onFrontbenchTrack(state) && !playerIsLeader(state)) {
-      state.player.flags._npcLeaderReshuffleBy = state.day + rng.int(14, 60);
+      state.player.flags._npcLeaderReshuffleBy = state.day + rng.int(7, 35);
     }
   }
 
@@ -834,9 +834,9 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
   // and clear any stale resignation pledge from a previous spell as leader
   state.player.flags._leaderTookOverPolls = (state.polling.shares[party] ?? 0) * 100;
   delete state.player.flags._pledgeResignBy;
-  // a new leader usually remakes the bench — soon, but not instantly
-  if (rng.chance(0.65)) {
-    state.player.flags._newLeaderReshuffleBy = state.day + rng.int(14, 90);
+  // a new leader remakes the bench quickly — usually within a few weeks
+  if (rng.chance(0.80)) {
+    state.player.flags._newLeaderReshuffleBy = state.day + rng.int(7, 35);
   }
   recordPeakTier(state);
   state.history.push({
@@ -2872,6 +2872,63 @@ export function callForPmResignationCore(state: GameState, rng: Rng): { text: st
   }
   return {
     text: `${pmName} shrugs it off, and the whips mark your card. The wound is real but not yet fatal — and your standing with the leadership is in ruins.`,
+  };
+}
+
+/** In opposition (or a minor party), the player moves against their own party
+ *  leader — the mirror of calling on the PM to resign, for a leader who is not in
+ *  No. 10. A frontbencher resigns first; a backbencher submits a letter. */
+export function callForLeaderResignationCore(state: GameState, rng: Rng): { text: string } {
+  const leaderId = getRelationship(state, 'leader')?.characterId;
+  if (
+    !state.player.hasSeat || playerIsLeader(state) ||
+    playerInGovernment(state) || !leaderId || leaderId === 'player'
+  ) {
+    return { text: 'There is no leader of your party to move against right now.' };
+  }
+  const tier = playerTier(state);
+  const frontbench = tier >= 1;
+  const leaderName = characterName(state, leaderId);
+
+  if (frontbench) stripOffice(state, rng, 'resigned');
+
+  adjustRelationship(state, 'leader', -(10 + tier * 5));
+  adjustRelationship(state, 'chiefWhip', -(8 + tier * 4));
+  gainStat(state, 'partyStanding', -(6 + tier * 2));
+  gainStat(state, 'profile', 3 + tier * 2);
+  gainStat(state, 'integrity', 2);
+
+  const weight = 4 + tier * 6;
+  const prior = state.government.oppLeaderPressure ?? 0;
+  state.government.oppLeaderPressure = prior + weight;
+
+  // a leader who can't lift the party in the polls is more vulnerable to a heave
+  const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+  let weakness = 0;
+  if (pollsPct < 32) weakness += (32 - pollsPct) * 0.01;
+  weakness += prior / 200;
+  const p = clamp(0.05 + weight / 120 + weakness, 0.03, 0.85);
+
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: frontbench
+      ? `${state.player.name} resigns from the front bench and calls on ${leaderName} to go`
+      : `${state.player.name} submits a letter of no confidence in ${leaderName}`,
+  });
+
+  if (rng.chance(p)) {
+    state.government.oppLeaderPressure = 0;
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${leaderName} resigns as ${PARTIES[state.player.partyId].name} leader under pressure`,
+    });
+    openLeadershipVacancy(state, rng, state.player.partyId);
+    return {
+      text: `Your move lands. Within days ${leaderName} accepts the position is hopeless and resigns. The leadership is open — and you are free to stand.`,
+    };
+  }
+  return {
+    text: `${leaderName} faces you down and survives — for now. The whips mark your card, and your standing with the party leadership is in ruins.`,
   };
 }
 

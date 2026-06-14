@@ -536,4 +536,130 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'bb_committee_grilling',
+    title: 'The committee corridor',
+    body: 'Your select committee has a secretary of state in the chair this morning, sweating under the lights. You have four minutes and a folder of awkward facts. Do you go for the throat or the substance?',
+    tags: ['westminster', 'media'],
+    weight: 12, cooldownDays: 360,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Go for the viral takedown',
+        effects: { stats: { profile: 5, partyStanding: -1 } },
+        outcomeText: 'You land the sound bite and the clip flies. The minister\'s adviser learns your name; so do two million people who will never read the report. A name made.',
+      },
+      {
+        label: 'Forensic, fair, and quietly devastating',
+        effects: { stats: { competence: 4, integrity: 2 } },
+        outcomeText: 'No theatrics — just a sequence of questions the minister cannot answer. It makes no bulletin, but the committee clerks, the wonks and the next reshuffle\'s talent-spotters all notice.',
+      },
+    ],
+  },
+  {
+    id: 'bb_pmb_ballot',
+    title: 'You win the ballot',
+    body: 'By the dumb luck of the Private Members\' Bill ballot, you have drawn a high number — a rare chance to put your own law on the statute book. Every charity and lobbyist in the building suddenly knows your name.',
+    tags: ['westminster', 'policy'],
+    weight: 11, cooldownDays: 9999, oncePerCareer: true,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'A worthy, winnable reform',
+        effects: { stats: { competence: 3, integrity: 3, profile: 2 } },
+        outcomeText: 'You pick something modest, popular and deliverable, and you actually get it through. A real, small change in the law with your name on it — more than most MPs manage in a decade.',
+      },
+      {
+        label: 'A bold bill that probably dies',
+        effects: { stats: { profile: 5, integrity: 1 } },
+        outcomeText: 'You reach for the big, doomed, principled thing. It gets talked out on a Friday — but the campaign it launches outlives the bill, and so does your association with the cause.',
+      },
+    ],
+  },
+  {
+    id: 'bb_urgent_question',
+    title: 'The urgent question',
+    body: 'A scandal is breaking and you could apply to the Speaker for an urgent question — dragging the responsible minister to the despatch box this afternoon to answer for it. The whips would much rather you didn\'t.',
+    tags: ['westminster', 'media'],
+    weight: 10, cooldownDays: 420,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Apply — make them account for it',
+        effects: { stats: { profile: 4, integrity: 2 }, relationships: [{ kind: 'chiefWhip', delta: -3 }] },
+        outcomeText: 'The Speaker grants it and you have your moment in a packed chamber. The whips are furious; the lobby files you under "ones to watch"; the minister files you under "trouble".',
+      },
+      {
+        label: 'Let a frontbencher take the credit',
+        effects: { stats: { partyStanding: 3 }, relationships: [{ kind: 'chiefWhip', delta: 2 }] },
+        outcomeText: 'You hand the idea up the chain and let your side\'s big beast wield it. Less glory, more gratitude — a deposit in an account that pays out at reshuffle time.',
+      },
+    ],
+  },
+  {
+    id: 'bb_chairman_letter',
+    title: 'Letters to the chairman',
+    body: '{rival} is quietly collecting letters to the backbench committee chairman — enough of them trigger a confidence vote in the leader. They slide a sheet across the tearoom table. The number is closer than anyone admits.',
+    speaker: 'rival',
+    tags: ['party', 'serious'],
+    weight: 11, cooldownDays: 360,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Put your letter in',
+        effects: { stats: { profile: 3, integrity: 1 }, relationships: [{ kind: 'leader', delta: -8 }, { kind: 'chiefWhip', delta: -5 }], trigger: 'rebel' },
+        outcomeText: 'Your name joins the pile. If it works you are an early mover in the new order; if it fails, the leader\'s office has a very short, very memorable list, and you are on it.',
+      },
+      {
+        label: 'Refuse — and tip off the leader\'s team',
+        effects: { relationships: [{ kind: 'leader', delta: 7 }, { kind: 'rival', delta: -8 }], stats: { integrity: -2 } },
+        outcomeText: 'You warn Number 10 which way the wind is blowing. Loyalty banked at the price of friendships; the plotters never quite prove it was you, but they are not stupid.',
+      },
+      {
+        label: 'Keep your head down',
+        effects: {},
+        outcomeText: 'You decide this is a fight for braver or more foolish people, and develop a sudden passion for a delegated-legislation committee. Neither hero nor villain — merely elsewhere.',
+      },
+    ],
+  },
+  {
+    id: 'bb_whatsapp_group',
+    title: 'The group chat',
+    body: 'The backbench WhatsApp group is on fire again — three hundred messages overnight, half of them mutinous, and a screenshot of the worst ones is now, inevitably, with a journalist. You are in that group.',
+    tags: ['party', 'media'],
+    weight: 10, cooldownDays: 320,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Counsel calm and discretion',
+        effects: { stats: { partyStanding: 3, integrity: 1 }, relationships: [{ kind: 'chiefWhip', delta: 3 }] },
+        outcomeText: 'You are the voice of reason at 1am, reminding everyone that screenshots are forever. The whips clock a steadying hand — the kind of colleague they like to reward.',
+      },
+      {
+        label: 'Pile in with the malcontents',
+        effects: { stats: { profile: 3, partyStanding: -3 }, relationships: [{ kind: 'leader', delta: -3 }] },
+        outcomeText: 'You add your own incendiary contribution, which is of course the one the paper prints under your name. The awkward squad gains a member; the leadership loses any remaining illusions about you.',
+      },
+    ],
+  },
+  {
+    id: 'bb_plot_from_back',
+    title: 'A plot, seen from the back',
+    body: 'From the cheap seats you can see it forming before the lobby can: a serious move against the leadership, a handful of big names testing the numbers. Nobody has asked you yet. They will. Where do you want to be standing when it breaks?',
+    tags: ['party', 'serious'],
+    weight: 9, cooldownDays: 500,
+    requires: { maxTier: 2 },
+    choices: [
+      {
+        label: 'Get in early with the plotters',
+        effects: { stats: { profile: 3 }, relationships: [{ kind: 'rival', delta: 6 }, { kind: 'leader', delta: -6 }], trigger: 'rebel' },
+        outcomeText: 'You attach yourself to the rising faction while the attaching is cheap. A bet on the future, placed in public — and ruinous if the leader survives.',
+      },
+      {
+        label: 'Stay conspicuously loyal',
+        effects: { stats: { partyStanding: 4 }, relationships: [{ kind: 'leader', delta: 6 }] },
+        outcomeText: 'You make a point of being seen on the leader\'s side of the tearoom. If they survive, you are a known loyalist; if they fall, you are a known loyalist, which is a different thing entirely.',
+      },
+    ],
+  },
 ];

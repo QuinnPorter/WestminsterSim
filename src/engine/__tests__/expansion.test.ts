@@ -2,16 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import {
   recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
-  nextOfficeFor,
+  nextOfficeFor, callForLeaderResignationCore,
 } from '../career';
-import { initCalendar, nextStep } from '../scheduler';
+import { initCalendar, nextStep, resolveCalendarChoice } from '../scheduler';
+import { runElection } from '../election';
 import { applyEffects } from '../effects';
 import { cardEligible } from '../cardEngine';
 import { getRelationship } from '../relationships';
 import { ALL_CARDS } from '../../content/cards';
 import { OFFICES } from '../../data/offices';
 import { DecisionCard } from '../../types/content';
-import { GameState } from '../../types/game';
+import { GameState, DrawnCard } from '../../types/game';
 import { Rng } from '../rng';
 
 const byId = (id: string): DecisionCard => ALL_CARDS.find((c) => c.id === id)!;
@@ -284,6 +285,55 @@ describe('wave 12 — end-screen stats & tie-break', () => {
     g2.history.push({ kind: 'roleChange', date: g2.day, officeId: 'sos_culture', how: 'appointed', roleSide: 'gov', partyId: 'lab' });
     g2.history.push({ kind: 'roleChange', date: g2.day, officeId: 'sos_treasury', how: 'appointed', roleSide: 'gov', partyId: 'lab' });
     expect(buildLegacy(g2).highestOfficeTitle).toContain('Chancellor');
+  });
+});
+
+describe('wave 13 — tuning & opposition heave', () => {
+  function budgetCard(): DrawnCard {
+    return {
+      cardId: 'cal_budget_x', kind: 'calendar', title: 'Budget day', body: '',
+      choices: [{ label: 'a' }, { label: 'b' }], payload: { calKey: 'budget' },
+    };
+  }
+  function oppGame(seed = 11): GameState {
+    return createNewGame({
+      name: 'Opp MP', gender: 'm', age: 50, region: 'southEast',
+      background: 'lawyer', partyId: 'con', // Labour governs in 2024 → Con is opposition
+      avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
+      era: '2024', seed,
+    });
+  }
+
+  it('stronger incumbent fatigue cuts a long-governing party\'s vote', () => {
+    const fresh = makeGame(); fresh.government.termsInPower = 1;
+    const tired = makeGame(); tired.government.termsInPower = 4;
+    const a = runElection(fresh, new Rng(5)).result.voteShares.lab ?? 0;
+    const b = runElection(tired, new Rng(5)).result.voteShares.lab ?? 0;
+    expect(b).toBeLessThan(a - 0.03); // 4th-term Labour clearly down on a 1st-term run
+  });
+
+  it('the Budget card rewards championing in government but attacking in opposition', () => {
+    const gov = makeGame(); // Labour player, in government
+    const govOut = resolveCalendarChoice(gov, new Rng(1), budgetCard(), 0);
+    expect(govOut.deltas.some((d) => d.label === 'Leader' && d.delta > 0)).toBe(true);
+
+    const opp = oppGame();
+    const oppOut = resolveCalendarChoice(opp, new Rng(1), budgetCard(), 0);
+    expect(oppOut.deltas.some((d) => d.label === 'Profile' && d.delta > 0)).toBe(true);
+  });
+
+  it('lets an opposition MP move against their own (NPC) leader, but not the PM', () => {
+    const opp = oppGame();
+    const before = opp.player.stats.partyStanding;
+    const out = callForLeaderResignationCore(opp, new Rng(3));
+    expect(/leader|resign|no confidence/i.test(out.text)).toBe(true);
+    expect(opp.player.stats.partyStanding).toBeLessThan(before); // it costs standing
+    expect(opp.government.oppLeaderPressure ?? 0).toBeGreaterThan(0);
+
+    // a government player has no opposition leader to move against
+    const gov = makeGame();
+    const noop = callForLeaderResignationCore(gov, new Rng(3));
+    expect(noop.text).toContain('no leader of your party to move against');
   });
 });
 

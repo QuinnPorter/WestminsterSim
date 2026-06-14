@@ -216,6 +216,8 @@ export interface GovernmentState {
   termsInPower: number;
   /** accumulated backbench/frontbench pressure on a sitting (NPC) PM to go */
   pmHeavePressure?: number;
+  /** accumulated pressure on the player's (NPC) opposition/minor-party leader to go */
+  oppLeaderPressure?: number;
   /** the cabinet minister (or 'player') currently doubling as Deputy PM / First Secretary */
   deputyPmId?: string;
   /** which deputy title the current deputy holds */
