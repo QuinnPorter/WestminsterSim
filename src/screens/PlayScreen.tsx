@@ -2,8 +2,10 @@ import { GameState } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { TopBar } from '../components/TopBar';
 import { StatChips } from '../components/StatChips';
+import { RelationshipBadges } from '../components/RelationshipBadges';
 import { SituationPanel } from '../components/SituationPanel';
 import { DecisionCardView } from '../components/DecisionCardView';
+import { playerIsPM } from '../engine/career';
 
 export function PlayScreen({ game }: { game: GameState }) {
   const resolveChoice = useGameStore((s) => s.resolveChoice);
@@ -15,7 +17,8 @@ export function PlayScreen({ game }: { game: GameState }) {
       <div style={{ marginBottom: 12 }}>
         <StatChips stats={game.player.stats} />
       </div>
-      <SituationPanel game={game} />
+      <RelationshipBadges game={game} />
+      {playerIsPM(game) && <SituationPanel game={game} />}
       {game.currentCard ? (
         <DecisionCardView
           game={game}

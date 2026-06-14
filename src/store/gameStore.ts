@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { GameState } from '../types/game';
 import { CreationInput, createNewGame, SAVE_VERSION } from '../engine/newGame';
-import { initCalendar, nextStep } from '../engine/scheduler';
+import { initCalendar, nextStep, queueGeneralElection } from '../engine/scheduler';
+import { CauseId } from '../types/game';
 import {
   acknowledgeElectionCore, continueCore, resolveChoiceCore,
 } from '../engine/turn';
@@ -39,6 +40,10 @@ interface GameStore {
   /** player-PM names a cabinet Secretary of State as Deputy PM / First Secretary */
   setDeputyPm: (characterId: string) => void;
   callForPmResignation: () => void;
+  /** player-PM dissolves Parliament; the campaign fires at the next decision */
+  callSnapElection: () => void;
+  /** update the player's chosen causes (the agenda) mid-career */
+  setCauses: (causes: CauseId[]) => void;
   retire: () => void;
   abandonGame: () => void;
   /** save the current career into a new named slot (caller ensures < 3 slots) */
@@ -163,6 +168,22 @@ export const useGameStore = create<GameStore>()(
 
       callForPmResignation: () =>
         mutateGame(get, set, (game, rng) => { callForPmResignationCore(game, rng); }),
+
+      callSnapElection: () =>
+        mutateGame(get, set, (game) => {
+          // guard: don't double-queue if a campaign is already under way
+          if (game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight')) return;
+          queueGeneralElection(game);
+          game.history.push({
+            kind: 'event', date: game.day,
+            headline: `${game.player.name} calls a snap general election`,
+          });
+        }),
+
+      setCauses: (causes) =>
+        mutateGame(get, set, (game) => {
+          game.player.causes = causes.slice(0, 3);
+        }),
 
       retire: () =>
         mutateGame(get, set, (game) => {

@@ -65,6 +65,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const saveToSlot = useGameStore((s) => s.saveToSlot);
   const overwriteSlot = useGameStore((s) => s.overwriteSlot);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
+  const setAgendaEditorOpen = useUiStore((s) => s.setAgendaEditorOpen);
   const [pickingParty, setPickingParty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -128,9 +129,20 @@ export function ProfileScreen({ game }: { game: GameState }) {
         </div>
       )}
 
-      {(player.causes ?? []).length > 0 && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 8 }}>Your agenda</h3>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ fontSize: 'var(--fs-sm)' }}>Your agenda</h3>
+          <button
+            onClick={() => setAgendaEditorOpen(true)}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+            }}
+          >
+            Change ›
+          </button>
+        </div>
+        {(player.causes ?? []).length > 0 ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {player.causes.map((c) => (
               <span key={c} style={{
@@ -141,8 +153,12 @@ export function ProfileScreen({ game }: { game: GameState }) {
               </span>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
+            No causes chosen — pick what you stand for.
+          </p>
+        )}
+      </div>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 8 }}>Career</h3>

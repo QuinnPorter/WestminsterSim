@@ -74,9 +74,8 @@ function makeCalendarCard(state: GameState, rng: Rng, key: string): DrawnCard {
       return {
         ...base,
         title: 'Budget day',
-        body: resolveTokens(state, playerIsPM(state) || state.player.officeId === 'sos_treasury'
-          ? 'Budget day, and the red box is yours to hold up for the cameras. The numbers inside are less photogenic.'
-          : 'Budget day. The Chancellor performs for an hour while everyone scans the fine print for the trap. Your inbox will want a verdict by teatime.'),
+        body: resolveTokens(state,
+          'Budget day. The Chancellor performs for an hour while everyone scans the fine print for the trap. Your inbox will want a verdict by teatime.'),
         choices: [
           { label: 'Champion it loudly' },
           { label: 'Pick at the fine print' },
@@ -217,7 +216,7 @@ export function nextStep(state: GameState, rng: Rng): void {
         state.calendarDone[ev.key] = nextOccurrence(state.day, ev.month, ev.day);
         // enriched, role-specific set-pieces (multi-step forced sequences);
         // everyone else gets the lighter single-card calendar version
-        if (ev.key === 'budget' && (playerIsPM(state) || state.player.officeId === 'sos_treasury')) {
+        if (ev.key === 'budget' && state.player.officeId === 'sos_treasury' && playerInGovernment(state)) {
           state.forcedQueue.push(
             { kind: 'budget', payload: { step: 1 } },
             { kind: 'budget', payload: { step: 2 } },

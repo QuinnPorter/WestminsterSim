@@ -4,7 +4,7 @@ import {
 } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
-import { CAUSES } from '../data/causes';
+import { CauseGrid, toggleCause as toggleCauseList, MAX_CAUSES } from '../components/CauseGrid';
 import { PARTIES, playablePartiesForEra, populistPartyForEra } from '../data/parties';
 import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
@@ -17,8 +17,6 @@ import { randomAvatar, generateName } from '../generation/characters';
 import './NewCareerScreen.css';
 
 const STEPS = ['Era', 'You', 'Party', 'Background', 'Agenda', 'Look'] as const;
-
-const MAX_CAUSES = 3;
 
 const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
   '2015': {
@@ -86,13 +84,7 @@ export function NewCareerScreen() {
     }));
   };
 
-  const toggleCause = (id: CauseId) => {
-    setCauses((cs) =>
-      cs.includes(id) ? cs.filter((c) => c !== id)
-      : cs.length < MAX_CAUSES ? [...cs, id]
-      : cs
-    );
-  };
+  const toggleCause = (id: CauseId) => setCauses((cs) => toggleCauseList(cs, id));
 
   const finish = () => {
     startNewGame({
@@ -246,23 +238,7 @@ export function NewCareerScreen() {
             Choose up to three causes to champion. They colour your story — and tilt you,
             a little, toward the briefs that fit. {causes.length}/{MAX_CAUSES} chosen.
           </p>
-          <div className="nc-bgs">
-            {CAUSES.map((c) => {
-              const selected = causes.includes(c.id);
-              const atLimit = !selected && causes.length >= MAX_CAUSES;
-              return (
-                <button
-                  key={c.id}
-                  className={`card nc-bg${selected ? ' selected' : ''}`}
-                  style={{ opacity: atLimit ? 0.45 : 1 }}
-                  onClick={() => toggleCause(c.id)}
-                >
-                  <strong>{c.label}</strong>
-                  <span>{c.blurb}</span>
-                </button>
-              );
-            })}
-          </div>
+          <CauseGrid selected={causes} onToggle={toggleCause} />
         </div>
       )}
 

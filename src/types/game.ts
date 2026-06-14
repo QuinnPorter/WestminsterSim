@@ -11,7 +11,8 @@ export type RegionId =
 
 export type DepartmentId =
   | 'treasury' | 'home' | 'foreign' | 'health' | 'education' | 'defence'
-  | 'justice' | 'transport' | 'environment' | 'business' | 'dwp' | 'culture';
+  | 'justice' | 'transport' | 'environment' | 'business' | 'dwp' | 'culture'
+  | 'housing';
 
 /** Days since 2019-01-01 (UTC). clock.ts converts to dates. */
 export type GameDay = number;
@@ -67,6 +68,12 @@ export interface Office {
   shadowTitle: string;
   tier: OfficeTier;
   department?: DepartmentId;
+  /** within-tier seniority (higher = more senior); used for the Treasury
+   *  sub-ladder and end-screen highest-office ordering. Default 0. */
+  rank?: number;
+  /** territorial offices (Scotland/Wales/NI Secretary) only offered to a player
+   *  whose seat is in this region */
+  region?: RegionId;
 }
 
 // ---- people ----
@@ -320,6 +327,11 @@ export interface LegacySummary {
   wasSpeaker?: boolean;
   wasDeputyPM?: boolean;
   pmStints?: number;
+  /** general elections the player led their party to government */
+  electionsWonAsLeader?: number;
+  /** leadership contests won / fought (shown as "won of fought") */
+  leadershipContestsWon?: number;
+  leadershipContestsFought?: number;
   finalStats?: PlayerStats;
   causes?: CauseId[];
   /** one-line characterisation of the career, e.g. "Principled premier" */

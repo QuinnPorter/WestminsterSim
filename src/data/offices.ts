@@ -20,6 +20,7 @@ export const DEPARTMENTS: Record<DepartmentId, DepartmentInfo> = {
   business: { id: 'business', name: 'Department for Business and Trade', casual: 'Business' },
   dwp: { id: 'dwp', name: 'Department for Work and Pensions', casual: 'Work and Pensions' },
   culture: { id: 'culture', name: 'DCMS', casual: 'Culture' },
+  housing: { id: 'housing', name: 'Ministry of Housing, Communities & Local Government', casual: 'Housing' },
 };
 
 const DEPT_IDS = Object.keys(DEPARTMENTS) as DepartmentId[];
@@ -37,6 +38,7 @@ const SOS_TITLES: Record<DepartmentId, { gov: string; shadow: string }> = {
   business: { gov: 'Business Secretary', shadow: 'Shadow Business Secretary' },
   dwp: { gov: 'Work and Pensions Secretary', shadow: 'Shadow Work and Pensions Secretary' },
   culture: { gov: 'Culture Secretary', shadow: 'Shadow Culture Secretary' },
+  housing: { gov: 'Housing Secretary', shadow: 'Shadow Housing Secretary' },
 };
 
 function buildOffices(): Record<OfficeId, Office> {
@@ -44,7 +46,7 @@ function buildOffices(): Record<OfficeId, Office> {
     pps: {
       id: 'pps', tier: 1,
       title: 'Parliamentary Private Secretary',
-      shadowTitle: 'Parliamentary aide to the Leader',
+      shadowTitle: 'Parliamentary Aide to the Leader',
     },
     whip: {
       id: 'whip', tier: 2,
@@ -55,6 +57,39 @@ function buildOffices(): Record<OfficeId, Office> {
       id: 'chiefWhip', tier: 4,
       title: 'Chief Whip',
       shadowTitle: 'Opposition Chief Whip',
+    },
+    // Treasury junior ladder — both sit below Minister of State (tier 3)
+    exchequer_sec: {
+      id: 'exchequer_sec', tier: 3, department: 'treasury', rank: 1,
+      title: 'Exchequer Secretary to the Treasury',
+      shadowTitle: 'Shadow Exchequer Secretary to the Treasury',
+    },
+    financial_sec: {
+      id: 'financial_sec', tier: 3, department: 'treasury', rank: 2,
+      title: 'Financial Secretary to the Treasury',
+      shadowTitle: 'Shadow Financial Secretary to the Treasury',
+    },
+    // Chief Secretary — junior cabinet (tier 4), below the Chancellor
+    chief_sec: {
+      id: 'chief_sec', tier: 4, department: 'treasury', rank: 1,
+      title: 'Chief Secretary to the Treasury',
+      shadowTitle: 'Shadow Chief Secretary to the Treasury',
+    },
+    // territorial Secretaries of State — only offered to a player from that nation
+    sos_scotland: {
+      id: 'sos_scotland', tier: 4, region: 'scotland',
+      title: 'Secretary of State for Scotland',
+      shadowTitle: 'Shadow Scotland Secretary',
+    },
+    sos_wales: {
+      id: 'sos_wales', tier: 4, region: 'wales',
+      title: 'Secretary of State for Wales',
+      shadowTitle: 'Shadow Wales Secretary',
+    },
+    sos_ni: {
+      id: 'sos_ni', tier: 4, region: 'ni',
+      title: 'Secretary of State for Northern Ireland',
+      shadowTitle: 'Shadow Northern Ireland Secretary',
     },
     leader: {
       id: 'leader', tier: 5,
@@ -79,6 +114,10 @@ function buildOffices(): Record<OfficeId, Office> {
       shadowTitle: SOS_TITLES[dept].shadow,
     };
   }
+  // place the auto-built Treasury posts on the sub-ladder: Minister of State sits
+  // above the two junior secretaries; the Chancellor sits above the Chief Secretary
+  offices.min_treasury.rank = 3;
+  offices.sos_treasury.rank = 2;
   return offices;
 }
 
@@ -89,9 +128,10 @@ export const GREAT_OFFICES: OfficeId[] = ['sos_treasury', 'sos_home', 'sos_forei
 
 /** offices that make up the cabinet / shadow cabinet display, in rank order */
 export const CABINET_OFFICES: OfficeId[] = [
-  'sos_treasury', 'sos_home', 'sos_foreign', 'sos_health', 'sos_education',
+  'sos_treasury', 'chief_sec', 'sos_home', 'sos_foreign', 'sos_health', 'sos_education',
   'sos_defence', 'sos_justice', 'sos_business', 'sos_dwp', 'sos_transport',
-  'sos_environment', 'sos_culture', 'chiefWhip',
+  'sos_environment', 'sos_culture', 'sos_housing',
+  'sos_scotland', 'sos_wales', 'sos_ni', 'chiefWhip',
 ];
 
 export function officeTitle(officeId: OfficeId | null, inGovernment: boolean): string {

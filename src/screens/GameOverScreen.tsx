@@ -75,6 +75,15 @@ export function GameOverScreen({ game }: { game: GameState }) {
             ? `${legacy.electionsWon} of ${legacy.electionsContested}`
             : `${legacy.electionsWon}`}
         />
+        {legacy.becameLeader && legacy.electionsWonAsLeader !== undefined && (
+          <LegacyRow label="Elections won as leader" value={`${legacy.electionsWonAsLeader}`} />
+        )}
+        {legacy.leadershipContestsFought !== undefined && legacy.leadershipContestsFought > 0 && (
+          <LegacyRow
+            label="Leadership contests won"
+            value={`${legacy.leadershipContestsWon ?? 0} of ${legacy.leadershipContestsFought}`}
+          />
+        )}
         {legacy.rebellions !== undefined && legacy.rebellions > 0 && (
           <LegacyRow label="Rebellions" value={`${legacy.rebellions}`} />
         )}

@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import {
   recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
+  nextOfficeFor,
 } from '../career';
 import { initCalendar, nextStep } from '../scheduler';
 import { applyEffects } from '../effects';
 import { cardEligible } from '../cardEngine';
 import { getRelationship } from '../relationships';
 import { ALL_CARDS } from '../../content/cards';
+import { OFFICES } from '../../data/offices';
 import { DecisionCard } from '../../types/content';
 import { GameState } from '../../types/game';
 import { Rng } from '../rng';
@@ -131,7 +133,7 @@ describe('expansion — active whipping', () => {
 describe('expansion — ministry focus', () => {
   it('has a department-gated focus card for every cabinet department, each banking its flag', async () => {
     const { MINISTRY_FOCUS_CARDS } = await import('../../content/cards/ministryFocus');
-    expect(MINISTRY_FOCUS_CARDS.length).toBe(12);
+    expect(MINISTRY_FOCUS_CARDS.length).toBe(13);
     for (const card of MINISTRY_FOCUS_CARDS) {
       const dept = card.requires?.department?.[0];
       expect(dept).toBeTruthy();
@@ -148,6 +150,7 @@ describe('expansion — ministry focus', () => {
 describe('expansion — set-pieces', () => {
   it('budget runs as a three-step sequence that moves polling and logs a headline', () => {
     const g = makeGame();
+    g.player.officeId = 'sos_treasury'; // the Chancellor's name goes on the headline
     const rng = new Rng(3);
     for (let step = 1; step <= 3; step++) {
       const card = materializeForced(g, rng, { kind: 'budget', payload: { step } });
@@ -212,5 +215,99 @@ describe('expansion — richer legacy', () => {
     expect(legacy.finalStats).toEqual(g.player.stats);
     expect(legacy.causes).toEqual(['publicServices']);
     expect(legacy.becamePM).toBe(false);
+  });
+});
+
+describe('wave 12 — Treasury ladder & new offices', () => {
+  it('places the Treasury sub-ladder at the right tiers and order', () => {
+    expect(OFFICES.exchequer_sec.tier).toBe(3);
+    expect(OFFICES.financial_sec.tier).toBe(3);
+    expect(OFFICES.min_treasury.tier).toBe(3);
+    expect(OFFICES.chief_sec.tier).toBe(4);
+    expect(OFFICES.sos_treasury.tier).toBe(4);
+    // Exchequer is the most junior tier-3 rung, Minister of State the most senior
+    expect(OFFICES.exchequer_sec.rank!).toBeLessThan(OFFICES.financial_sec.rank!);
+    expect(OFFICES.financial_sec.rank!).toBeLessThan(OFFICES.min_treasury.rank!);
+    // the Chief Secretary sits below the Chancellor within the cabinet tier
+    expect(OFFICES.chief_sec.rank!).toBeLessThan(OFFICES.sos_treasury.rank!);
+  });
+
+  it('capitalises the Parliamentary Aide title and adds Housing + territorial offices', () => {
+    expect(OFFICES.pps.shadowTitle).toBe('Parliamentary Aide to the Leader');
+    expect(OFFICES.sos_housing.tier).toBe(4);
+    expect(OFFICES.min_housing.tier).toBe(3);
+    expect(OFFICES.sos_scotland.region).toBe('scotland');
+    expect(OFFICES.sos_wales.region).toBe('wales');
+    expect(OFFICES.sos_ni.region).toBe('ni');
+  });
+
+  it('offers territorial Secretary of State only to a player from that nation', () => {
+    const isTerritorial = (o: string | null) =>
+      o === 'sos_scotland' || o === 'sos_wales' || o === 'sos_ni';
+
+    const eng = makeGame();
+    eng.player.region = 'yorkshire';
+    eng.player.officeId = 'min_health'; // tier-3 minister, in line for promotion
+    let englishTerritorial = 0;
+    for (let i = 0; i < 400; i++) if (isTerritorial(nextOfficeFor(eng, new Rng(i)))) englishTerritorial++;
+    expect(englishTerritorial).toBe(0);
+
+    const scot = makeGame();
+    scot.player.region = 'scotland';
+    scot.player.officeId = 'min_health';
+    let scottishTerritorial = 0;
+    for (let i = 0; i < 400; i++) if (nextOfficeFor(scot, new Rng(i)) === 'sos_scotland') scottishTerritorial++;
+    expect(scottishTerritorial).toBeGreaterThan(0);
+  });
+});
+
+describe('wave 12 — end-screen stats & tie-break', () => {
+  it('counts leadership contests fought (incl. losses) and elections won as leader', () => {
+    const g = makeGame();
+    g.history.push({ kind: 'leadershipContest', date: g.day, won: false, partyId: 'lab' });
+    g.player.flags._electionsWonAsLeader = 2;
+    const legacy = buildLegacy(g);
+    expect(legacy.leadershipContestsFought).toBe(1);
+    expect(legacy.leadershipContestsWon).toBe(0);
+    expect(legacy.electionsWonAsLeader).toBe(2);
+  });
+
+  it('prefers government framing then great offices for the highest office', () => {
+    // a shadow great office vs a government regular cabinet seat → government wins
+    const g1 = makeGame();
+    g1.history.push({ kind: 'roleChange', date: g1.day, officeId: 'sos_home', how: 'appointed', roleSide: 'opp', partyId: 'lab' });
+    g1.history.push({ kind: 'roleChange', date: g1.day, officeId: 'sos_culture', how: 'appointed', roleSide: 'gov', partyId: 'lab' });
+    expect(buildLegacy(g1).highestOfficeTitle).toContain('Culture Secretary');
+
+    // two government cabinet seats → the great office of state wins
+    const g2 = makeGame();
+    g2.history.push({ kind: 'roleChange', date: g2.day, officeId: 'sos_culture', how: 'appointed', roleSide: 'gov', partyId: 'lab' });
+    g2.history.push({ kind: 'roleChange', date: g2.day, officeId: 'sos_treasury', how: 'appointed', roleSide: 'gov', partyId: 'lab' });
+    expect(buildLegacy(g2).highestOfficeTitle).toContain('Chancellor');
+  });
+});
+
+describe('wave 12 — Budget routes to the Chancellor, not the PM', () => {
+  function dueBudget(g: GameState) {
+    initCalendar(g);
+    g.nextElectionBy = g.day + 1000;
+    g.calendarDone.budget = g.day - 1;
+  }
+
+  it('the in-government Chancellor gets the multi-step set-piece', () => {
+    const g = makeGame();
+    g.player.officeId = 'sos_treasury'; // Labour governs in 2024 → in government
+    dueBudget(g);
+    nextStep(g, new Rng(1));
+    expect(g.currentCard?.kind).toBe('budget');
+  });
+
+  it('a Prime Minister does not get the Budget set-piece', () => {
+    const g = makeGame();
+    g.player.officeId = 'leader';
+    g.government.pmId = 'player';
+    dueBudget(g);
+    nextStep(g, new Rng(1));
+    expect(g.currentCard?.kind).not.toBe('budget');
   });
 });

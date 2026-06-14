@@ -30,6 +30,9 @@ interface UiState {
   /** whether the Prime-Minister succession modal is open */
   pmHistoryOpen: boolean;
   setPmHistoryOpen: (v: boolean) => void;
+  /** whether the in-game agenda editor modal is open */
+  agendaEditorOpen: boolean;
+  setAgendaEditorOpen: (v: boolean) => void;
   debug: boolean;
 }
 
@@ -45,6 +48,8 @@ export const useUiStore = create<UiState>((set) => ({
   closeConfirm: () => set({ confirm: null }),
   pmHistoryOpen: false,
   setPmHistoryOpen: (v) => set({ pmHistoryOpen: v }),
+  agendaEditorOpen: false,
+  setAgendaEditorOpen: (v) => set({ agendaEditorOpen: v }),
   debug:
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('debug'),

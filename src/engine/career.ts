@@ -1,6 +1,6 @@
 import {
   Character, DrawnCard, ElectionResult, ForcedEvent, GameState, LegacySummary,
-  OfficeId, PartyId, PlayerStats, PmTenure, RelationshipKind, StatDelta,
+  OfficeId, PartyId, PlayerStats, PmTenure, RegionId, RelationshipKind, StatDelta,
 } from '../types/game';
 import { CABINET_OFFICES, DEPARTMENTS, GREAT_OFFICES, OFFICES, officeTitle, officeTitleFor } from '../data/offices';
 import { BACKGROUNDS } from '../data/backgrounds';
@@ -269,11 +269,31 @@ export function eligibilityScore(state: GameState, targetOffice: OfficeId): numb
 
 export const OFFER_THRESHOLDS: Record<number, number> = { 1: 41, 2: 47, 3: 52, 4: 59 };
 
-function deptOfficeId(rng: Rng, bg: typeof BACKGROUNDS[keyof typeof BACKGROUNDS], tier: 3 | 4): OfficeId {
+/** the Treasury seniority sub-ladder (all tier 3 except the last two, tier 4) */
+const TREASURY_LADDER: OfficeId[] = [
+  'exchequer_sec', 'financial_sec', 'min_treasury', 'chief_sec', 'sos_treasury',
+];
+/** a player's home nation maps to its territorial Secretary of State */
+const REGION_OFFICE: Partial<Record<RegionId, OfficeId>> = {
+  scotland: 'sos_scotland', wales: 'sos_wales', ni: 'sos_ni',
+};
+
+/** entry to a tier-3 Treasury job starts low on the ladder, not at Minister of State */
+function treasuryEntry(rng: Rng): OfficeId {
+  return rng.chance(0.6) ? 'exchequer_sec' : 'financial_sec';
+}
+
+function deptOfficeId(
+  rng: Rng, bg: typeof BACKGROUNDS[keyof typeof BACKGROUNDS], tier: 3 | 4,
+  treasuryLadder = false
+): OfficeId {
   const prefix = tier === 4 ? 'sos' : 'min';
   const dept = bg.deptAffinity.length > 0 && rng.chance(0.5)
     ? rng.pick(bg.deptAffinity)
     : rng.pick(Object.keys(DEPARTMENTS)) as keyof typeof DEPARTMENTS;
+  // frontbench (major-party) entrants to the Treasury start low on the ladder;
+  // minor-party spokespeople keep the single min_* rung
+  if (tier === 3 && dept === 'treasury' && treasuryLadder) return treasuryEntry(rng);
   return `${prefix}_${dept}`;
 }
 
@@ -281,6 +301,21 @@ function deptOfficeId(rng: Rng, bg: typeof BACKGROUNDS[keyof typeof BACKGROUNDS]
 export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
   const tier = playerTier(state);
   const bg = BACKGROUNDS[state.player.background];
+
+  // climbing the Treasury ladder: a sitting Treasury minister may be moved one
+  // rung up (Exchequer → Financial → Minister of State → Chief Secretary →
+  // Chancellor). The Chief Secretary and Chancellor jumps are deliberately rare.
+  // If they don't climb, the normal tier logic below can still move them out of
+  // the Treasury (a lateral to another department) or dismiss them.
+  const cur = state.player.officeId;
+  if (!onMinorPartyTrack(state) && cur && TREASURY_LADDER.includes(cur)) {
+    const next = TREASURY_LADDER[TREASURY_LADDER.indexOf(cur) + 1];
+    if (next) {
+      const climbChance =
+        next === 'chief_sec' ? 0.18 : next === 'sos_treasury' ? 0.3 : 0.5;
+      if (rng.chance(climbChance)) return next;
+    }
+  }
 
   // minor parties have a single spokesperson rung (min_*). A backbencher is made
   // a spokesperson; an existing spokesperson is only ever offered a DIFFERENT
@@ -305,7 +340,7 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
   if (tier === 0 && peak >= 3) {
     const comebackTier = rng.chance(0.6) ? peak : peak - 1;
     if (comebackTier >= 4) return deptOfficeId(rng, bg, 4);
-    if (comebackTier === 3) return deptOfficeId(rng, bg, 3);
+    if (comebackTier === 3) return deptOfficeId(rng, bg, 3, true);
     // peak was a whip/PPS — fall through to the normal ladder
   }
 
@@ -314,7 +349,7 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
     // the usual PPS/whip apprenticeship
     const s = state.player.stats;
     if (s.competence > 65 && s.profile > 55 && s.partyStanding > 60 && rng.chance(0.15)) {
-      return deptOfficeId(rng, bg, 3);
+      return deptOfficeId(rng, bg, 3, true);
     }
     return rng.chance(0.55) ? 'pps' : 'whip';
   }
@@ -324,7 +359,7 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
     const dept = bg.deptAffinity.length > 0 && rng.chance(0.5)
       ? rng.pick(bg.deptAffinity)
       : rng.pick(Object.keys(DEPARTMENTS)) as keyof typeof DEPARTMENTS;
-    return `min_${dept}`;
+    return dept === 'treasury' ? treasuryEntry(rng) : `min_${dept}`;
   }
   if (tier === 3) {
     // "new ministerial role" (a lateral move to a fresh brief) is the common
@@ -337,11 +372,16 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
       const dept = bg.deptAffinity.length > 0 && rng.chance(0.4)
         ? rng.pick(bg.deptAffinity)
         : rng.pick(others);
-      return `min_${dept}`;
+      return dept === 'treasury' ? treasuryEntry(rng) : `min_${dept}`;
     }
     // a tier-4 promotion is usually a Secretary of State, but occasionally the
     // Chief Whip (a parallel cabinet-rank role in the whips' office)
     if (rng.chance(0.2)) return 'chiefWhip';
+    // an MP from one of the nations may be sent to run that nation's office
+    const regionOffice = REGION_OFFICE[state.player.region];
+    if (regionOffice && rng.chance(0.25)) return regionOffice;
+    // rarely, the Chief Secretary to the Treasury (junior cabinet)
+    if (rng.chance(0.08)) return 'chief_sec';
     const dept = current && rng.chance(0.45)
       ? current
       : bg.deptAffinity.length > 0 && rng.chance(0.4)
@@ -876,6 +916,13 @@ export function applyElectionAftermath(
     .sort((a, b) => b[1] - a[1]);
   const newOpp = ranked[0]?.[0] ?? (newGov === prevGov ? prevOpp : prevGov);
 
+  // "elections won as leader": the player led their party into this election and
+  // it formed the government (winning from opposition, or an incumbent re-elected)
+  if (playerWonSeat && playerIsLeader(state) && state.player.partyId === newGov) {
+    state.player.flags._electionsWonAsLeader =
+      (((state.player.flags._electionsWonAsLeader as number) ?? 0) + 1);
+  }
+
   const changeOfGovernment = newGov !== prevGov;
   if (changeOfGovernment) {
     // the frontbenches swap across the despatch box
@@ -1105,7 +1152,10 @@ export function seatCoalitionCabinet(state: GameState, rng: Rng): void {
   const partnerSeats = state.seats[partner] ?? 0;
   if (partnerSeats <= 0 || govSeats <= 0) return;
   const share = partnerSeats / (govSeats + partnerSeats);
-  let count = Math.min(Math.round(share * CABINET_OFFICES.length), partnerSeats);
+  // base the partner's share on the distributable cabinet (territorial offices are
+  // region-locked and never handed to a coalition partner)
+  const distributable = CABINET_OFFICES.filter((id) => !OFFICES[id].region).length;
+  let count = Math.min(Math.round(share * distributable), partnerSeats);
   if (partnerSeats <= 2) count = Math.min(count, 1);
   if (partnerSeats === 1 && rng.chance(0.5)) count = 0;
   if (count <= 0) return;
@@ -2253,11 +2303,13 @@ export function resolveForcedChoice(
         applyPollingShock(state, own, -0.8);
         return { text: 'You find the savings elsewhere — quiet cuts, no fanfare. Fiscally credible, politically thankless, and somebody, somewhere, is now worse off.', deltas };
       }
-      // step 3 — the despatch box
-      state.history.push({
-        kind: 'event', date: state.day,
-        headline: `${state.player.name} delivers the Budget`,
-      });
+      // step 3 — the despatch box. Only the Chancellor's name goes on the headline.
+      if (state.player.officeId === 'sos_treasury' && playerInGovernment(state)) {
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} delivers the Budget`,
+        });
+      }
       if (choiceIndex === 0) {
         gain('profile', 4, 'Profile'); applyPollingShock(state, own, 0.6);
         return { text: 'You deliver it as theatre — jokes, traps, the lot. The clips fly and your benches wave their order papers like a cup final.', deltas };
@@ -3244,8 +3296,12 @@ function careerVerdict(
 export function buildLegacy(state: GameState): LegacySummary {
   // career levels: 0 backbencher, 1 minister, 2 cabinet, 3 party leader, 4 PM
   let level = 0;
+  // keep the *best* same-level title, not the last: prefer government framing,
+  // then great offices of state over other cabinet seats, then seniority
   let cabinetTitle = '';
+  let cabinetScore = -1;
   let ministerTitle = '';
+  let ministerScore = -1;
   let everSpeaker = !!state.player.flags._wasSpeaker;
   for (const entry of state.history) {
     if (entry.kind !== 'roleChange') continue;
@@ -3263,10 +3319,15 @@ export function buildLegacy(state: GameState): LegacySummary {
       const sideTitle = inGov ? office.title : office.shadowTitle;
       if (office.tier === 4) {
         level = Math.max(level, 2);
-        cabinetTitle = sideTitle;
+        const score = (inGov ? 1000 : 0)
+          + (GREAT_OFFICES.includes(office.id) ? 100
+            : office.id === 'chief_sec' ? 10
+            : office.id === 'chiefWhip' ? 15 : 50);
+        if (score > cabinetScore) { cabinetScore = score; cabinetTitle = sideTitle; }
       } else if (office.tier >= 1 && office.tier <= 3) {
         level = Math.max(level, 1);
-        if (!ministerTitle || office.tier === 3) ministerTitle = sideTitle;
+        const score = (inGov ? 1000 : 0) + office.tier * 10 + (office.rank ?? 0);
+        if (score > ministerScore) { ministerScore = score; ministerTitle = sideTitle; }
       }
     }
   }
@@ -3290,6 +3351,9 @@ export function buildLegacy(state: GameState): LegacySummary {
     .map((h) => (h as { headline: string }).headline);
   const yearsServed = Math.max(1, Math.round((state.day - state.player.enteredParliament) / 365));
   const pmStints = (state.pmHistory ?? []).filter((t) => t.characterId === 'player').length;
+  const leadershipContestsFought = state.history.filter((h) => h.kind === 'leadershipContest').length;
+  const leadershipContestsWon = state.history.filter((h) => h.kind === 'leadershipContest' && h.won).length;
+  const electionsWonAsLeader = (state.player.flags._electionsWonAsLeader as number) ?? 0;
   const { rating, verdict } = careerVerdict(
     level, everSpeaker, everDeputyPM, state.player.stats, state.player.rebellionCount, yearsServed
   );
@@ -3305,6 +3369,9 @@ export function buildLegacy(state: GameState): LegacySummary {
     wasSpeaker: everSpeaker,
     wasDeputyPM: everDeputyPM,
     pmStints,
+    electionsWonAsLeader,
+    leadershipContestsWon,
+    leadershipContestsFought,
     finalStats: { ...state.player.stats },
     causes: [...(state.player.causes ?? [])],
     rating,

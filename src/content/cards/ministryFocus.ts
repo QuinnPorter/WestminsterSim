@@ -97,6 +97,7 @@ const FOCUS_DEFS: FocusDef[] = [
       { label: 'Rail and public transport', outcome: 'You throw your weight behind rail and buses, the spine of the network. Popular in the cities, costly everywhere.', effects: { stats: { profile: 2, partyStanding: 2 } } },
       { label: 'Roads and drivers', outcome: 'You make the case for the motorist — fixing roads, easing journeys. Quietly popular far from Westminster.', effects: { stats: { profile: 2, constituencyApproval: 3 } } },
       { label: 'Decarbonise transport', outcome: 'You steer the department toward electric vehicles and lower emissions. Forward-looking, and a magnet for culture-war flak.', effects: { stats: { integrity: 3, profile: 1 } } },
+      { label: 'Major infrastructure projects', outcome: 'You back the big builds — new lines, bridges and links that take a decade and define a country. Statesmanlike, and ruinously expensive.', effects: { stats: { competence: 3, profile: 2 } } },
     ],
   },
   {
@@ -137,6 +138,16 @@ const FOCUS_DEFS: FocusDef[] = [
       { label: 'Arts and heritage', outcome: 'You make the case for the arts and the places that hold a nation\'s memory. Cherished by some, derided as luvvie-ish by others.', effects: { stats: { integrity: 2, profile: 2 } } },
       { label: 'Grassroots sport', outcome: 'You back grassroots sport and the health and joy it brings. Cheerfully popular and hard to attack.', effects: { stats: { constituencyApproval: 3, profile: 1 } } },
       { label: 'Media and broadcasting', outcome: 'You wade into the future of broadcasting and the press — the brief with the sharpest teeth. High-profile, high-risk.', effects: { stats: { profile: 4, integrity: -1 } } },
+    ],
+  },
+  {
+    dept: 'housing',
+    title: 'A roof over their heads',
+    body: 'The {department} owns the housing crisis — supply, ownership and the planning system all run through your desk. Where do you push hardest?',
+    options: [
+      { label: 'Build, build, build', outcome: 'You set a relentless housebuilding target and dare everyone to meet it. Bold, popular with the young — and a war with the shires.', effects: { stats: { profile: 4, competence: 1 }, pollingShock: { party: 'own', delta: 1 } } },
+      { label: 'Social & affordable homes', outcome: 'You make genuinely affordable and social housing the mission. Principled, costly, and a slow build in every sense.', effects: { stats: { integrity: 4, partyStanding: 1 } } },
+      { label: 'Reform the planning system', outcome: 'You take on the planning system itself — the unglamorous machinery behind every blocked development. Technocratic, thankless, quietly transformative.', effects: { stats: { competence: 4, constituencyApproval: -2 } } },
     ],
   },
 ];

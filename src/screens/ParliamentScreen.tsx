@@ -5,9 +5,13 @@ import { PollGraph } from '../components/PollGraph';
 import { partyPolling } from '../engine/polling';
 import { polledPartiesForEra } from '../data/parties';
 import { useUiStore } from '../store/uiStore';
+import { useGameStore } from '../store/gameStore';
+import { playerIsPM } from '../engine/career';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
+  const requestConfirm = useUiStore((s) => s.requestConfirm);
+  const callSnapElection = useGameStore((s) => s.callSnapElection);
   const sorted = (Object.entries(game.seats) as [PartyId, number][])
     .filter(([, n]) => (n ?? 0) > 0)
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
@@ -15,7 +19,16 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const gov = game.government;
   const sfSeats = game.seats.sf ?? 0;
   const workingTarget = Math.floor((650 - sfSeats - 1) / 2) + 1;
-  const govSeats = game.seats[gov.governingParty] ?? 0;
+  const leadSeats = game.seats[gov.governingParty] ?? 0;
+  // a formal coalition's seats are counted toward the government total
+  const coalitionSeats = gov.arrangement === 'coalition' && gov.coalitionPartner
+    ? (game.seats[gov.coalitionPartner] ?? 0) : 0;
+  const govSeats = leadSeats + coalitionSeats;
+
+  const isPM = playerIsPM(game);
+  // hide the snap-election button once an election is already on its way
+  const electionImminent = game.day >= game.nextElectionBy - 60
+    || game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight');
 
   const polls = polledPartiesForEra(game.startEra)
     .map((p) => ({ p, v: partyPolling(game, p) }))
@@ -35,15 +48,33 @@ export function ParliamentScreen({ game }: { game: GameState }) {
               ? `minority, with ${PARTIES[gov.confidencePartner].shortName} support`
               : 'minority government'}
       </p>
-      <button
-        onClick={() => setPmHistoryOpen(true)}
-        style={{
-          background: 'none', border: 'none', padding: 0, marginBottom: 12,
-          color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
-        }}
-      >
-        Prime Ministers ›
-      </button>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 12 }}>
+        <button
+          onClick={() => setPmHistoryOpen(true)}
+          style={{
+            background: 'none', border: 'none', padding: 0,
+            color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+          }}
+        >
+          Prime Ministers ›
+        </button>
+        {isPM && !electionImminent && (
+          <button
+            onClick={() => requestConfirm({
+              title: 'Call a snap election?',
+              message: 'You dissolve Parliament and go to the country. The campaign begins at your next decision.',
+              confirmLabel: 'Go to the country',
+              onConfirm: callSnapElection,
+            })}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+            }}
+          >
+            Call a snap election ›
+          </button>
+        )}
+      </div>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <Hemicycle seats={game.seats} />
@@ -82,7 +113,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           }} />
         </div>
         <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 6 }}>
-          {govSeats} government seats · {workingTarget} needed to win votes
+          {govSeats} government seats{coalitionSeats > 0 ? ' (incl. coalition partner)' : ''} · {workingTarget} needed to win votes
           {sfSeats > 0 ? ` (Sinn Féin's ${sfSeats} MPs don't take their seats)` : ''}
         </p>
       </div>
