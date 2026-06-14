@@ -3,6 +3,7 @@ import { useUiStore } from './store/uiStore';
 import { useGameStore } from './store/gameStore';
 import { TabBar } from './components/TabBar';
 import { ConfirmModal } from './components/ConfirmModal';
+import { PmHistoryModal } from './components/PmHistoryModal';
 import { TitleScreen } from './screens/TitleScreen';
 import { NewCareerScreen } from './screens/NewCareerScreen';
 import { LoadGameScreen } from './screens/LoadGameScreen';
@@ -93,6 +94,7 @@ export default function App() {
       <TabBar />
       {debug && <DebugMenu />}
       <ConfirmModal />
+      <PmHistoryModal game={game} />
     </div>
   );
 }

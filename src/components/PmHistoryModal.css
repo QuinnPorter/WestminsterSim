@@ -1,0 +1,63 @@
+.pmh-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.pmh-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pmh-row:last-child {
+  border-bottom: none;
+}
+
+.pmh-you {
+  margin: 0 -8px;
+  padding: 9px 8px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  border-bottom: none;
+}
+
+.pmh-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pmh-name {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pmh-tag {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--party);
+  border: 1.5px solid var(--party);
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
+.pmh-range {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.pmh-empty {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  padding: 8px 0;
+}

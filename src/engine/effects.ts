@@ -1,7 +1,7 @@
 import { GameState, PartyId, StatDelta } from '../types/game';
 import { EffectSpec } from '../types/content';
 import { POLLED_PARTIES } from '../data/parties';
-import { adjustRelationship, KIND_LABELS } from './relationships';
+import { adjustRelationship, getRelationship, KIND_LABELS } from './relationships';
 import { clamp } from './rng';
 
 export const STAT_LABELS: Record<string, string> = {
@@ -88,6 +88,17 @@ export function applyEffects(state: GameState, spec: EffectSpec): StatDelta[] {
 
   if (spec.addHeadline) {
     state.history.push({ kind: 'event', date: state.day, headline: spec.addHeadline });
+  }
+
+  if (spec.grantFavour) {
+    const rel = getRelationship(state, spec.grantFavour.kind);
+    if (rel) {
+      (state.player.favours ??= []).push({
+        kind: spec.grantFavour.kind,
+        characterId: rel.characterId,
+        note: spec.grantFavour.note ?? '',
+      });
+    }
   }
 
   if (spec.trigger === 'rebel') {

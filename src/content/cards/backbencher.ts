@@ -486,4 +486,54 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'bb_cover_ally',
+    title: 'Covering for a friend',
+    body: '{ally} is double-booked — a select committee they cannot miss clashes with a chamber debate they are down to lead on. A little sheepishly, they ask whether you might take their slot.',
+    speaker: 'ally',
+    tags: ['party', 'westminster'],
+    weight: 9, cooldownDays: 600,
+    requires: { maxTier: 4 },
+    choices: [
+      {
+        label: 'Step in — happy to help',
+        effects: {
+          stats: { profile: 2 },
+          relationships: [{ kind: 'ally', delta: 6 }],
+          grantFavour: { kind: 'ally', note: 'You covered a debate when it counted.' },
+        },
+        outcomeText: 'You take the slot at short notice and make a decent fist of it. {ally} is quietly, genuinely grateful — the kind of debt that gets repaid when it matters most.',
+      },
+      {
+        label: 'Sorry — too much on',
+        effects: { relationships: [{ kind: 'ally', delta: -3 }] },
+        outcomeText: 'You beg off. {ally} says they understand, and mostly they do. A small coolness settles where some of the warmth used to be.',
+      },
+    ],
+  },
+  {
+    id: 'bb_defend_mentor',
+    title: "In the mentor's corner",
+    body: 'A waspish profile of {mentor} is doing the rounds, and the lobby wants colleagues to twist the knife on the record. A loyal word from you would help them; silence would be the safer career move.',
+    speaker: 'mentor',
+    tags: ['media', 'party'],
+    weight: 8, cooldownDays: 600,
+    requires: { maxTier: 4 },
+    choices: [
+      {
+        label: 'Defend them, on the record',
+        effects: {
+          stats: { profile: 2, integrity: 1 },
+          relationships: [{ kind: 'mentor', delta: 6 }],
+          grantFavour: { kind: 'mentor', note: 'You stood up for them when it was easier not to.' },
+        },
+        outcomeText: 'You give the warm, unguarded quote that turns the story. {mentor} does not forget who spoke up when the wind was against them.',
+      },
+      {
+        label: 'Stay diplomatically silent',
+        effects: {},
+        outcomeText: 'You let the story run its course without your fingerprints on it. Prudent — and noticed, in the way that absences are.',
+      },
+    ],
+  },
 ];

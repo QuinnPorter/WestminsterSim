@@ -7,6 +7,7 @@ import { Avatar } from '../avatar/Avatar';
 import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { BACKGROUNDS } from '../data/backgrounds';
+import { CAUSES_BY_ID } from '../data/causes';
 import { STAT_LABELS } from '../engine/effects';
 import {
   playerOfficeLabel, playerOfficeTitle, playerIsLeader, playerInGovernment, playerTier,
@@ -124,6 +125,22 @@ export function ProfileScreen({ game }: { game: GameState }) {
               ⚠ Recently crossed the floor — the voters will have their say at the next election.
             </p>
           )}
+        </div>
+      )}
+
+      {(player.causes ?? []).length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 8 }}>Your agenda</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {player.causes.map((c) => (
+              <span key={c} style={{
+                fontSize: 'var(--fs-xs)', fontWeight: 700, padding: '4px 10px',
+                borderRadius: 999, background: 'var(--surface-2)',
+              }}>
+                {CAUSES_BY_ID[c]?.label ?? c}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 

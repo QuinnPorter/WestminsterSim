@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import {
-  AvatarConfig, BackgroundId, Era, Gender, PartyId, RegionId,
+  AvatarConfig, BackgroundId, CauseId, Era, Gender, PartyId, RegionId,
 } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
+import { CAUSES } from '../data/causes';
 import { PARTIES, playablePartiesForEra, populistPartyForEra } from '../data/parties';
 import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
@@ -15,7 +16,9 @@ import { Rng } from '../engine/rng';
 import { randomAvatar, generateName } from '../generation/characters';
 import './NewCareerScreen.css';
 
-const STEPS = ['Era', 'You', 'Party', 'Background', 'Look'] as const;
+const STEPS = ['Era', 'You', 'Party', 'Background', 'Agenda', 'Look'] as const;
+
+const MAX_CAUSES = 3;
 
 const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
   '2015': {
@@ -61,6 +64,7 @@ export function NewCareerScreen() {
   const [partyId, setPartyId] = useState<PartyId>('lab');
   const [region, setRegion] = useState<RegionId>('yorkshire');
   const [background, setBackground] = useState<BackgroundId>('teacher');
+  const [causes, setCauses] = useState<CauseId[]>([]);
   const [avatar, setAvatar] = useState<AvatarConfig>(() =>
     randomAvatar(new Rng((Math.random() * 0xffffffff) >>> 0))
   );
@@ -82,9 +86,17 @@ export function NewCareerScreen() {
     }));
   };
 
+  const toggleCause = (id: CauseId) => {
+    setCauses((cs) =>
+      cs.includes(id) ? cs.filter((c) => c !== id)
+      : cs.length < MAX_CAUSES ? [...cs, id]
+      : cs
+    );
+  };
+
   const finish = () => {
     startNewGame({
-      name: name.trim(), gender, age, region, background, partyId, avatar, era,
+      name: name.trim(), gender, age, region, background, partyId, avatar, era, causes,
     });
     setStarted(true);
   };
@@ -228,6 +240,33 @@ export function NewCareerScreen() {
       )}
 
       {step === 4 && (
+        <div className="fade-in">
+          <h2 className="nc-h">What do you stand for?</h2>
+          <p className="nc-hint" style={{ marginTop: 0 }}>
+            Choose up to three causes to champion. They colour your story — and tilt you,
+            a little, toward the briefs that fit. {causes.length}/{MAX_CAUSES} chosen.
+          </p>
+          <div className="nc-bgs">
+            {CAUSES.map((c) => {
+              const selected = causes.includes(c.id);
+              const atLimit = !selected && causes.length >= MAX_CAUSES;
+              return (
+                <button
+                  key={c.id}
+                  className={`card nc-bg${selected ? ' selected' : ''}`}
+                  style={{ opacity: atLimit ? 0.45 : 1 }}
+                  onClick={() => toggleCause(c.id)}
+                >
+                  <strong>{c.label}</strong>
+                  <span>{c.blurb}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {step === 5 && (
         <div className="fade-in">
           <h2 className="nc-h">Looking the part</h2>
           <SwipeCarousel

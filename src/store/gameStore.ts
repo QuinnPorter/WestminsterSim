@@ -8,7 +8,7 @@ import {
 } from '../engine/turn';
 import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
-  setDeputyPmCore, playerOfficeTitle,
+  setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -80,6 +80,15 @@ export function migrateGameState(game: GameState): GameState {
   }
   if (game.government.termsInPower === undefined) {
     game.government.termsInPower = 1;
+  }
+  if (game.player.causes === undefined) {
+    game.player.causes = [];
+  }
+  if (game.player.favours === undefined) {
+    game.player.favours = [];
+  }
+  if (!game.pmHistory) {
+    game.pmHistory = reconstructPmHistory(game);
   }
   game.version = SAVE_VERSION;
   return game;

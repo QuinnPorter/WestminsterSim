@@ -1,7 +1,8 @@
 import { DrawnCard, GameState, PartyId, StatDelta } from '../types/game';
 import { ALL_CARDS, FALLBACK_POOL } from '../content/cards';
+import { SCANDAL_ARC_BEATS } from '../content/cards/crisis';
 import { PARTIES } from '../data/parties';
-import { drawCard, makeDrawnCard, resolveTokens } from './cardEngine';
+import { cardEligible, drawCard, makeDrawnCard, resolveTokens } from './cardEngine';
 import {
   applyElectionAftermath, materializeForced, playerIsPM, runReshuffle,
   openLeadershipVacancy, playerIsLeader, onFrontbenchTrack, onMinorPartyTrack,
@@ -26,8 +27,10 @@ interface CalendarEvent {
 }
 
 const CALENDAR: CalendarEvent[] = [
+  { key: 'pmqsWinter', month: 1, day: 22 },
   { key: 'budget', month: 3, day: 10 },
   { key: 'locals', month: 5, day: 4 },
+  { key: 'pmqsSummer', month: 6, day: 18 },
   { key: 'recess', month: 8, day: 5 },
   { key: 'conference', month: 9, day: 28 },
 ];
@@ -212,6 +215,38 @@ export function nextStep(state: GameState, rng: Rng): void {
       const due = state.calendarDone[ev.key];
       if (due !== undefined && state.day >= due) {
         state.calendarDone[ev.key] = nextOccurrence(state.day, ev.month, ev.day);
+        // enriched, role-specific set-pieces (multi-step forced sequences);
+        // everyone else gets the lighter single-card calendar version
+        if (ev.key === 'budget' && (playerIsPM(state) || state.player.officeId === 'sos_treasury')) {
+          state.forcedQueue.push(
+            { kind: 'budget', payload: { step: 1 } },
+            { kind: 'budget', payload: { step: 2 } },
+            { kind: 'budget', payload: { step: 3 } },
+          );
+          nextStep(state, rng);
+          return;
+        }
+        if (ev.key === 'conference' && playerIsLeader(state)) {
+          state.forcedQueue.push(
+            { kind: 'conference', payload: { step: 1 } },
+            { kind: 'conference', payload: { step: 2 } },
+            { kind: 'conference', payload: { step: 3 } },
+          );
+          nextStep(state, rng);
+          return;
+        }
+        if (ev.key === 'pmqsWinter' || ev.key === 'pmqsSummer') {
+          // PMQs is a leaders-only set-piece; backbenchers just watch it happen
+          if (playerIsLeader(state)) {
+            state.forcedQueue.push(
+              { kind: 'pmqs', payload: { step: 1 } },
+              { kind: 'pmqs', payload: { step: 2 } },
+            );
+            nextStep(state, rng);
+            return;
+          }
+          continue;
+        }
         state.currentCard = makeCalendarCard(state, rng, ev.key);
         return;
       }
@@ -615,6 +650,20 @@ export function nextStep(state: GameState, rng: Rng): void {
       npcReshuffle(state, rng, party);
     } else if (rng.chance(NPC_FRONTBENCH_RETIRE)) {
       npcFrontbencherRetires(state, rng, party);
+    }
+  }
+
+  // 3b. a live scandal keeps moving: if mid-arc, surface the next beat promptly
+  //     rather than waiting for the random walk to wander back to it
+  const scandalStage = state.player.flags.scandal_stage;
+  if (state.player.hasSeat && typeof scandalStage === 'number' && scandalStage > 0) {
+    const beats = SCANDAL_ARC_BEATS.filter((c) => cardEligible(state, c));
+    if (beats.length > 0) {
+      const beat = rng.pickWeighted(beats, (c) => c.weight);
+      state.lastCardId = beat.id;
+      state.cardHistory[beat.id] = state.day;
+      state.currentCard = makeDrawnCard(state, rng, beat);
+      return;
     }
   }
 

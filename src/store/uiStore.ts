@@ -27,6 +27,9 @@ interface UiState {
   confirm: ConfirmRequest | null;
   requestConfirm: (req: ConfirmRequest) => void;
   closeConfirm: () => void;
+  /** whether the Prime-Minister succession modal is open */
+  pmHistoryOpen: boolean;
+  setPmHistoryOpen: (v: boolean) => void;
   debug: boolean;
 }
 
@@ -40,6 +43,8 @@ export const useUiStore = create<UiState>((set) => ({
   confirm: null,
   requestConfirm: (req) => set({ confirm: req }),
   closeConfirm: () => set({ confirm: null }),
+  pmHistoryOpen: false,
+  setPmHistoryOpen: (v) => set({ pmHistoryOpen: v }),
   debug:
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('debug'),

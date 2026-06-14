@@ -1,5 +1,5 @@
 import {
-  DepartmentId, Era, OfficeTier, PartyId, PlayerStats, RelationshipKind,
+  CauseId, DepartmentId, Era, OfficeTier, PartyId, PlayerStats, RelationshipKind,
 } from './game';
 
 export type CardTag =
@@ -23,6 +23,8 @@ export interface Requirement {
   minorParty?: boolean;
   /** only fire under these government arrangements (coalition-life cards) */
   arrangementIn?: ('majority' | 'minority' | 'supplyConfidence' | 'coalition')[];
+  /** only fire when the player champions at least one of these causes */
+  causeIn?: CauseId[];
 }
 
 export type CardTrigger =
@@ -36,6 +38,8 @@ export interface EffectSpec {
   setFlags?: Record<string, boolean | number>;
   addHeadline?: string;
   trigger?: CardTrigger;
+  /** bank a favour owed by the current holder of this relationship */
+  grantFavour?: { kind: RelationshipKind; note?: string };
 }
 
 export interface WeightedOutcome {

@@ -14,6 +14,9 @@ import { PORTFOLIO_CARDS } from './portfolio';
 import { PORTFOLIO_EXTRA_CARDS } from './portfolioExtra';
 import { THIRD_PARTY_CARDS } from './thirdParty';
 import { ROLE_CARDS } from './roles';
+import { ERA_CARDS } from './era';
+import { WHIP_CARDS } from './whips';
+import { MINISTRY_FOCUS_CARDS } from './ministryFocus';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling */
 export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
@@ -34,6 +37,9 @@ export const ALL_CARDS: DecisionCard[] = [
   ...PORTFOLIO_EXTRA_CARDS,
   ...THIRD_PARTY_CARDS,
   ...ROLE_CARDS,
+  ...ERA_CARDS,
+  ...WHIP_CARDS,
+  ...MINISTRY_FOCUS_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {

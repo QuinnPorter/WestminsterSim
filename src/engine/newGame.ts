@@ -1,5 +1,5 @@
 import {
-  AvatarConfig, BackgroundId, CabinetPost, Character, Era, GameState, Gender,
+  AvatarConfig, BackgroundId, CabinetPost, CauseId, Character, Era, GameState, Gender,
   PartyId, Player, RegionId, Relationship,
 } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
@@ -19,10 +19,12 @@ export interface CreationInput {
   partyId: PartyId;
   avatar: AvatarConfig;
   era: Era;
+  /** broad causes chosen at the agenda step (0–3) */
+  causes?: CauseId[];
   seed?: number;
 }
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -48,6 +50,8 @@ function buildPlayer(input: CreationInput, seatId: string, startDay: number): Pl
     seatId,
     hasSeat: true,
     enteredParliament: startDay,
+    causes: (input.causes ?? []).slice(0, 3),
+    favours: [],
   };
 }
 
@@ -197,6 +201,9 @@ export function createNewGame(input: CreationInput): GameState {
       },
     ],
     elections: {},
+    pmHistory: [
+      { characterId: pm.id, name: pm.name, partyId: govParty, startDay, endDay: null },
+    ],
     currentCard: null,
     pendingElectionId: null,
     forcedQueue: [],

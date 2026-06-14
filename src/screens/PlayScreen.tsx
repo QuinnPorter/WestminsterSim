@@ -2,6 +2,7 @@ import { GameState } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { TopBar } from '../components/TopBar';
 import { StatChips } from '../components/StatChips';
+import { SituationPanel } from '../components/SituationPanel';
 import { DecisionCardView } from '../components/DecisionCardView';
 
 export function PlayScreen({ game }: { game: GameState }) {
@@ -14,6 +15,7 @@ export function PlayScreen({ game }: { game: GameState }) {
       <div style={{ marginBottom: 12 }}>
         <StatChips stats={game.player.stats} />
       </div>
+      <SituationPanel game={game} />
       {game.currentCard ? (
         <DecisionCardView
           game={game}

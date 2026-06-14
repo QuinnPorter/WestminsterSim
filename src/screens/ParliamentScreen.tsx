@@ -4,8 +4,10 @@ import { Hemicycle } from '../components/Hemicycle';
 import { PollGraph } from '../components/PollGraph';
 import { partyPolling } from '../engine/polling';
 import { polledPartiesForEra } from '../data/parties';
+import { useUiStore } from '../store/uiStore';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
+  const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
   const sorted = (Object.entries(game.seats) as [PartyId, number][])
     .filter(([, n]) => (n ?? 0) > 0)
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
@@ -33,6 +35,15 @@ export function ParliamentScreen({ game }: { game: GameState }) {
               ? `minority, with ${PARTIES[gov.confidencePartner].shortName} support`
               : 'minority government'}
       </p>
+      <button
+        onClick={() => setPmHistoryOpen(true)}
+        style={{
+          background: 'none', border: 'none', padding: 0, marginBottom: 12,
+          color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+        }}
+      >
+        Prime Ministers ›
+      </button>
 
       <div className="card" style={{ marginBottom: 12 }}>
         <Hemicycle seats={game.seats} />

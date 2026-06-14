@@ -13,6 +13,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
   const sackMinister = useGameStore((s) => s.sackMinister);
   const setDeputyPm = useGameStore((s) => s.setDeputyPm);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
+  const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
   const isGov = side === 'gov';
   const leaderId = isGov ? game.government.pmId : game.government.loId;
   const posts = isGov ? game.government.cabinet : game.government.shadowCabinet;
@@ -39,6 +40,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
         game={game}
         characterId={leaderId}
         title={isGov ? 'Prime Minister' : 'Leader of the Opposition'}
+        onTitleClick={isGov ? () => setPmHistoryOpen(true) : undefined}
       />
 
       <div className="cab-grid">
@@ -97,8 +99,8 @@ export function CabinetScreen({ game }: { game: GameState }) {
   );
 }
 
-function FeaturedMember({ game, characterId, title }: {
-  game: GameState; characterId: string; title: string;
+function FeaturedMember({ game, characterId, title, onTitleClick }: {
+  game: GameState; characterId: string; title: string; onTitleClick?: () => void;
 }) {
   const isPlayer = characterId === 'player';
   const char = isPlayer ? null : game.characters[characterId];
@@ -115,7 +117,13 @@ function FeaturedMember({ game, characterId, title }: {
         <div className="cab-featured-name">
           {name} {isPlayer && <span className="cab-you">YOU</span>}
         </div>
-        <div className="cab-featured-title">{title}</div>
+        {onTitleClick ? (
+          <button className="cab-featured-title cab-title-link" onClick={onTitleClick}>
+            {title} <span aria-hidden>›</span>
+          </button>
+        ) : (
+          <div className="cab-featured-title">{title}</div>
+        )}
       </div>
     </div>
   );

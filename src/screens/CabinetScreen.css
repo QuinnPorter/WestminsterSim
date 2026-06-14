@@ -39,6 +39,22 @@
   font-weight: 600;
 }
 
+/* clickable PM title → opens the succession modal */
+.cab-title-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--party);
+  cursor: pointer;
+}
+
+.cab-title-link span {
+  font-weight: 800;
+}
+
 .cab-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

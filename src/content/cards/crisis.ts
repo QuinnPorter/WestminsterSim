@@ -116,6 +116,97 @@ export const CRISIS_CARDS: DecisionCard[] = [
       },
     ],
   },
+  // ---- the scandal arc: a story that unfolds over several turns ----
+  // break (sets scandal_stage: 1, scandal: true) → investigation (→ 2) →
+  // resolution (→ clears). The scheduler surfaces each beat promptly.
+  {
+    id: 'cr_arc_break',
+    title: 'The story breaks',
+    body: '{journalist} calls, not for comment but as a courtesy: a serious story about you runs tomorrow, splashed across the front page. This is not a one-day item. They want to know if you have anything to say before the presses roll.',
+    speaker: 'journalist',
+    tags: ['scandal', 'media', 'serious'],
+    weight: 5, cooldownDays: 1500,
+    requires: { maxTier: 5, flags: { scandal_stage: false } },
+    choices: [
+      {
+        label: 'Deny everything, flatly',
+        effects: {
+          setFlags: { scandal_stage: 1, scandal: true, scandal_denied: true },
+          stats: { profile: -1 },
+          relationships: [{ kind: 'journalist', delta: -5 }],
+        },
+        outcomeText: 'You issue a categorical denial. It buys you the morning — but a flat denial is a hostage to the next document, and {journalist} now has a personal stake in finding it.',
+      },
+      {
+        label: 'Get ahead of it — explain yourself',
+        effects: {
+          setFlags: { scandal_stage: 1, scandal: true, scandal_denied: false },
+          stats: { integrity: 2, partyStanding: -2 },
+          relationships: [{ kind: 'journalist', delta: 3 }],
+        },
+        outcomeText: 'You put out your own account before the splash lands, ugly details and all. It hurts to read it in your own words — but it is harder to ambush someone who has already confessed.',
+      },
+    ],
+  },
+  {
+    id: 'cr_arc_investigation',
+    title: 'The inquiry opens',
+    body: 'The story has legs. A formal investigation is now under way — standards commissioner, party machine, the lot — and every colleague you pass is calculating whether to be seen with you. How you handle the process is the story now.',
+    tags: ['scandal', 'serious'],
+    weight: 30, cooldownDays: 2,
+    requires: { flags: { scandal_stage: 1 } },
+    choices: [
+      {
+        label: 'Cooperate fully and openly',
+        effects: {
+          setFlags: { scandal_stage: 2 },
+          stats: { integrity: 3, partyStanding: -1 },
+          relationships: [{ kind: 'journalist', delta: 2 }],
+        },
+        outcomeText: 'You hand over everything and answer every question. It is a miserable fortnight — but "fully cooperated" is a phrase that does quiet work in the final report.',
+      },
+      {
+        label: 'Stonewall — lawyer up',
+        effects: {
+          setFlags: { scandal_stage: 2, scandal_stonewall: true },
+          stats: { integrity: -3, profile: -1 },
+          relationships: [{ kind: 'journalist', delta: -4 }],
+        },
+        outcomeText: 'You retreat behind expensive silence. It slows the inquiry — and confirms, in the public mind, that there is something worth the lawyers\' fees.',
+      },
+    ],
+  },
+  {
+    id: 'cr_arc_resolution',
+    title: 'The reckoning',
+    body: 'The inquiry is ready to report and the leadership wants the matter closed. There are two ways this ends: you tough it out and dare them to move against you, or you take responsibility and try to write the final paragraph yourself.',
+    tags: ['scandal', 'serious'],
+    weight: 30, cooldownDays: 2,
+    requires: { flags: { scandal_stage: 2 } },
+    choices: [
+      {
+        label: 'Tough it out — refuse to go',
+        effects: {
+          setFlags: { scandal_stage: 0, scandal: false, scandal_denied: false, scandal_stonewall: false },
+          stats: { partyStanding: -4, profile: -2, integrity: -1 },
+          relationships: [{ kind: 'leader', delta: -4 }],
+        },
+        outcomeText: [
+          { weight: 2, text: 'You stare them down and survive — battered, diminished, but still standing. The story finally burns itself out, leaving a scar the cartoonists will reach for whenever they need one.' },
+          { weight: 1, text: 'You cling on, but the cost is real: colleagues who once sought you out now keep their distance, and the leader\'s office files you under "liability".', extra: { stats: { partyStanding: -3 } } },
+        ],
+      },
+      {
+        label: 'Take responsibility and step back',
+        effects: {
+          setFlags: { scandal_stage: 0, scandal: false, scandal_denied: false, scandal_stonewall: false },
+          stats: { integrity: 5, partyStanding: 1 },
+          trigger: 'resignOffice',
+        },
+        outcomeText: 'You make a full and contrite statement, and where you hold an office, you lay it down. Painful in the moment — but a clean break the public can forgive, and a story that finally has its ending.',
+      },
+    ],
+  },
   {
     id: 'cr_heckler_moment',
     title: 'The heckle',
@@ -136,3 +227,9 @@ export const CRISIS_CARDS: DecisionCard[] = [
     ],
   },
 ];
+
+/** the mid-arc beats (not the opening card) — the scheduler surfaces these
+ *  promptly while a scandal is live so the story doesn't stall. */
+export const SCANDAL_ARC_BEATS: DecisionCard[] = CRISIS_CARDS.filter(
+  (c) => c.id === 'cr_arc_investigation' || c.id === 'cr_arc_resolution'
+);

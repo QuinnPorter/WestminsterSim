@@ -18,6 +18,12 @@ export type GameDay = number;
 
 export type Era = '2015' | '2017' | '2019' | '2024';
 
+/** broad political causes the player champions — see data/causes.ts */
+export type CauseId =
+  | 'economy' | 'inequality' | 'publicServices' | 'environment'
+  | 'immigration' | 'defence' | 'foreignAffairs' | 'housing'
+  | 'lawAndOrder' | 'education';
+
 // ---- parties / parliament ----
 
 export interface Party {
@@ -108,6 +114,14 @@ export interface Relationship {
   value: number;
 }
 
+/** a banked debt the player can call in at a high-stakes moment */
+export interface Favour {
+  kind: RelationshipKind;
+  characterId: string;
+  /** short description of why they owe you, shown when spending it */
+  note: string;
+}
+
 // ---- player ----
 
 export type BackgroundId =
@@ -149,6 +163,10 @@ export interface Player {
   hasSeat: boolean;
   /** day the player first entered parliament */
   enteredParliament: GameDay;
+  /** broad causes chosen at career start (0–3) — mostly aesthetic + light weighting */
+  causes: CauseId[];
+  /** banked favours the player can spend at key moments */
+  favours: Favour[];
 }
 
 // ---- politics state ----
@@ -231,6 +249,16 @@ export interface ElectionResult {
   playerHeldSeat: boolean;
 }
 
+/** one person's continuous spell as Prime Minister */
+export interface PmTenure {
+  characterId: string;
+  name: string;
+  partyId: PartyId;
+  startDay: GameDay;
+  /** null while still serving */
+  endDay: GameDay | null;
+}
+
 export type HistoryEntry =
   | { kind: 'roleChange'; date: GameDay; officeId: OfficeId | null;
       how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' | 'continued';
@@ -256,6 +284,7 @@ export type ForcedKind =
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'speakerContest'
+  | 'budget' | 'pmqs' | 'conference'
   | 'calendar';
 
 export interface DrawnCard {
@@ -283,6 +312,20 @@ export interface LegacySummary {
   highestOfficeTitle: string;
   electionsWon: number;
   headlines: string[];
+  /** richer scoring — all optional so pre-v6 saved legacies still render */
+  electionsContested?: number;
+  rebellions?: number;
+  becamePM?: boolean;
+  becameLeader?: boolean;
+  wasSpeaker?: boolean;
+  wasDeputyPM?: boolean;
+  pmStints?: number;
+  finalStats?: PlayerStats;
+  causes?: CauseId[];
+  /** one-line characterisation of the career, e.g. "Principled premier" */
+  verdict?: string;
+  /** single-word rating, e.g. "Footnote" → "Colossus" */
+  rating?: string;
 }
 
 // ---- top level ----
@@ -308,6 +351,8 @@ export interface GameState {
 
   history: HistoryEntry[];
   elections: Record<string, ElectionResult>;
+  /** succession of Prime Ministers (player and NPC), oldest first */
+  pmHistory: PmTenure[];
 
   currentCard: DrawnCard | null;
   /** election result waiting to be shown on the election-night screen */

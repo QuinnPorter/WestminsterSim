@@ -1,0 +1,216 @@
+import { describe, expect, it } from 'vitest';
+import { createNewGame, CreationInput } from '../newGame';
+import {
+  recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
+} from '../career';
+import { initCalendar, nextStep } from '../scheduler';
+import { applyEffects } from '../effects';
+import { cardEligible } from '../cardEngine';
+import { getRelationship } from '../relationships';
+import { ALL_CARDS } from '../../content/cards';
+import { DecisionCard } from '../../types/content';
+import { GameState } from '../../types/game';
+import { Rng } from '../rng';
+
+const byId = (id: string): DecisionCard => ALL_CARDS.find((c) => c.id === id)!;
+
+function makeGame(seed = 7, causes: CreationInput['causes'] = ['publicServices']): GameState {
+  const input: CreationInput = {
+    name: 'Test MP', gender: 'f', age: 44, region: 'yorkshire',
+    background: 'teacher', partyId: 'lab',
+    avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
+    era: '2024', seed, causes,
+  };
+  return createNewGame(input);
+}
+
+describe('expansion — data model', () => {
+  it('seeds pmHistory, causes and favours on a new game', () => {
+    const g = makeGame();
+    expect(g.version).toBe(6);
+    expect(g.pmHistory).toHaveLength(1);
+    expect(g.pmHistory[0].endDay).toBeNull();
+    expect(g.pmHistory[0].characterId).toBe(g.government.pmId);
+    expect(g.player.causes).toEqual(['publicServices']);
+    expect(g.player.favours).toEqual([]);
+  });
+
+  it('records a change of Prime Minister, closing the prior spell', () => {
+    const g = makeGame();
+    const firstPm = g.pmHistory[0];
+    g.day += 400;
+    recordPmChange(g, 'player');
+    expect(g.pmHistory).toHaveLength(2);
+    expect(firstPm.endDay).toBe(g.day);
+    expect(g.pmHistory[1].characterId).toBe('player');
+    expect(g.pmHistory[1].name).toBe(g.player.name);
+    expect(g.pmHistory[1].endDay).toBeNull();
+  });
+
+  it('is a no-op when the same person is already the incumbent', () => {
+    const g = makeGame();
+    recordPmChange(g, g.government.pmId);
+    expect(g.pmHistory).toHaveLength(1);
+  });
+
+  it('reconstructs pmHistory from a legacy save with no pmHistory', () => {
+    const g = makeGame();
+    // simulate a pre-v6 save: drop the structured history, keep a headline trail
+    g.pmHistory = undefined as unknown as GameState['pmHistory'];
+    g.history.push({ kind: 'event', date: g.day + 100, headline: 'Jordan Vale becomes Prime Minister' });
+    g.government.pmId = 'npc_x';
+    g.characters['npc_x'] = {
+      id: 'npc_x', name: 'Jordan Vale', gender: 'm', age: 55, partyId: 'lab',
+      officeId: 'leader', traits: [], competence: 60,
+      avatar: g.player.avatar, active: true,
+    };
+    g.government.pmSinceDay = g.day + 100;
+    const rebuilt = reconstructPmHistory(g);
+    expect(rebuilt.length).toBeGreaterThanOrEqual(1);
+    expect(rebuilt[rebuilt.length - 1].name).toBe('Jordan Vale');
+    expect(rebuilt[rebuilt.length - 1].endDay).toBeNull();
+  });
+});
+
+describe('expansion — favours', () => {
+  it('grantFavour banks a favour against the named relationship', () => {
+    const g = makeGame();
+    const allyId = getRelationship(g, 'ally')!.characterId;
+    applyEffects(g, { grantFavour: { kind: 'ally', note: 'owed one' } });
+    expect(g.player.favours).toHaveLength(1);
+    expect(g.player.favours[0].kind).toBe('ally');
+    expect(g.player.favours[0].characterId).toBe(allyId);
+    expect(g.player.favours[0].note).toBe('owed one');
+  });
+});
+
+describe('expansion — scandal arc', () => {
+  it('gates each beat by the scandal_stage flag', () => {
+    const g = makeGame();
+    const breakCard = byId('cr_arc_break');
+    const investigation = byId('cr_arc_investigation');
+    const resolution = byId('cr_arc_resolution');
+
+    // no scandal yet: the opener is eligible, the beats are not
+    expect(cardEligible(g, breakCard)).toBe(true);
+    expect(cardEligible(g, investigation)).toBe(false);
+    expect(cardEligible(g, resolution)).toBe(false);
+
+    // stage 1: investigation surfaces, the opener is locked out
+    g.player.flags.scandal_stage = 1;
+    expect(cardEligible(g, breakCard)).toBe(false);
+    expect(cardEligible(g, investigation)).toBe(true);
+    expect(cardEligible(g, resolution)).toBe(false);
+
+    // stage 2: only the resolution
+    g.player.flags.scandal_stage = 2;
+    expect(cardEligible(g, investigation)).toBe(false);
+    expect(cardEligible(g, resolution)).toBe(true);
+  });
+
+  it('the opening beat sets the scandal flags', () => {
+    const g = makeGame();
+    const breakCard = byId('cr_arc_break');
+    applyEffects(g, breakCard.choices[0].effects);
+    expect(g.player.flags.scandal_stage).toBe(1);
+    expect(g.player.flags.scandal).toBe(true);
+  });
+});
+
+describe('expansion — active whipping', () => {
+  it('rebelling on a three-line whip increments the rebellion count', () => {
+    const g = makeGame();
+    const before = g.player.rebellionCount;
+    const whip = byId('whip_three_line');
+    const rebel = whip.choices.find((c) => c.label.startsWith('Rebel'))!;
+    applyEffects(g, rebel.effects);
+    expect(g.player.rebellionCount).toBe(before + 1);
+  });
+});
+
+describe('expansion — ministry focus', () => {
+  it('has a department-gated focus card for every cabinet department, each banking its flag', async () => {
+    const { MINISTRY_FOCUS_CARDS } = await import('../../content/cards/ministryFocus');
+    expect(MINISTRY_FOCUS_CARDS.length).toBe(12);
+    for (const card of MINISTRY_FOCUS_CARDS) {
+      const dept = card.requires?.department?.[0];
+      expect(dept).toBeTruthy();
+      expect(card.requires?.minTier).toBe(4);
+      expect(card.requires?.flags).toEqual({ [`focus_${dept}`]: false });
+      // each choice writes a distinct focus_<dept> value
+      card.choices.forEach((c, i) => {
+        expect(c.effects.setFlags?.[`focus_${dept}`]).toBe(i + 1);
+      });
+    }
+  });
+});
+
+describe('expansion — set-pieces', () => {
+  it('budget runs as a three-step sequence that moves polling and logs a headline', () => {
+    const g = makeGame();
+    const rng = new Rng(3);
+    for (let step = 1; step <= 3; step++) {
+      const card = materializeForced(g, rng, { kind: 'budget', payload: { step } });
+      expect(card.kind).toBe('budget');
+      expect(card.choices.length).toBeGreaterThanOrEqual(2);
+      const out = resolveForcedChoice(g, rng, card, 0);
+      expect(out.text).toBeTruthy();
+    }
+    expect(g.history.some((h) => h.kind === 'event' && /delivers the Budget/.test(h.headline))).toBe(true);
+  });
+
+  it('pmqs names the opposing leader and runs a two-step exchange', () => {
+    const g = makeGame();
+    g.player.officeId = 'leader'; // player is a leader → opponent is the other leader
+    const rng = new Rng(5);
+    const card = materializeForced(g, rng, { kind: 'pmqs', payload: { step: 1 } });
+    expect(card.kind).toBe('pmqs');
+    expect(card.choices.length).toBe(4);
+    expect(resolveForcedChoice(g, rng, card, 0).text).toBeTruthy();
+    const card2 = materializeForced(g, rng, { kind: 'pmqs', payload: { step: 2 } });
+    expect(resolveForcedChoice(g, rng, card2, 2).text).toBeTruthy();
+  });
+
+  it('conference runs a three-beat speech and logs a headline', () => {
+    const g = makeGame();
+    const rng = new Rng(9);
+    for (let step = 1; step <= 3; step++) {
+      const card = materializeForced(g, rng, { kind: 'conference', payload: { step } });
+      expect(card.kind).toBe('conference');
+      resolveForcedChoice(g, rng, card, 0);
+    }
+    expect(g.history.some((h) => h.kind === 'event' && /addresses the party conference/.test(h.headline))).toBe(true);
+  });
+
+  it('the scheduler routes a due Budget to the multi-step set-piece for the Chancellor', () => {
+    const g = makeGame();
+    initCalendar(g);
+    g.player.officeId = 'sos_treasury'; // Chancellor (player party governs in 2024)
+    g.nextElectionBy = g.day + 1000;
+    g.calendarDone.budget = g.day - 1; // force it due
+    nextStep(g, new Rng(1));
+    expect(g.currentCard?.kind).toBe('budget');
+  });
+
+  it('the scheduler routes a due conference to the keynote for a party leader', () => {
+    const g = makeGame();
+    initCalendar(g);
+    g.player.officeId = 'leader';
+    g.nextElectionBy = g.day + 1000;
+    g.calendarDone.conference = g.day - 1;
+    nextStep(g, new Rng(2));
+    expect(g.currentCard?.kind).toBe('conference');
+  });
+});
+
+describe('expansion — richer legacy', () => {
+  it('returns rating, verdict, final stats and causes', () => {
+    const g = makeGame();
+    const legacy = buildLegacy(g);
+    expect(legacy.rating).toBeTruthy();
+    expect(legacy.verdict).toBeTruthy();
+    expect(legacy.finalStats).toEqual(g.player.stats);
+    expect(legacy.causes).toEqual(['publicServices']);
+    expect(legacy.becamePM).toBe(false);
+  });
+});
