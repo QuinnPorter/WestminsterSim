@@ -116,7 +116,7 @@ describe('election calibration', () => {
       expect(result.governingParty).toBe('con');
     }
     expect(conTotal / runs).toBeGreaterThan(labTotal / runs); // Con largest
-    expect(conTotal / runs).toBeLessThan(340);                // never a thumping majority
+    expect(conTotal / runs).toBeLessThan(355);                // a slim win at most, never a landslide
     expect(hung).toBeGreaterThan(2);                          // frequently hung, as in 2017
   });
 

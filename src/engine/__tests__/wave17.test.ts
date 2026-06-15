@@ -15,6 +15,25 @@ function makeGame(partyId: PartyId = 'lab', era: Era = '2024', seed = 1234) {
   return createNewGame(input);
 }
 
+describe('wave 17 — winner\'s bonus / more decisive elections', () => {
+  it('a clear national lead converts into a single-party majority a healthy share of the time', () => {
+    let maj = 0, leaderWon = 0, total = 0;
+    const runs = 40;
+    for (let i = 0; i < runs; i++) {
+      const g = makeGame('lab', '2024', 1000 + i);
+      // a competitive but clearly-led field that often lands near the majority line
+      g.polling.shares = { lab: 0.34, con: 0.27, reform: 0.16, ld: 0.12, green: 0.07, snp: 0.025, pc: 0.005 };
+      const { result } = runElection(g, new Rng(5000 + i));
+      total++;
+      if (result.outcome === 'majority') maj++;
+      // the bonus backs the national vote leader, never overturning who leads
+      if (result.governingParty === 'lab') leaderWon++;
+    }
+    expect(maj / total).toBeGreaterThan(0.4); // decisive results are common
+    expect(leaderWon).toBe(total);            // the vote leader still forms the government
+  });
+});
+
 describe('wave 17 — populist seat responsiveness', () => {
   it('a Reform surge now converts to far more than the ~22 seats it used to win', () => {
     let ref = 0;

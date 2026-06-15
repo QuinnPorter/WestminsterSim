@@ -178,8 +178,9 @@ describe('rebalance targets (difficulty & coalitions)', () => {
 
   it('majorities are harder but common; sub-majority parliaments occur', () => {
     expect(maj / totalElections).toBeGreaterThan(0.30);
-    expect(maj / totalElections).toBeLessThan(0.75);
-    expect(subMajority / totalElections).toBeGreaterThan(0.18);
+    // the winner's-bonus makes a clear lead convert to a majority more often
+    expect(maj / totalElections).toBeLessThan(0.85);
+    expect(subMajority / totalElections).toBeGreaterThan(0.12);
   });
 
   it('coalitions and minority collapses both happen', () => {

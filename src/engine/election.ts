@@ -16,6 +16,9 @@ const CAMPAIGN_NOISE = 0.012;
  *  national surge under-converts to seats; give it a stronger swing-to-seat amplifier
  *  so it is somewhat more responsive (still below the concentrated parties' level). */
 const POPULIST_PARTIES: PartyId[] = ['ukip', 'brexit', 'reform'];
+/** per-seat vote-share bonus for the national vote-leader — tips marginals their
+ *  way so a clear lead crosses the majority line more often (≈+25% majorities). */
+const WINNER_BONUS = 0.008;
 
 /** compute this election's national GB vote shares — anchored to CURRENT POLLING
  *  (not to the last election), so the ballot box reflects the polls within a few
@@ -61,7 +64,8 @@ function computeSeat(
   national: Partial<Record<PartyId, number>>,
   anchor: Partial<Record<PartyId, number>>,
   rng: Rng,
-  playerBoost: { party: PartyId; pts: number } | null
+  playerBoost: { party: PartyId; pts: number } | null,
+  leaderBonus: { party: PartyId; pts: number } | null = null
 ): SeatOutcome {
   // the Speaker is conventionally unopposed
   if (seat.winner === 'spk' && !playerBoost) {
@@ -92,6 +96,13 @@ function computeSeat(
 
   if (playerBoost) {
     shares[playerBoost.party] = Math.max(0, (shares[playerBoost.party] ?? 0.05) + playerBoost.pts);
+  }
+  // winner's bonus: the national vote-leader's vote distributes a little more
+  // efficiently, tipping a handful of marginals their way so a clear lead crosses
+  // the majority line more often (more decisive parliaments). Safe/distant seats
+  // are unaffected; only close seats actually flip.
+  if (leaderBonus) {
+    shares[leaderBonus.party] = Math.max(0, (shares[leaderBonus.party] ?? 0) + leaderBonus.pts);
   }
 
   // renormalise so the result reads as real vote shares
@@ -172,6 +183,13 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
   const national = electionNationalShares(state, rng);
   const playerParty = state.player.partyId;
 
+  // the national vote-leader gets a small per-seat winner's bonus so a clear lead
+  // converts into a single-party majority more often (see computeSeat)
+  const leaderParty = (Object.entries(national) as [PartyId, number][])
+    .filter(([p]) => PARTIES[p]?.major)
+    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0] ?? null;
+  const leaderBonus = leaderParty ? { party: leaderParty, pts: WINNER_BONUS } : null;
+
   const playerSeat = state.seatMap.find((s) => s.id === state.player.seatId)!;
   const approval = state.player.stats.constituencyApproval;
   const personalVote = ((approval - 50) / 50) * 0.06;
@@ -206,7 +224,8 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
       seat, national, anchor, rng,
       isPlayerSeat
         ? { party: playerParty, pts: personalVote + incumbency + defectionPenalty }
-        : null
+        : null,
+      leaderBonus
     );
 
     if (isPlayerSeat) {
