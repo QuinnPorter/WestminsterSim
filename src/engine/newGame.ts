@@ -24,7 +24,7 @@ export interface CreationInput {
   seed?: number;
 }
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -204,6 +204,10 @@ export function createNewGame(input: CreationInput): GameState {
     pmHistory: [
       { characterId: pm.id, name: pm.name, partyId: govParty, startDay, endDay: null },
     ],
+    loHistory: [
+      { characterId: lo.id, name: lo.name, partyId: oppParty, startDay, endDay: null },
+    ],
+    mentors: [],
     currentCard: null,
     pendingElectionId: null,
     forcedQueue: [],

@@ -643,7 +643,11 @@ export function nextStep(state: GameState, rng: Rng): void {
     // leader churn: scandal (any time, rare) or a sustained polling collapse
     const collapseThreshold = isGov ? 23 : 19;
     const scandalFall = rng.chance(NPC_LEADER_SCANDAL);
-    const collapse = partyPolling(state, party) < collapseThreshold && rng.chance(LEADER_COLLAPSE_HAZARD);
+    // a PM gets a ~3-month grace before the polls can fell them — a leader who just
+    // won shouldn't resign over polling the same month (only scandal, Liz-Truss-style)
+    const pmGrace = !isGov || (state.day - state.government.pmSinceDay) >= 90;
+    const collapse = pmGrace
+      && partyPolling(state, party) < collapseThreshold && rng.chance(LEADER_COLLAPSE_HAZARD);
     if (scandalFall || collapse) {
       const leaderName = state.characters[leaderId]?.name ?? 'The leader';
       const role = isGov ? 'Prime Minister' : `${PARTIES[party].shortName} leader`;

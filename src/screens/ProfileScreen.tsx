@@ -15,7 +15,7 @@ import {
 import { relationshipName, getRelationship } from '../engine/relationships';
 import { formatMonthYear, yearsBetween } from '../engine/clock';
 
-interface OfficeSpan {
+export interface OfficeSpan {
   officeId: OfficeId;
   start: number;
   end: number | null;
@@ -24,11 +24,11 @@ interface OfficeSpan {
   partyId?: PartyId;
 }
 
-/** chronological portfolio history, derived from roleChange entries */
-function officeSpans(game: GameState): OfficeSpan[] {
+/** chronological portfolio history, derived from roleChange entries (newest first) */
+export function buildOfficeSpans(history: GameState['history']): OfficeSpan[] {
   const spans: OfficeSpan[] = [];
   let current: OfficeSpan | null = null;
-  for (const entry of game.history) {
+  for (const entry of history) {
     if (entry.kind !== 'roleChange') continue;
     if (current) {
       current.end = entry.date;
@@ -50,7 +50,11 @@ function officeSpans(game: GameState): OfficeSpan[] {
   return spans.reverse(); // newest first
 }
 
-function spanTitle(game: GameState, span: OfficeSpan): string {
+function officeSpans(game: GameState): OfficeSpan[] {
+  return buildOfficeSpans(game.history);
+}
+
+export function spanTitle(game: GameState, span: OfficeSpan): string {
   if (span.becamePM) return 'Prime Minister';
   return playerOfficeLabel(game, span.officeId, span.start, {
     roleSide: span.roleSide, partyId: span.partyId,
@@ -68,6 +72,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const overwriteSlot = useGameStore((s) => s.overwriteSlot);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const setAgendaEditorOpen = useUiStore((s) => s.setAgendaEditorOpen);
+  const setMentorHistoryOpen = useUiStore((s) => s.setMentorHistoryOpen);
   const [pickingParty, setPickingParty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -163,7 +168,20 @@ export function ProfileScreen({ game }: { game: GameState }) {
       </div>
 
       <div className="card" style={{ marginBottom: 12 }}>
-        <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 8 }}>Career</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ fontSize: 'var(--fs-sm)', margin: 0 }}>Career</h3>
+          {(game.mentors?.length ?? 0) > 0 && (
+            <button
+              onClick={() => setMentorHistoryOpen(true)}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+              }}
+            >
+              Mentors ›
+            </button>
+          )}
+        </div>
         {spans.length === 0 ? (
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
             Backbencher so far — every great career starts somewhere near the back.

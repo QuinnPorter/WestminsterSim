@@ -10,6 +10,7 @@ import {
 import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
   callForLeaderResignationCore, setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
+  continueAsProtegeCore,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -31,6 +32,8 @@ interface GameStore {
   /** up to 3 named manual saves, kept separate from the live auto-save */
   slots: SaveSlot[];
   startNewGame: (input: CreationInput) => void;
+  /** carry on the current (finished) world as a fresh protégé of the same party */
+  continueAsProtege: (input: CreationInput) => void;
   resolveChoice: (choiceIndex: number) => void;
   continueAfterOutcome: () => void;
   acknowledgeElection: () => void;
@@ -97,6 +100,23 @@ export function migrateGameState(game: GameState): GameState {
   if (!game.pmHistory) {
     game.pmHistory = reconstructPmHistory(game);
   }
+  if (!game.loHistory) {
+    // start the LO record fresh from the sitting opposition leader (older saves
+    // have no captured succession; the modal simply begins from here)
+    const loId = game.government.loId;
+    const name = loId === 'player'
+      ? game.player.name
+      : (game.characters[loId]?.name ?? 'the Leader of the Opposition');
+    const partyId = loId === 'player'
+      ? game.player.partyId
+      : (game.characters[loId]?.partyId ?? game.government.oppositionParty);
+    game.loHistory = loId
+      ? [{ characterId: loId, name, partyId, startDay: game.government.pmSinceDay ?? game.parliamentStart, endDay: null }]
+      : [];
+  }
+  if (!game.mentors) {
+    game.mentors = [];
+  }
   game.version = SAVE_VERSION;
   return game;
 }
@@ -146,6 +166,12 @@ export const useGameStore = create<GameStore>()(
         withRng(game, (rng) => nextStep(game, rng));
         set({ game });
       },
+
+      continueAsProtege: (input) =>
+        mutateGame(get, set, (game, rng) => {
+          continueAsProtegeCore(game, rng, input);
+          nextStep(game, rng);
+        }),
 
       resolveChoice: (choiceIndex) =>
         mutateGame(get, set, (game, rng) => resolveChoiceCore(game, rng, choiceIndex)),

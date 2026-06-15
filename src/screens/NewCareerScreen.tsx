@@ -16,7 +16,10 @@ import { Rng } from '../engine/rng';
 import { randomAvatar, generateName } from '../generation/characters';
 import './NewCareerScreen.css';
 
-const STEPS = ['Era', 'You', 'Party', 'Background', 'Agenda', 'Look'] as const;
+const FULL_STEPS = ['Era', 'You', 'Party', 'Background', 'Agenda', 'Look'] as const;
+// continuing as a protégé locks the era and party (same world), so those steps drop
+const PROTEGE_STEPS = ['You', 'Background', 'Agenda', 'Look'] as const;
+type StepName = (typeof FULL_STEPS)[number];
 
 const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
   '2015': {
@@ -51,16 +54,23 @@ const LAYER_PILLS: { key: AvatarLayerKey; label: string }[] = [
 
 export function NewCareerScreen() {
   const startNewGame = useGameStore((s) => s.startNewGame);
+  const continueAsProtege = useGameStore((s) => s.continueAsProtege);
   const setStarted = useUiStore((s) => s.setStarted);
   const setLanding = useUiStore((s) => s.setLanding);
+  const protege = useUiStore((s) => s.protege);
+  const setProtege = useUiStore((s) => s.setProtege);
+  const steps = protege ? PROTEGE_STEPS : FULL_STEPS;
   const [step, setStep] = useState(0);
+  const stepName: StepName = steps[Math.min(step, steps.length - 1)] as StepName;
 
-  const [era, setEra] = useState<Era>('2024');
+  const [era, setEra] = useState<Era>(protege?.era ?? '2024');
   const [name, setName] = useState('');
   const [gender, setGender] = useState<Gender>('f');
   const [age, setAge] = useState(38);
-  const [partyId, setPartyId] = useState<PartyId>('lab');
-  const [region, setRegion] = useState<RegionId>('yorkshire');
+  const [partyId, setPartyId] = useState<PartyId>(protege?.partyId ?? 'lab');
+  const [region, setRegion] = useState<RegionId>(
+    protege ? (PARTIES[protege.partyId].contestsRegions[0] as RegionId) : 'yorkshire'
+  );
   const [background, setBackground] = useState<BackgroundId>('teacher');
   const [causes, setCauses] = useState<CauseId[]>([]);
   const [avatar, setAvatar] = useState<AvatarConfig>(() =>
@@ -74,7 +84,7 @@ export function NewCareerScreen() {
   );
 
   const canContinue =
-    step !== 1 || name.trim().length >= 2;
+    stepName !== 'You' || name.trim().length >= 2;
 
   const cycleLayer = (dir: 1 | -1) => {
     const count = AVATAR_COUNTS[activeLayer];
@@ -87,23 +97,28 @@ export function NewCareerScreen() {
   const toggleCause = (id: CauseId) => setCauses((cs) => toggleCauseList(cs, id));
 
   const finish = () => {
-    startNewGame({
-      name: name.trim(), gender, age, region, background, partyId, avatar, era, causes,
-    });
-    setStarted(true);
+    const input = { name: name.trim(), gender, age, region, background, partyId, avatar, era, causes };
+    if (protege) {
+      continueAsProtege(input);
+      setProtege(null);
+      setStarted(true);
+    } else {
+      startNewGame(input);
+      setStarted(true);
+    }
   };
 
   return (
     <div className="screen nc">
       <div className="nc-steps">
-        {STEPS.map((s, i) => (
+        {steps.map((s, i) => (
           <span key={s} className={`nc-step${i === step ? ' active' : ''}${i < step ? ' done' : ''}`}>
             {s}
           </span>
         ))}
       </div>
 
-      {step === 0 && (
+      {stepName === 'Era' && (
         <div className="fade-in">
           <h2 className="nc-h">When does your story begin?</h2>
           {(['2015', '2017', '2019', '2024'] as Era[]).map((e) => (
@@ -129,7 +144,7 @@ export function NewCareerScreen() {
         </div>
       )}
 
-      {step === 1 && (
+      {stepName === 'You' && (
         <div className="fade-in">
           <h2 className="nc-h">Who are you?</h2>
           <label className="nc-label">Name</label>
@@ -174,7 +189,7 @@ export function NewCareerScreen() {
         </div>
       )}
 
-      {step === 2 && (
+      {stepName === 'Party' && (
         <div className="fade-in">
           <h2 className="nc-h">Pick your colours</h2>
           <div className="nc-parties">
@@ -213,7 +228,7 @@ export function NewCareerScreen() {
         </div>
       )}
 
-      {step === 3 && (
+      {stepName === 'Background' && (
         <div className="fade-in">
           <h2 className="nc-h">What did you do before?</h2>
           <div className="nc-bgs">
@@ -231,7 +246,7 @@ export function NewCareerScreen() {
         </div>
       )}
 
-      {step === 4 && (
+      {stepName === 'Agenda' && (
         <div className="fade-in">
           <h2 className="nc-h">What do you stand for?</h2>
           <p className="nc-hint" style={{ marginTop: 0 }}>
@@ -242,7 +257,7 @@ export function NewCareerScreen() {
         </div>
       )}
 
-      {step === 5 && (
+      {stepName === 'Look' && (
         <div className="fade-in">
           <h2 className="nc-h">Looking the part</h2>
           <SwipeCarousel
@@ -278,11 +293,15 @@ export function NewCareerScreen() {
       <div className="nc-nav">
         <button
           className="btn"
-          onClick={() => (step > 0 ? setStep(step - 1) : setLanding('menu'))}
+          onClick={() => {
+            if (step > 0) setStep(step - 1);
+            else if (protege) setProtege(null); // back to the end screen
+            else setLanding('menu');
+          }}
         >
           Back
         </button>
-        {step < STEPS.length - 1 ? (
+        {step < steps.length - 1 ? (
           <button
             className="btn btn-primary"
             disabled={!canContinue}

@@ -11,6 +11,11 @@ import { Rng } from './rng';
 const PER_SEAT_NOISE = 0.015;
 /** election-day campaign wobble (sd) — the only gap between polling and result */
 const CAMPAIGN_NOISE = 0.012;
+/** the right-populist slot — only one of these polls per era and they never co-occur.
+ *  Their vote is spread thin (unlike the concentrated LD/Green vote), so a genuine
+ *  national surge under-converts to seats; give it a stronger swing-to-seat amplifier
+ *  so it is somewhat more responsive (still below the concentrated parties' level). */
+const POPULIST_PARTIES: PartyId[] = ['ukip', 'brexit', 'reform'];
 
 /** compute this election's national GB vote shares — anchored to CURRENT POLLING
  *  (not to the last election), so the ballot box reflects the polls within a few
@@ -73,7 +78,10 @@ function computeSeat(
       // a party making real gains converts votes to seats faster: amplify only the
       // portion of a positive swing above ~2pts, so a genuine surge wins more seats
       // while ordinary campaign noise (and a flat vote) stays FPTP-punished
-      if (swing > 0.02) swing = 0.02 + (swing - 0.02) * 1.6;
+      if (swing > 0.02) {
+        const amp = POPULIST_PARTIES.includes(p) ? 2.3 : 1.6;
+        swing = 0.02 + (swing - 0.02) * amp;
+      }
       v += swing;
     } else if (p === 'ind') {
       v -= 0.02; // independents' personal vote fades

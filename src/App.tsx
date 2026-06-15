@@ -4,6 +4,8 @@ import { useGameStore } from './store/gameStore';
 import { TabBar } from './components/TabBar';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PmHistoryModal } from './components/PmHistoryModal';
+import { LoHistoryModal } from './components/LoHistoryModal';
+import { MentorHistoryModal } from './components/MentorHistoryModal';
 import { ElectionsModal } from './components/ElectionsModal';
 import { AgendaEditor } from './components/AgendaEditor';
 import { TitleScreen } from './screens/TitleScreen';
@@ -28,6 +30,7 @@ export default function App() {
   const setStarted = useUiStore((s) => s.setStarted);
   const landing = useUiStore((s) => s.landing);
   const setLanding = useUiStore((s) => s.setLanding);
+  const protege = useUiStore((s) => s.protege);
 
   // theme the UI with the player's party colour
   useEffect(() => {
@@ -66,6 +69,16 @@ export default function App() {
   }
 
   if (game?.gameOver) {
+    // "continue as protégé": the end screen hands off to character creation in the
+    // same world (party/era locked); on submit the store swaps in the fresh player
+    if (protege) {
+      return (
+        <div className="shell">
+          <NewCareerScreen />
+          <ConfirmModal />
+        </div>
+      );
+    }
     return (
       <div className="shell">
         <GameOverScreen game={game} />
@@ -97,6 +110,8 @@ export default function App() {
       {debug && <DebugMenu />}
       <ConfirmModal />
       <PmHistoryModal game={game} />
+      <LoHistoryModal game={game} />
+      <MentorHistoryModal game={game} />
       <ElectionsModal game={game} />
       <AgendaEditor game={game} />
     </div>

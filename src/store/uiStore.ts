@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { PartyId, Era } from '../types/game';
 
 export type TabId = 'play' | 'history' | 'cabinet' | 'parliament' | 'profile';
 
@@ -30,6 +31,16 @@ interface UiState {
   /** whether the Prime-Minister succession modal is open */
   pmHistoryOpen: boolean;
   setPmHistoryOpen: (v: boolean) => void;
+  /** whether the Leader-of-the-Opposition succession modal is open */
+  loHistoryOpen: boolean;
+  setLoHistoryOpen: (v: boolean) => void;
+  /** whether the mentor (past-career) history modal is open */
+  mentorHistoryOpen: boolean;
+  setMentorHistoryOpen: (v: boolean) => void;
+  /** when set, the new-career screen runs in "continue as protégé" mode: same
+   *  world, locked to the mentor's party and era */
+  protege: { partyId: PartyId; era: Era } | null;
+  setProtege: (v: { partyId: PartyId; era: Era } | null) => void;
   /** whether the in-game agenda editor modal is open */
   agendaEditorOpen: boolean;
   setAgendaEditorOpen: (v: boolean) => void;
@@ -51,6 +62,12 @@ export const useUiStore = create<UiState>((set) => ({
   closeConfirm: () => set({ confirm: null }),
   pmHistoryOpen: false,
   setPmHistoryOpen: (v) => set({ pmHistoryOpen: v }),
+  loHistoryOpen: false,
+  setLoHistoryOpen: (v) => set({ loHistoryOpen: v }),
+  mentorHistoryOpen: false,
+  setMentorHistoryOpen: (v) => set({ mentorHistoryOpen: v }),
+  protege: null,
+  setProtege: (v) => set({ protege: v }),
   agendaEditorOpen: false,
   setAgendaEditorOpen: (v) => set({ agendaEditorOpen: v }),
   electionsOpen: false,

@@ -268,6 +268,37 @@ export interface PmTenure {
   endDay: GameDay | null;
 }
 
+/** one person's continuous spell as Leader of the Opposition (same shape as PmTenure) */
+export interface LoTenure {
+  characterId: string;
+  name: string;
+  partyId: PartyId;
+  startDay: GameDay;
+  /** null while still serving */
+  endDay: GameDay | null;
+}
+
+/** a retired player whose world was carried on by a protégé — an archived career
+ *  record, viewable from the Profile, not an active NPC in the world */
+export interface Mentor {
+  id: string;
+  name: string;
+  gender: Gender;
+  age: number;
+  partyId: PartyId;
+  background: BackgroundId;
+  avatar: AvatarConfig;
+  causes: CauseId[];
+  /** career-end stats snapshot */
+  stats: PlayerStats;
+  /** the retiree's own career entries (roleChange / leadershipContest / enteredParliament / election) */
+  career: HistoryEntry[];
+  /** their spells as Prime Minister (slice of pmHistory with characterId 'player') */
+  pmTenures: PmTenure[];
+  retiredDay: GameDay;
+  legacy: LegacySummary;
+}
+
 export type HistoryEntry =
   | { kind: 'roleChange'; date: GameDay; officeId: OfficeId | null;
       how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' | 'continued';
@@ -369,6 +400,10 @@ export interface GameState {
   elections: Record<string, ElectionResult>;
   /** succession of Prime Ministers (player and NPC), oldest first */
   pmHistory: PmTenure[];
+  /** succession of Leaders of the Opposition (player and NPC), oldest first */
+  loHistory?: LoTenure[];
+  /** retired player characters whose worlds were carried on as a protégé, oldest first */
+  mentors?: Mentor[];
 
   currentCard: DrawnCard | null;
   /** election result waiting to be shown on the election-night screen */

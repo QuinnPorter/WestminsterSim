@@ -23,6 +23,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
   const abandonGame = useGameStore((s) => s.abandonGame);
   const setStarted = useUiStore((s) => s.setStarted);
   const setLanding = useUiStore((s) => s.setLanding);
+  const setProtege = useUiStore((s) => s.setProtege);
   const legacy = game.gameOver!.legacy;
 
   const returnToMenu = () => {
@@ -30,6 +31,12 @@ export function GameOverScreen({ game }: { game: GameState }) {
     setLanding('menu');
     abandonGame();
   };
+
+  // carry the world on as a protégé: hand off to character creation, locked to the
+  // mentor's party and era (the world, date and cast are preserved)
+  const continueAsProtege = () =>
+    setProtege({ partyId: game.player.partyId, era: game.startEra });
+  const canContinue = game.gameOver!.reason === 'retired';
 
   const causes = (legacy.causes ?? []).map((c) => CAUSES_BY_ID[c]?.label).filter(Boolean);
 
@@ -153,7 +160,18 @@ export function GameOverScreen({ game }: { game: GameState }) {
         </div>
       )}
 
-      <button className="btn btn-primary" onClick={returnToMenu}>
+      {canContinue && (
+        <>
+          <button className="btn btn-primary" onClick={continueAsProtege} style={{ marginBottom: 8 }}>
+            Continue as protégé
+          </button>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginBottom: 14 }}>
+            Begin again as a new {PARTIES[game.player.partyId].name} hopeful in the same world —
+            {' '}{game.player.name}'s story becomes your mentor's.
+          </p>
+        </>
+      )}
+      <button className={canContinue ? 'btn' : 'btn btn-primary'} onClick={returnToMenu}>
         Return to the menu
       </button>
     </div>

@@ -1,7 +1,9 @@
 import {
-  Character, DrawnCard, ElectionResult, ForcedEvent, GameState, LegacySummary,
-  OfficeId, PartyId, PlayerStats, PmTenure, RegionId, RelationshipKind, StatDelta,
+  Character, DrawnCard, ElectionResult, ForcedEvent, GameState, HistoryEntry, LegacySummary,
+  Mentor, OfficeId, PartyId, Player, PlayerStats, PmTenure, RegionId, Relationship,
+  RelationshipKind, StatDelta,
 } from '../types/game';
+import type { CreationInput } from './newGame';
 import { CABINET_OFFICES, DEPARTMENTS, GREAT_OFFICES, OFFICES, officeTitle, officeTitleFor } from '../data/offices';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { causeDepartments } from '../data/causes';
@@ -250,13 +252,25 @@ function reconcileFrontbenches(state: GameState, rng: Rng, playerWonSeat: boolea
   // the Leader of the Opposition must belong to the (new) opposition party
   const oppParty = state.government.oppositionParty;
   const playerLeadsOpp = playerWonSeat && state.player.partyId === oppParty && playerIsLeader(state);
+  const wasLo = state.government.loId === 'player';
   if (playerLeadsOpp) {
     state.government.loId = 'player';
+    // if the player has just risen into the role (e.g. their party became the
+    // official opposition), open a fresh "Leader of the Opposition" career span so
+    // the Profile timeline stops showing the old minor-party-leader title
+    if (!wasLo) {
+      state.history.push({
+        kind: 'roleChange', date: state.day, officeId: 'leader', how: 'continued',
+        roleSide: 'opp', partyId: state.player.partyId,
+      });
+    }
+    recordLoChange(state, 'player');
   } else {
     const lo = state.characters[state.government.loId];
     if (state.government.loId === 'player' || !lo || !lo.active || lo.partyId !== oppParty) {
       state.government.loId = newFrontbencher(state, rng, oppParty, 'leader').id;
     }
+    recordLoChange(state, state.government.loId);
   }
 }
 
@@ -811,6 +825,7 @@ export function resolveNpcLeadership(
     });
   } else if (party === state.government.oppositionParty) {
     state.government.loId = winner.id;
+    recordLoChange(state, winner.id);
     state.history.push({
       kind: 'event', date: state.day,
       headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
@@ -904,8 +919,10 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
     });
   } else {
     // official opposition or a minor party — either way, "leader of the party"
-    state.government.loId = party === state.government.oppositionParty
-      ? 'player' : state.government.loId;
+    if (party === state.government.oppositionParty) {
+      state.government.loId = 'player';
+      recordLoChange(state, 'player');
+    }
     state.history.push({
       kind: 'event', date: state.day,
       headline: `${state.player.name} elected leader of the ${PARTIES[party].name}`,
@@ -1048,11 +1065,21 @@ export function applyElectionAftermath(
       playerWonSeat && playerIsLeader(state) && playerParty !== newGov &&
       shortfall > 0 && playerSeats >= shortfall
     ) {
-      // the player's party holds the balance of power — they negotiate
-      state.forcedQueue.push({
-        kind: 'coalitionOffer',
-        payload: { majorParty: newGov, shortfall, partySeats: playerSeats },
-      });
+      // the player's party holds the balance of power. Usually they're courted —
+      // but the largest party isn't bound to them: ~30% of the time, when another
+      // willing partner exists, it deals elsewhere and the player gets no offer.
+      const otherPartner = pickCoalitionPartner(result, rng, newGov, playerParty);
+      if (otherPartner && rng.chance(0.30)) {
+        formNpcGovernment(state, rng, newGov, otherPartner);
+      } else {
+        const majorSeats = result.seats[newGov] ?? 0;
+        // "genuinely close" — the runner-up is within reach of competing to govern
+        const canCompete = playerSeats > 0 && (majorSeats - playerSeats) <= 40;
+        state.forcedQueue.push({
+          kind: 'coalitionOffer',
+          payload: { majorParty: newGov, shortfall, partySeats: playerSeats, majorSeats, canCompete },
+        });
+      }
     } else if (forceCoalition && partner) {
       // the runner-up's rainbow coalition seizes government from the largest party
       state.government.arrangement = 'coalition';
@@ -1063,37 +1090,9 @@ export function applyElectionAftermath(
         kind: 'event', date: state.day,
         headline: `${PARTIES[newGov].name} forms a coalition with the ${PARTIES[partner].shortName} to govern, despite finishing second`,
       });
-    } else if (partner) {
-      // NPCs settle it: of sub-majority results, ~10% coalition, ~20% supply &
-      // confidence, ~70% a bare minority
-      const roll = rng.next();
-      if (roll < 0.10) {
-        state.government.arrangement = 'coalition';
-        state.government.coalitionPartner = partner;
-        seatCoalitionCabinet(state, rng);
-        recomputeOpposition(state, rng); // opposition excludes the coalition partner
-        state.history.push({
-          kind: 'event', date: state.day,
-          headline: `${PARTIES[newGov].name} forms a coalition with the ${PARTIES[partner].shortName}`,
-        });
-      } else if (roll < 0.30) {
-        state.government.arrangement = 'supplyConfidence';
-        state.government.confidencePartner = partner;
-        state.history.push({
-          kind: 'event', date: state.day,
-          headline: `${PARTIES[newGov].name} to govern with ${PARTIES[partner].shortName} support`,
-        });
-      } else {
-        state.history.push({
-          kind: 'event', date: state.day,
-          headline: `${PARTIES[newGov].name} to govern as a minority`,
-        });
-      }
     } else {
-      state.history.push({
-        kind: 'event', date: state.day,
-        headline: `${PARTIES[newGov].name} to govern as a minority`,
-      });
+      // NPCs settle it among themselves
+      formNpcGovernment(state, rng, newGov, partner);
     }
   }
 
@@ -1202,14 +1201,81 @@ export function coalitionCompatible(a: PartyId, b: PartyId): boolean {
  *  compatible party (not just the single nearest), chosen weighted by seats so
  *  the partner varies but plausibly favours larger ones. Returns null if no
  *  compatible partner exists (→ the major party governs as a minority). */
-export function pickCoalitionPartner(result: ElectionResult, rng: Rng, newGov: PartyId): PartyId | null {
+export function pickCoalitionPartner(
+  result: { seats: Partial<Record<PartyId, number>> }, rng: Rng, newGov: PartyId, exclude?: PartyId
+): PartyId | null {
   const candidates = (Object.entries(result.seats) as [PartyId, number][])
     .filter(([p, seats]) =>
-      p !== newGov && seats > 0 &&
+      p !== newGov && p !== exclude && seats > 0 &&
       p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] &&
       coalitionCompatible(newGov, p));
   if (candidates.length === 0) return null;
   return rng.pickWeighted(candidates, ([, seats]) => seats)[0];
+}
+
+/** the player's party wrests government from the largest party after a hung result:
+ *  they form a (precarious) minority government and the former leader falls into
+ *  opposition. The front benches are rebuilt around the new line-up. */
+function playerSeizesGovernment(state: GameState, rng: Rng): void {
+  const major = state.government.governingParty;
+  state.government.governingParty = state.player.partyId;
+  state.government.oppositionParty = major;
+  state.government.pmId = 'player';
+  state.government.pmSinceDay = state.day;
+  state.government.arrangement = 'minority';
+  delete state.government.coalitionPartner;
+  delete state.government.confidencePartner;
+  const sf = state.seats.sf ?? 0;
+  const voting = 650 - sf - 1;
+  const govSeats = state.seats[state.player.partyId] ?? 0;
+  state.government.majority = govSeats - (voting - govSeats);
+  reconcileFrontbenches(state, rng, true);
+  recomputeOpposition(state, rng);
+  recordPmChange(state, 'player');
+  state.history.push({
+    kind: 'roleChange', date: state.day, officeId: 'leader', how: 'becamePM',
+    roleSide: 'gov', partyId: state.player.partyId,
+  });
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} forms a minority government and enters Number 10`,
+  });
+}
+
+/** NPCs settle a sub-majority government: form a coalition (~10%), confidence-and-
+ *  supply (~20%), or a bare minority. Used when the player isn't the kingmaker, or
+ *  declines to be — so the largest party can still strike a deal with someone else. */
+function formNpcGovernment(state: GameState, rng: Rng, newGov: PartyId, partner: PartyId | null): void {
+  if (!partner) {
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${PARTIES[newGov].name} to govern as a minority`,
+    });
+    return;
+  }
+  const roll = rng.next();
+  if (roll < 0.10) {
+    state.government.arrangement = 'coalition';
+    state.government.coalitionPartner = partner;
+    seatCoalitionCabinet(state, rng);
+    recomputeOpposition(state, rng);
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${PARTIES[newGov].name} forms a coalition with the ${PARTIES[partner].shortName}`,
+    });
+  } else if (roll < 0.30) {
+    state.government.arrangement = 'supplyConfidence';
+    state.government.confidencePartner = partner;
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${PARTIES[newGov].name} to govern with ${PARTIES[partner].shortName} support`,
+    });
+  } else {
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${PARTIES[newGov].name} to govern as a minority`,
+    });
+  }
 }
 
 /** seat a coalition partner in the governing cabinet, proportional to its seats:
@@ -1237,6 +1303,7 @@ function recomputeOpposition(state: GameState, rng: Rng): void {
   if (state.government.loId === 'player' || state.characters[state.government.loId]?.partyId !== opp) {
     state.government.loId = partyLeaderId(state, rng, opp);
   }
+  recordLoChange(state, state.government.loId);
 }
 
 /** seat the player-leader of a JUNIOR coalition partner: the senior party's leader
@@ -1668,18 +1735,26 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     case 'coalitionOffer': {
       const majorParty = ev.payload?.majorParty as PartyId | undefined;
       const majorName = majorParty ? PARTIES[majorParty].name : 'the largest party';
+      const canCompete = ev.payload?.canCompete === true;
+      const choices = [
+        { label: 'Demand senior cabinet seats' },
+        { label: 'A focused policy win and a junior post' },
+        { label: 'Confidence-and-supply only' },
+        { label: 'Stay out — pure opposition' },
+      ];
+      // when the result is close, the runner-up can refuse and try to govern instead
+      if (canCompete) choices.push({ label: 'Refuse — try to form your own government' });
       return {
         cardId: `forced_coalitionoffer_${state.day}`,
         kind: 'coalitionOffer',
         title: 'Holding the balance',
         body: `The numbers are extraordinary: your party holds the balance of power. ${majorName} cannot govern without you, and their negotiators are already on the phone. How hard do you push?`,
-        choices: [
-          { label: 'Demand senior cabinet seats' },
-          { label: 'A focused policy win and a junior post' },
-          { label: 'Confidence-and-supply only' },
-          { label: 'Stay out — pure opposition' },
-        ],
-        payload: { majorParty, advance: rng.int(7, 14) },
+        choices,
+        payload: {
+          majorParty, advance: rng.int(7, 14), canCompete,
+          shortfall: ev.payload?.shortfall, partySeats: ev.payload?.partySeats,
+          majorSeats: ev.payload?.majorSeats,
+        },
       };
     }
     case 'pmHeave': {
@@ -2272,9 +2347,15 @@ export function resolveForcedChoice(
           const rivalRel = state.relationships.find((r) => r.kind === 'rival');
           if (rivalRel) { rivalRel.characterId = finalist.id; rivalRel.value = -15; }
         }
-        const office = playerInGovernment(state) ? 'Prime Minister' : 'Leader of the Opposition';
+        const leaderRole = playerLeaderRole(state);
+        // a minor party isn't the official opposition, so don't claim that title
+        const closer = leaderRole === 'pm'
+          ? 'You are the leader of the party — and Prime Minister.'
+          : leaderRole === 'lo'
+            ? 'You are the leader of the party — and Leader of the Opposition.'
+            : `You are the leader of the ${PARTIES[state.player.partyId].name}.`;
         return {
-          text: `The returning officer reads the numbers${finalist ? ` — and ${finalist.name}'s face tells the room before the words do` : ''}. You have won. You are the leader of the party — and ${office}.`,
+          text: `The returning officer reads the numbers${finalist ? ` — and ${finalist.name}'s face tells the room before the words do` : ''}. You have won. ${closer}`,
           deltas,
         };
       }
@@ -2900,15 +2981,50 @@ export function resolveForcedChoice(
           deltas,
         };
       }
-      gain('partyStanding', 2, 'Standing');
-      state.history.push({
-        kind: 'event', date: state.day,
-        headline: `${PARTIES[state.player.partyId].name} declines to prop up a government`,
-      });
-      return {
-        text: 'You stay out of it entirely. Let the big parties own the mess; you will hold them to account from the cleanliness of opposition.',
-        deltas,
-      };
+      if (choiceIndex === 3) {
+        // decline — but the largest party isn't stuck: it turns to another partner,
+        // falling back to a minority only if nobody else will deal
+        gain('partyStanding', 2, 'Standing');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${PARTIES[state.player.partyId].name} declines to prop up a government`,
+        });
+        if (majorParty) {
+          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId);
+          formNpcGovernment(state, rng, majorParty, other);
+        }
+        return {
+          text: 'You stay out of it entirely. Let the big parties own the mess; you will hold them to account from the cleanliness of opposition.',
+          deltas,
+        };
+      }
+      // choiceIndex >= 4: refuse the deal and try to form your OWN government. The
+      // largest party normally prevails; a near-tie and real standing give a chance.
+      {
+        const majorSeats = (card.payload?.majorSeats as number) ?? (partySeats + 40);
+        const gap = Math.max(0, majorSeats - partySeats);
+        const closeness = clamp(1 - gap / 60, 0, 1);
+        const standing = (s.partyStanding + s.profile) / 200;
+        const p = clamp(0.05 + 0.08 * closeness + 0.05 * standing, 0.04, 0.25);
+        if (rng.chance(p)) {
+          playerSeizesGovernment(state, rng);
+          gain('profile', 14, 'Profile');
+          gain('partyStanding', 8, 'Standing');
+          return {
+            text: 'Against the odds, you out-manoeuvre them. By nightfall it is your name the Palace calls — a minority government, precarious and yours. The largest party is left fuming on the opposition benches.',
+            deltas,
+          };
+        }
+        gain('partyStanding', -3, 'Standing');
+        if (majorParty) {
+          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId);
+          formNpcGovernment(state, rng, majorParty, other);
+        }
+        return {
+          text: `You gamble everything on forming a government of your own — and fall short. ${majorParty ? PARTIES[majorParty].shortName : 'The largest party'} stitches together the numbers first, and you are left to lead the opposition to it.`,
+          deltas,
+        };
+      }
     }
 
     case 'pmHeave': {
@@ -3241,6 +3357,171 @@ function partyWhipId(state: GameState, rng: Rng, party: PartyId): string {
   return fresh.id;
 }
 
+// ---------- continue as protégé ----------
+
+/** archive the retiring player as a viewable "mentor" record. Their own career
+ *  entries are lifted out of the shared history feed and stored here. */
+function snapshotMentor(state: GameState): Mentor {
+  const career: HistoryEntry[] = state.history.filter((h) =>
+    h.kind === 'roleChange' || h.kind === 'leadershipContest' ||
+    h.kind === 'enteredParliament' || h.kind === 'election');
+  const pmTenures: PmTenure[] = (state.pmHistory ?? [])
+    .filter((t) => t.characterId === 'player')
+    .map((t) => ({ ...t }));
+  const p = state.player;
+  return {
+    id: `mentor_${(state.mentors?.length ?? 0) + 1}`,
+    name: p.name, gender: p.gender, age: p.age, partyId: p.partyId,
+    background: p.background, avatar: p.avatar, causes: [...p.causes],
+    stats: { ...p.stats },
+    career, pmTenures,
+    retiredDay: state.day,
+    legacy: state.gameOver?.legacy ?? buildLegacy(state),
+  };
+}
+
+/** an active non-player leader for a party, generating one if the seat is empty
+ *  (the player held the leadership and is now leaving the stage). */
+function npcSuccessorLeader(state: GameState, rng: Rng, party: PartyId): string {
+  const existing = Object.values(state.characters).find(
+    (c) => c.active && c.partyId === party && c.id !== 'player' && c.officeId === 'leader'
+  );
+  if (existing) return existing.id;
+  const fresh = generateCharacter(rng, usedNamesOf(state), {
+    partyId: party, officeId: 'leader', minAge: 45, maxAge: 64,
+    competenceMean: 60, traitBias: ['ambitious'],
+  }, npcIdCounter(state));
+  state.characters[fresh.id] = fresh;
+  return fresh.id;
+}
+
+/** strip every world reference to the outgoing 'player' so a fresh backbencher can
+ *  take their place: hand off the premiership / opposition leadership to NPCs and
+ *  refill any front-bench seat the player occupied. */
+function vacatePlayerRoles(state: GameState, rng: Rng): void {
+  const g = state.government;
+  if (g.pmId === 'player') {
+    const succ = npcSuccessorLeader(state, rng, g.governingParty);
+    g.pmId = succ;
+    g.pmSinceDay = state.day;
+    recordPmChange(state, succ);
+    const c = state.characters[succ];
+    if (c) { c.officeId = 'leader'; c.active = true; }
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${c?.name ?? 'A new leader'} becomes Prime Minister`,
+    });
+  }
+  if (g.loId === 'player') {
+    const succ = npcSuccessorLeader(state, rng, g.oppositionParty);
+    g.loId = succ;
+    recordLoChange(state, succ);
+    const c = state.characters[succ];
+    if (c) { c.officeId = 'leader'; c.active = true; }
+  }
+  for (const bench of [g.cabinet, g.shadowCabinet]) {
+    for (const post of bench) {
+      if (post.characterId === 'player') {
+        const party = bench === g.cabinet ? g.governingParty : g.oppositionParty;
+        post.characterId = newFrontbencher(state, rng, party, post.officeId).id;
+      }
+    }
+  }
+}
+
+/** seat the new protégé and rebuild their personal circle in the existing world. */
+function installProtege(state: GameState, rng: Rng, input: CreationInput, oldSeatId: string): Player {
+  const party = input.partyId;
+  const mods = BACKGROUNDS[input.background].statMods;
+  // the by-election is fought in the mentor's vacated seat when possible, else a
+  // comfortable seat the party already holds
+  let seatId = oldSeatId;
+  if (!state.seatMap.some((s) => s.id === seatId)) {
+    const held = state.seatMap.filter((s) => s.winner === party);
+    seatId = (held[0] ?? state.seatMap[0]).id;
+  }
+
+  const player: Player = {
+    name: input.name, gender: input.gender, age: input.age, partyId: party,
+    background: input.background, region: input.region, avatar: input.avatar,
+    stats: {
+      profile: clamp(20 + (mods.profile ?? 0), 0, 100),
+      partyStanding: clamp(40 + (mods.partyStanding ?? 0), 0, 100),
+      competence: clamp(42 + (mods.competence ?? 0), 0, 100),
+      constituencyApproval: clamp(52 + (mods.constituencyApproval ?? 0), 0, 100),
+      integrity: clamp(55 + (mods.integrity ?? 0), 0, 100),
+    },
+    officeId: null, officeSinceDay: null, rebellionCount: 0, flags: {},
+    seatId, hasSeat: true, enteredParliament: state.day,
+    causes: (input.causes ?? []).slice(0, 3), favours: [],
+  };
+  state.player = player;
+
+  // a fresh personal circle, reusing the sitting leader / whip of the chosen party
+  const rels: Relationship[] = [];
+  const leaderId = partyLeaderId(state, rng, party);
+  if (leaderId && leaderId !== 'player') rels.push({ characterId: leaderId, kind: 'leader', value: rng.int(-5, 15) });
+  const whipId = partyWhipId(state, rng, party);
+  if (whipId && whipId !== 'player') rels.push({ characterId: whipId, kind: 'chiefWhip', value: rng.int(-5, 10) });
+  const mentorChar = generateCharacter(rng, usedNamesOf(state), {
+    partyId: party, minAge: 55, maxAge: 72, competenceMean: 60,
+    traitBias: ['principled', 'loyal'], region: input.region,
+  }, npcIdCounter(state));
+  state.characters[mentorChar.id] = mentorChar;
+  rels.push({ characterId: mentorChar.id, kind: 'mentor', value: rng.int(25, 45) });
+  const ally = generateCharacter(rng, usedNamesOf(state), {
+    partyId: party, minAge: Math.max(28, input.age - 6), maxAge: input.age + 6,
+    competenceMean: 52, traitBias: ['charming', 'loyal'],
+  }, npcIdCounter(state));
+  state.characters[ally.id] = ally;
+  rels.push({ characterId: ally.id, kind: 'ally', value: rng.int(30, 50) });
+  const rival = generateCharacter(rng, usedNamesOf(state), {
+    partyId: party, minAge: Math.max(28, input.age - 6), maxAge: input.age + 8,
+    competenceMean: 58, traitBias: ['ambitious', 'ruthless'],
+  }, npcIdCounter(state));
+  state.characters[rival.id] = rival;
+  rels.push({ characterId: rival.id, kind: 'rival', value: rng.int(-30, -10) });
+  const journalist = generateCharacter(rng, usedNamesOf(state), {
+    partyId: 'ind', minAge: 32, maxAge: 58, competenceMean: 60,
+    traitBias: ['ruthless', 'charming'],
+  }, npcIdCounter(state));
+  state.characters[journalist.id] = journalist;
+  rels.push({ characterId: journalist.id, kind: 'journalist', value: rng.int(-10, 10) });
+  state.relationships = rels;
+
+  return player;
+}
+
+/** Carry on a finished world as the retired player's protégé: a brand-new player
+ *  character of the same party enters at a by-election; the old player is archived
+ *  as a viewable mentor. Party and era are locked to the mentor's by the UI. */
+export function continueAsProtegeCore(state: GameState, rng: Rng, input: CreationInput): void {
+  const oldSeatId = state.player.seatId;
+  // 1. archive the retiree (reads their career entries before we prune them)
+  state.mentors = [...(state.mentors ?? []), snapshotMentor(state)];
+  // 2. keep only the world chronicle; the retiree's personal career lives in the mentor
+  state.history = state.history.filter((h) => h.kind === 'event');
+  // 3. hand the retiree's offices to NPCs and clear every 'player' reference
+  vacatePlayerRoles(state, rng);
+  // 4. install the fresh backbencher via a by-election in the mentor's old seat
+  installProtege(state, rng, input, oldSeatId);
+  state.history.push({
+    kind: 'enteredParliament', date: state.day,
+    seatName: state.seatMap.find((s) => s.id === state.player.seatId)?.name ?? 'a by-election',
+  });
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${input.name} wins a by-election and enters Parliament for the ${PARTIES[input.partyId].name}`,
+  });
+  // 5. reset all player-specific transient state and resume play
+  state.gameOver = null;
+  state.currentCard = null;
+  state.forcedQueue = [];
+  state.cardHistory = {};
+  state.calendarDone = {};
+  state.lastCardId = null;
+}
+
 /** the player crosses the floor to a new party */
 export function changeParty(state: GameState, rng: Rng, newParty: PartyId): void {
   const oldParty = state.player.partyId;
@@ -3524,6 +3805,27 @@ export function recordPmChange(state: GameState, characterId: string): void {
   }
   const { name, partyId } = pmNameAndParty(state, characterId);
   state.pmHistory.push({ characterId, name, partyId, startDay: state.day, endDay: null });
+}
+
+/** record a change of Leader of the Opposition: close out the outgoing spell and
+ *  open a new one. No-op if the same person is already the open incumbent, or if
+ *  no real LO is named yet (empty id). */
+export function recordLoChange(state: GameState, characterId: string): void {
+  if (!characterId) return;
+  if (!state.loHistory) state.loHistory = [];
+  const last = state.loHistory[state.loHistory.length - 1];
+  if (last && last.endDay === null) {
+    if (last.characterId === characterId) return; // already serving
+    last.endDay = state.day;
+  }
+  // the LO belongs to the opposition party, not the governing one
+  const name = characterId === 'player'
+    ? state.player.name
+    : (state.characters[characterId]?.name ?? 'the Leader of the Opposition');
+  const partyId = characterId === 'player'
+    ? state.player.partyId
+    : (state.characters[characterId]?.partyId ?? state.government.oppositionParty);
+  state.loHistory.push({ characterId, name, partyId, startDay: state.day, endDay: null });
 }
 
 /** rebuild pmHistory for a pre-v6 save from the existing history feed */

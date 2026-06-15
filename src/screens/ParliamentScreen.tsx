@@ -10,6 +10,7 @@ import { playerIsPM } from '../engine/career';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
+  const setLoHistoryOpen = useUiStore((s) => s.setLoHistoryOpen);
   const setElectionsOpen = useUiStore((s) => s.setElectionsOpen);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const callSnapElection = useGameStore((s) => s.callSnapElection);
@@ -63,6 +64,15 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           }}
         >
           Prime Ministers ›
+        </button>
+        <button
+          onClick={() => setLoHistoryOpen(true)}
+          style={{
+            background: 'none', border: 'none', padding: 0,
+            color: partyTextColour(gov.oppositionParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+          }}
+        >
+          Opposition Leaders ›
         </button>
         <button
           onClick={() => setElectionsOpen(true)}
