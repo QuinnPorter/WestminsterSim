@@ -14,6 +14,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
   const setDeputyPm = useGameStore((s) => s.setDeputyPm);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
+  const setLoHistoryOpen = useUiStore((s) => s.setLoHistoryOpen);
   const isGov = side === 'gov';
   const leaderId = isGov ? game.government.pmId : game.government.loId;
   const posts = isGov ? game.government.cabinet : game.government.shadowCabinet;
@@ -41,8 +42,10 @@ export function CabinetScreen({ game }: { game: GameState }) {
         game={game}
         characterId={leaderId}
         title={isGov ? 'Prime Minister' : 'Leader of the Opposition'}
-        onTitleClick={isGov ? () => setPmHistoryOpen(true) : undefined}
-        titleColour={isGov ? partyTextColour(game.government.governingParty) : undefined}
+        onTitleClick={isGov ? () => setPmHistoryOpen(true) : () => setLoHistoryOpen(true)}
+        titleColour={isGov
+          ? partyTextColour(game.government.governingParty)
+          : partyTextColour(game.government.oppositionParty)}
       />
 
       <div className="cab-grid">

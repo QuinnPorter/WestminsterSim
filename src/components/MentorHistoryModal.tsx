@@ -35,7 +35,6 @@ export function MentorHistoryModal({ game }: { game: GameState }) {
               <div key={m.id} className="pmh-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
                 <div className="pmh-main">
                   <span className="pmh-name">{m.name}<PartyBadge partyId={m.partyId} /></span>
-                  <span className="pmh-range">{m.legacy.rating}</span>
                 </div>
                 <span className="pmh-range">
                   {PARTIES[m.partyId].shortName} · {m.legacy.highestOfficeTitle}

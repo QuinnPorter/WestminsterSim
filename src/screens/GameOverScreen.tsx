@@ -160,20 +160,14 @@ export function GameOverScreen({ game }: { game: GameState }) {
         </div>
       )}
 
-      {canContinue && (
-        <>
-          <button className="btn btn-primary" onClick={continueAsProtege} style={{ marginBottom: 8 }}>
-            Continue as protégé
-          </button>
-          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginBottom: 14 }}>
-            Begin again as a new {PARTIES[game.player.partyId].name} hopeful in the same world —
-            {' '}{game.player.name}'s story becomes your mentor's.
-          </p>
-        </>
-      )}
-      <button className={canContinue ? 'btn' : 'btn btn-primary'} onClick={returnToMenu}>
+      <button className="btn btn-primary" onClick={returnToMenu}>
         Return to the menu
       </button>
+      {canContinue && (
+        <button className="btn" onClick={continueAsProtege} style={{ marginTop: 8, textAlign: 'center' }}>
+          Continue as protégé
+        </button>
+      )}
     </div>
   );
 }

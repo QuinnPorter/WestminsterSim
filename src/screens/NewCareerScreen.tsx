@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AvatarConfig, BackgroundId, CauseId, Era, Gender, PartyId, RegionId,
 } from '../types/game';
@@ -62,6 +62,15 @@ export function NewCareerScreen() {
   const steps = protege ? PROTEGE_STEPS : FULL_STEPS;
   const [step, setStep] = useState(0);
   const stepName: StepName = steps[Math.min(step, steps.length - 1)] as StepName;
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // each stage should open at the top, like a fresh game — otherwise stepping in
+  // (e.g. into the Agenda list) keeps the previous step's scroll offset. The window
+  // is the scroll container here, with the .screen root as a belt-and-braces.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    rootRef.current?.scrollTo(0, 0);
+  }, [step]);
 
   const [era, setEra] = useState<Era>(protege?.era ?? '2024');
   const [name, setName] = useState('');
@@ -109,7 +118,7 @@ export function NewCareerScreen() {
   };
 
   return (
-    <div className="screen nc">
+    <div className="screen nc" ref={rootRef}>
       <div className="nc-steps">
         {steps.map((s, i) => (
           <span key={s} className={`nc-step${i === step ? ' active' : ''}${i < step ? ' done' : ''}`}>
