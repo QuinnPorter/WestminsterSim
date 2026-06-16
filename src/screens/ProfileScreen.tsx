@@ -4,7 +4,7 @@ import type { RoleSide } from '../engine/career';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
-import { PARTIES, PLAYABLE_PARTIES } from '../data/parties';
+import { PARTIES, playablePartiesForEra } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { CAUSES_BY_ID } from '../data/causes';
@@ -98,7 +98,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
   // defection targets: any playable party that contests the player's region,
   // plus sitting as an Independent (defection only — never a start option, and
   // it ends any chance of climbing the ministerial ladder)
-  const switchableParties: PartyId[] = [...PLAYABLE_PARTIES, 'ind' as PartyId].filter(
+  const switchableParties: PartyId[] = [...playablePartiesForEra(game.startEra), 'ind' as PartyId].filter(
     (p) => p !== player.partyId
       && (p === 'ind' || PARTIES[p].contestsRegions.includes(player.region))
   );
