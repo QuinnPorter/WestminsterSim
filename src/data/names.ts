@@ -9,6 +9,8 @@ export const FIRST_M = [
   'Kwasi', 'Kemi—', 'Samuel', 'Joshua', 'Adam', 'Ben', 'Jack', 'Harry',
   'Liam', 'Nathan', 'Marcus', 'Darren', 'Lee', 'Wayne', 'Dean', 'Jordan',
   'Aleksander', 'Tomasz', 'Stefan', 'Wei', 'Jin', 'Kofi', 'Femi', 'Tunde',
+  'John', 'Christopher', 'Ian', 'Steven', 'Thomas', 'Alan', 'Anthony', 'Brian',
+  'Martin', 'Kevin', 'Philip', 'Gary', 'Colin', 'Graham', 'Neil',
 ].filter((n) => !n.includes('—'));
 
 export const FIRST_F = [
@@ -20,6 +22,9 @@ export const FIRST_F = [
   'Grace', 'Sophie', 'Chloe', 'Jess', 'Katie', 'Holly', 'Amy', 'Gemma',
   'Stacey', 'Kelly', 'Donna', 'Tracey', 'Lisa', 'Karen', 'Angela', 'Diane',
   'Agnieszka', 'Kasia', 'Elena', 'Ingrid',
+  'Susan', 'Patricia', 'Mary', 'Julie', 'Christine', 'Linda', 'Jean', 'Janet',
+  'Nicola', 'Joan', 'Jennifer', 'Barbara', 'Michelle', 'Joanne', 'Carol', 'Ann',
+  'Jacqueline', 'Sharon',
 ];
 
 export const FIRST_NB = [
