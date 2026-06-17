@@ -10,7 +10,7 @@ import {
 import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
   callForLeaderResignationCore, setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
-  continueAsProtegeCore,
+  continueAsProtegeCore, backfillCabinetOffices,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -116,6 +116,13 @@ export function migrateGameState(game: GameState): GameState {
   }
   if (!game.mentors) {
     game.mentors = [];
+  }
+  // fill any cabinet seats added since the save was written (Energy Secretary,
+  // Chancellor of the Duchy of Lancaster). Idempotent — only adds missing posts.
+  {
+    const rng = new Rng(game.rngState);
+    backfillCabinetOffices(game, rng);
+    game.rngState = rng.state;
   }
   game.version = SAVE_VERSION;
   return game;

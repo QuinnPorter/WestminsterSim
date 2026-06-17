@@ -16,6 +16,13 @@ const CAMPAIGN_NOISE = 0.012;
  *  national surge under-converts to seats; give it a stronger swing-to-seat amplifier
  *  so it is somewhat more responsive (still below the concentrated parties' level). */
 const POPULIST_PARTIES: PartyId[] = ['ukip', 'brexit', 'reform'];
+/** ceiling on a populist's amplified per-seat swing. The ×2.3 amplifier helps a
+ *  spread vote convert at low/mid share, but left unbounded it overshoots at high
+ *  share (an even vote flips a whole block of marginals at once → landslide). The
+ *  cap only binds at large surges, so it flattens the top — a strong populist lands
+ *  just below the (concentrated) Lib Dems at the same share — without touching the
+ *  low/mid range or a declining vote. Tuned against the seat sims. */
+const POPULIST_SWING_CAP = 0.48;
 /** per-seat vote-share bonus for the national vote-leader — tips marginals their
  *  way so a clear lead crosses the majority line more often (≈+25% majorities). */
 const WINNER_BONUS = 0.008;
@@ -83,8 +90,12 @@ function computeSeat(
       // portion of a positive swing above ~2pts, so a genuine surge wins more seats
       // while ordinary campaign noise (and a flat vote) stays FPTP-punished
       if (swing > 0.02) {
-        const amp = POPULIST_PARTIES.includes(p) ? 2.3 : 1.6;
-        swing = 0.02 + (swing - 0.02) * amp;
+        if (POPULIST_PARTIES.includes(p)) {
+          // strong amplifier off the floor, but saturating at the top
+          swing = Math.min(POPULIST_SWING_CAP, 0.02 + (swing - 0.02) * 2.3);
+        } else {
+          swing = 0.02 + (swing - 0.02) * 1.6;
+        }
       }
       v += swing;
     } else if (p === 'ind') {

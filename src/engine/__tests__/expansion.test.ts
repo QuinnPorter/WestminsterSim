@@ -32,7 +32,7 @@ function makeGame(seed = 7, causes: CreationInput['causes'] = ['publicServices']
 describe('expansion — data model', () => {
   it('seeds pmHistory, causes and favours on a new game', () => {
     const g = makeGame();
-    expect(g.version).toBe(7);
+    expect(g.version).toBe(8);
     expect(g.pmHistory).toHaveLength(1);
     expect(g.pmHistory[0].endDay).toBeNull();
     expect(g.pmHistory[0].characterId).toBe(g.government.pmId);
@@ -247,16 +247,18 @@ describe('wave 12 — Treasury ladder & new offices', () => {
     expect(OFFICES.sos_ni.region).toBe('ni');
   });
 
-  it('offers territorial Secretary of State only to a player from that nation', () => {
-    const isTerritorial = (o: string | null) =>
-      o === 'sos_scotland' || o === 'sos_wales' || o === 'sos_ni';
-
+  it('locks Scotland/Wales Secretary to that nation, but NI Secretary is open to anyone', () => {
     const eng = makeGame();
     eng.player.region = 'yorkshire';
     eng.player.officeId = 'min_health'; // tier-3 minister, in line for promotion
-    let englishTerritorial = 0;
-    for (let i = 0; i < 400; i++) if (isTerritorial(nextOfficeFor(eng, new Rng(i)))) englishTerritorial++;
-    expect(englishTerritorial).toBe(0);
+    let englishScotWales = 0, englishNi = 0;
+    for (let i = 0; i < 400; i++) {
+      const o = nextOfficeFor(eng, new Rng(i));
+      if (o === 'sos_scotland' || o === 'sos_wales') englishScotWales++;
+      if (o === 'sos_ni') englishNi++;
+    }
+    expect(englishScotWales).toBe(0);      // region-locked — never an English player
+    expect(englishNi).toBeGreaterThan(0);  // NI Secretary can be anyone
 
     const scot = makeGame();
     scot.player.region = 'scotland';

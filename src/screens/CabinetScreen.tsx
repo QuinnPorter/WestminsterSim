@@ -61,7 +61,8 @@ export function CabinetScreen({ game }: { game: GameState }) {
             ? PARTIES[memberParty].shortName : undefined;
           // deputy PM is a departmental Secretary of State — never the Chief Whip,
           // the Chief Secretary, or a coalition partner's minister
-          const deputyEligible = !!OFFICES[officeId]?.department && officeId !== 'chief_sec' && !coalitionOf;
+          const deputyEligible = (!!OFFICES[officeId]?.department || officeId === 'chancellor_duchy')
+            && officeId !== 'chief_sec' && !coalitionOf;
           return (
             <MemberCard
               key={officeId}

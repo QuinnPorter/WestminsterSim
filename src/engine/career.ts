@@ -207,6 +207,22 @@ function newFrontbencher(state: GameState, rng: Rng, party: PartyId, officeId: O
   return c;
 }
 
+/** Fill any CABINET_OFFICES post missing from the stored benches with a fresh NPC.
+ *  Used by the save migration when new cabinet offices are introduced (newGame
+ *  builds the full roster, but older saves and post-election reconcile iterate the
+ *  stored arrays). Idempotent. */
+export function backfillCabinetOffices(state: GameState, rng: Rng): void {
+  const fill = (side: 'cabinet' | 'shadowCabinet', party: PartyId) => {
+    for (const officeId of CABINET_OFFICES) {
+      if (!state.government[side].some((p) => p.officeId === officeId)) {
+        state.government[side].push({ officeId, characterId: newFrontbencher(state, rng, party, officeId).id });
+      }
+    }
+  };
+  fill('cabinet', state.government.governingParty);
+  fill('shadowCabinet', state.government.oppositionParty);
+}
+
 /** After an election, make the cabinet / shadow-cabinet rosters match the parties
  *  that actually won government and official-opposition status — so whether a
  *  party (and the player within it) is the official opposition or a third party
@@ -412,8 +428,14 @@ export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
     // an MP from one of the nations may be sent to run that nation's office
     const regionOffice = REGION_OFFICE[state.player.region];
     if (regionOffice && rng.chance(0.25)) return regionOffice;
+    // the Northern Ireland Secretary can be anyone — no playable party fields NI
+    // MPs, so it isn't region-locked in practice
+    if (rng.chance(0.05)) return 'sos_ni';
     // rarely, the Chief Secretary to the Treasury (junior cabinet)
     if (rng.chance(0.08)) return 'chief_sec';
+    // or the Attorney General — a tier-4 law officer (ranks like the Chief
+    // Secretary), in government or as Shadow Attorney General in opposition
+    if (rng.chance(0.06)) return 'attorney_general';
     const dept = current && rng.chance(0.45)
       ? current
       : bg.deptAffinity.length > 0 && rng.chance(0.4)
@@ -491,10 +513,13 @@ export function appointNpcDeputyPm(state: GameState, rng: Rng): void {
   state.government.deputyPmId = undefined;
   state.government.deputyTitle = undefined;
   if (!rng.chance(0.75)) return;
-  // candidates: governing-party cabinet Secretaries of State (a department) —
-  // never the Chief Whip, and never a coalition partner's minister
+  // candidates: governing-party cabinet Secretaries of State (a department) or the
+  // Chancellor of the Duchy of Lancaster — never the Chief Whip / Chief Secretary,
+  // and never a coalition partner's minister
   const pool = state.government.cabinet
-    .filter((p) => p.characterId !== 'player' && OFFICES[p.officeId]?.department && p.officeId !== 'chief_sec')
+    .filter((p) => p.characterId !== 'player'
+      && (OFFICES[p.officeId]?.department || p.officeId === 'chancellor_duchy')
+      && p.officeId !== 'chief_sec')
     .map((p) => ({ post: p, c: state.characters[p.characterId] }))
     .filter((x): x is { post: typeof x.post; c: Character } =>
       !!x.c && x.c.active && x.c.partyId === state.government.governingParty);
@@ -534,7 +559,9 @@ export function setDeputyPmCore(state: GameState, _rng: Rng, characterId: string
   if (!playerIsLeader(state) || !playerInGovernment(state)) return;
   if (characterId === 'player' || characterId === state.government.deputyPmId) return;
   const post = state.government.cabinet.find((p) => p.characterId === characterId);
-  if (!post || !OFFICES[post.officeId]?.department || post.officeId === 'chief_sec') return; // SoS only — not Chief Whip or Chief Secretary
+  // a departmental SoS or the Chancellor of the Duchy of Lancaster — not the Chief
+  // Whip, the Chief Secretary, or a territorial secretary
+  if (!post || (!OFFICES[post.officeId]?.department && post.officeId !== 'chancellor_duchy') || post.officeId === 'chief_sec') return;
   delete state.player.flags._isDeputyPM;
   state.government.deputyPmId = characterId;
   state.government.deputyTitle = state.government.deputyTitle ?? 'dpm';

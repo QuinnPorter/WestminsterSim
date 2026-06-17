@@ -21,6 +21,7 @@ export const DEPARTMENTS: Record<DepartmentId, DepartmentInfo> = {
   dwp: { id: 'dwp', name: 'Department for Work and Pensions', casual: 'Work and Pensions' },
   culture: { id: 'culture', name: 'DCMS', casual: 'Culture' },
   housing: { id: 'housing', name: 'Ministry of Housing, Communities & Local Government', casual: 'Housing' },
+  energy: { id: 'energy', name: 'Department for Energy Security and Net Zero', casual: 'Energy' },
 };
 
 const DEPT_IDS = Object.keys(DEPARTMENTS) as DepartmentId[];
@@ -39,6 +40,7 @@ const SOS_TITLES: Record<DepartmentId, { gov: string; shadow: string }> = {
   dwp: { gov: 'Work and Pensions Secretary', shadow: 'Shadow Work and Pensions Secretary' },
   culture: { gov: 'Culture Secretary', shadow: 'Shadow Culture Secretary' },
   housing: { gov: 'Housing Secretary', shadow: 'Shadow Housing Secretary' },
+  energy: { gov: 'Energy Secretary', shadow: 'Shadow Energy Secretary' },
 };
 
 function buildOffices(): Record<OfficeId, Office> {
@@ -74,6 +76,21 @@ function buildOffices(): Record<OfficeId, Office> {
       id: 'chief_sec', tier: 4, department: 'treasury', rank: 1,
       title: 'Chief Secretary to the Treasury',
       shadowTitle: 'Shadow Chief Secretary to the Treasury',
+    },
+    // Chancellor of the Duchy of Lancaster — a senior, portfolio-less cabinet
+    // enforcer (can be made Deputy PM). Sits high in the pecking order.
+    chancellor_duchy: {
+      id: 'chancellor_duchy', tier: 4, rank: 3,
+      title: 'Chancellor of the Duchy of Lancaster',
+      shadowTitle: 'Shadow Chancellor of the Duchy of Lancaster',
+    },
+    // Attorney General — the government's chief legal officer. Ranks like the Chief
+    // Secretary (tier 4) but is NOT a cabinet member, so it stays out of
+    // CABINET_OFFICES (no NPC, never in the cabinet table or Deputy-PM pool).
+    attorney_general: {
+      id: 'attorney_general', tier: 4, rank: 1,
+      title: 'Attorney General',
+      shadowTitle: 'Shadow Attorney General',
     },
     // territorial Secretaries of State — only offered to a player from that nation
     sos_scotland: {
@@ -128,9 +145,9 @@ export const GREAT_OFFICES: OfficeId[] = ['sos_treasury', 'sos_home', 'sos_forei
 
 /** offices that make up the cabinet / shadow cabinet display, in rank order */
 export const CABINET_OFFICES: OfficeId[] = [
-  'sos_treasury', 'sos_home', 'sos_foreign', 'sos_health', 'sos_education',
-  'sos_defence', 'sos_justice', 'sos_business', 'sos_dwp', 'sos_transport',
-  'sos_environment', 'sos_culture', 'sos_housing',
+  'sos_treasury', 'sos_home', 'sos_foreign', 'chancellor_duchy',
+  'sos_health', 'sos_education', 'sos_defence', 'sos_justice', 'sos_business',
+  'sos_energy', 'sos_dwp', 'sos_transport', 'sos_environment', 'sos_culture', 'sos_housing',
   'sos_scotland', 'sos_wales', 'sos_ni', 'chief_sec', 'chiefWhip',
 ];
 

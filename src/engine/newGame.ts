@@ -24,7 +24,7 @@ export interface CreationInput {
   seed?: number;
 }
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
