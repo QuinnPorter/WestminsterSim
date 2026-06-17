@@ -22,6 +22,7 @@ export interface OfficeSpan {
   becamePM: boolean;
   roleSide?: RoleSide;
   partyId?: PartyId;
+  label?: string;
 }
 
 /** chronological portfolio history, derived from roleChange entries (newest first) */
@@ -43,6 +44,7 @@ export function buildOfficeSpans(history: GameState['history']): OfficeSpan[] {
         becamePM: entry.how === 'becamePM',
         roleSide: entry.roleSide,
         partyId: entry.partyId,
+        label: entry.label,
       };
     }
   }
@@ -56,6 +58,7 @@ function officeSpans(game: GameState): OfficeSpan[] {
 
 export function spanTitle(game: GameState, span: OfficeSpan): string {
   if (span.becamePM) return 'Prime Minister';
+  if (span.label) return span.label; // composite roles (e.g. junior coalition partner)
   return playerOfficeLabel(game, span.officeId, span.start, {
     roleSide: span.roleSide, partyId: span.partyId,
   });

@@ -304,7 +304,10 @@ export type HistoryEntry =
       how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' | 'continued';
       /** the gov/opposition/minor framing and party AT THE TIME the role was held,
        *  so the career timeline stays correct after the player crosses the floor */
-      roleSide?: 'gov' | 'opp' | 'minor'; partyId?: PartyId }
+      roleSide?: 'gov' | 'opp' | 'minor'; partyId?: PartyId;
+      /** an explicit timeline label, for composite roles the office id can't express
+       *  on its own (e.g. a junior-coalition-partner "Deputy Prime Minister and X") */
+      label?: string }
   | { kind: 'election'; date: GameDay; resultId: string; heldSeat: boolean }
   | { kind: 'event'; date: GameDay; headline: string }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }

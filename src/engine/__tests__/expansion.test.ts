@@ -389,12 +389,25 @@ describe('wave 14 — coalition junior partner & leader fixes', () => {
     seatPlayerJuniorPartner(g, new Rng(1));
     expect(g.government.pmId).not.toBe('player');         // the senior leader is PM
     expect(playerInGovernmentBloc(g)).toBe(true);
-    expect(g.government.cabinet.some((p) => p.characterId === 'player')).toBe(true);
     expect(g.player.flags._isDeputyPM).toBe(true);
     expect(g.government.oppositionParty).toBe('reform');  // the 3rd party, not the player
-    const title = playerOfficeTitle(g);
-    expect(title).toContain('Deputy Prime Minister');
-    expect(title).toContain('Leader of the');
+    expect(g.government.loId).not.toBe('player');         // no longer Leader of the Opposition
+    expect(playerOfficeTitle(g)).toContain('Deputy Prime Minister');
+    // a roleChange capturing the government role was recorded for the timeline
+    const last = [...g.history].reverse().find((h) => h.kind === 'roleChange');
+    expect(last && last.roleSide).toBe('gov');
+  });
+
+  it('a Deputy PM takes a department brief only some of the time (Clegg-style)', () => {
+    let withBrief = 0, withoutBrief = 0;
+    for (let i = 0; i < 40; i++) {
+      const g = juniorGame(40);
+      seatPlayerJuniorPartner(g, new Rng(100 + i));
+      if (g.government.cabinet.some((p) => p.characterId === 'player')) withBrief++;
+      else withoutBrief++;
+    }
+    expect(withBrief).toBeGreaterThan(0);
+    expect(withoutBrief).toBeGreaterThan(0);
   });
 
   it('gives a small junior partner a cabinet brief, still leading their party', () => {

@@ -49,6 +49,18 @@ export function CabinetScreen({ game }: { game: GameState }) {
       />
 
       <div className="cab-grid">
+        {/* a Deputy PM who holds no department (Clegg-style) isn't a post-holder, so
+            give the player a standalone cabinet card */}
+        {isGov && game.government.deputyPmId === 'player'
+          && !posts.some((p) => p.characterId === 'player') && (
+          <MemberCard
+            game={game}
+            characterId="player"
+            title={game.government.deputyTitle === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister'}
+            coalitionOf={game.player.partyId !== game.government.governingParty
+              ? PARTIES[game.player.partyId].shortName : undefined}
+          />
+        )}
         {CABINET_OFFICES.map((officeId) => {
           const post = posts.find((p) => p.officeId === officeId);
           if (!post) return null;
