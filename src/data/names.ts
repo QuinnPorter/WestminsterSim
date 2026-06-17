@@ -37,6 +37,7 @@ export const SURNAMES = [
   'Foster', 'Bell', 'Murphy', 'Kelly', 'Bailey', 'Webb', 'Chapman',
   'Holmes', 'Mills', 'Palmer', 'Barnes', 'Knight', 'Stevens', 'Dixon',
   'Fletcher', 'Page', 'Hunt', 'Berry', 'Stone', 'Hart', 'Pearce', 'Lane',
+  'Thomas', 'Martin',
   // Scottish
   'MacDonald', 'Campbell', 'Stewart', 'Robertson', 'MacLeod', 'Fraser',
   'Murray', 'Cameron', 'Ferguson', 'Grant', 'Sinclair', 'Buchanan',
