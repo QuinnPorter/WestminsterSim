@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
-import { applyElectionAftermath, compatibleCoalitionPartners } from '../career';
+import { applyElectionAftermath, compatibleCoalitionPartners, playerLeaderRole } from '../career';
 import { Rng } from '../rng';
 import { Era, ElectionResult, GameState, PartyId } from '../../types/game';
+
+function lastLeaderRoleSide(g: GameState): string | undefined {
+  for (let i = g.history.length - 1; i >= 0; i--) {
+    const h = g.history[i];
+    if (h.kind === 'roleChange' && h.officeId === 'leader') return h.roleSide;
+  }
+  return undefined;
+}
 
 function makeGame(partyId: PartyId = 'lab', era: Era = '2024', seed = 1234) {
   const input: CreationInput = {
@@ -41,6 +49,36 @@ describe('wave 19 — PM who loses becomes LOO in the timeline', () => {
     expect(leaderRC.some((h) => h.kind === 'roleChange' && h.how === 'becamePM')).toBe(true);
     const last = leaderRC[leaderRC.length - 1];
     expect(last.kind === 'roleChange' && last.roleSide).toBe('opp'); // a fresh LOO span opened
+  });
+});
+
+describe('wave 19 — leader demoted to a minor party is recorded in the timeline', () => {
+  it('an LOO whose party falls to 3rd gets a minor-leader career span', () => {
+    const g = makeGame('lab', '2024', 3);
+    // the player is the Labour Leader of the Opposition; the Conservatives govern
+    g.government.governingParty = 'con';
+    g.government.oppositionParty = 'lab';
+    g.government.loId = 'player';
+    g.player.officeId = 'leader';
+    g.history.push({
+      kind: 'roleChange', date: g.day, officeId: 'leader', how: 'continued',
+      roleSide: 'opp', partyId: 'lab',
+    });
+
+    // Labour collapses to third behind a surging Reform
+    const result: ElectionResult = {
+      id: 'ge', date: g.day,
+      seats: { con: 330, reform: 200, lab: 90, ld: 20, snp: 8, green: 2 } as GameState['seats'],
+      voteShares: { con: 0.42, reform: 0.28, lab: 0.18, ld: 0.08, snp: 0.03, green: 0.01 },
+      playerResult: null, outcome: 'majority', governingParty: 'con', playerHeldSeat: true,
+    };
+    g.seats = { ...result.seats };
+    applyElectionAftermath(g, new Rng(2), result, true);
+
+    expect(playerLeaderRole(g)).toBe('minorLeader');     // live role: minor-party leader
+    expect(g.government.oppositionParty).toBe('reform');  // opposition handed to Reform
+    expect(g.government.loId).not.toBe('player');
+    expect(lastLeaderRoleSide(g)).toBe('minor');          // timeline now matches the live role
   });
 });
 

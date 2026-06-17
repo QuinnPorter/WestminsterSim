@@ -303,6 +303,19 @@ function reconcileFrontbenches(state: GameState, rng: Rng, playerWonSeat: boolea
       state.government.loId = newFrontbencher(state, rng, oppParty, 'leader').id;
     }
     recordLoChange(state, state.government.loId);
+    // the player may have stayed a party leader while their party slipped OUT of the
+    // top two (Leader of the Opposition / PM → minor-party leader). Record that
+    // demotion so the Profile career timeline stops showing the stale opposition /
+    // PM framing — the mirror of the minor→opposition and PM→LOO transitions above.
+    if (
+      playerWonSeat && playerIsLeader(state) &&
+      currentRoleSide(state) === 'minor' && lastPlayerLeaderRoleSide(state) !== 'minor'
+    ) {
+      state.history.push({
+        kind: 'roleChange', date: state.day, officeId: 'leader', how: 'continued',
+        roleSide: 'minor', partyId: state.player.partyId,
+      });
+    }
   }
 }
 
