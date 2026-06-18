@@ -10,9 +10,10 @@ interface SeatPoint {
   isElection: boolean;
 }
 
-/** A line graph of every party's seat count across the whole career: stepped lines
- *  (seats hold between elections, jump at each), a dot at each election, and the
- *  background tinted by whichever party governed during that stretch. */
+/** A line graph of every party's seat count across the whole career: smooth lines
+ *  easing between elections (a relaxed gradual rise/fall rather than hard steps), a
+ *  dot at each election marking the true value, and the background tinted by
+ *  whichever party governed during that stretch. */
 export function SeatHistoryGraph({ game, width = 320, height = 172 }: {
   game: GameState; width?: number; height?: number;
 }) {
@@ -41,13 +42,34 @@ export function SeatHistoryGraph({ game, width = 320, height = 172 }: {
   // each point's seats hold until the next point's day (the last runs to today)
   const segEnd = (i: number) => (i + 1 < points.length ? points[i + 1].day : x1);
 
-  const stepPath = (p: PartyId): string => {
-    let d = '';
-    points.forEach((pt, i) => {
-      const y = py(pt.seats[p] ?? 0);
-      const xStart = px(pt.day), xEnd = px(segEnd(i));
-      d += `${i === 0 ? 'M' : ' L'}${xStart.toFixed(1)},${y.toFixed(1)} L${xEnd.toFixed(1)},${y.toFixed(1)}`;
-    });
+  // smooth (Catmull-Rom → cubic-bézier) line easing through each election point, so
+  // the trend reads as a gradual rise/fall instead of hard steps. The dots still mark
+  // the true seat values; only the connecting line is stylised.
+  const clampY = (y: number) => Math.max(padT, Math.min(height - padB, y));
+  const TENSION = 0.7; // <1 keeps the curve relaxed (less overshoot / jitter)
+
+  const smoothPath = (p: PartyId): string => {
+    const pts = points.map((pt) => ({ x: px(pt.day), y: py(pt.seats[p] ?? 0) }));
+    const tailX = px(x1);
+    if (pts.length === 1) {
+      // only the career-start point so far → a flat line to today
+      return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${tailX.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    }
+    let d = `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] ?? pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[i + 2] ?? pts[i + 1];
+      const c1x = p1.x + ((p2.x - p0.x) * TENSION) / 6;
+      const c1y = clampY(p1.y + ((p2.y - p0.y) * TENSION) / 6);
+      const c2x = p2.x - ((p3.x - p1.x) * TENSION) / 6;
+      const c2y = clampY(p2.y - ((p3.y - p1.y) * TENSION) / 6);
+      d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+    }
+    // the most recent election's seats hold to today: a flat tail
+    const last = pts[pts.length - 1];
+    if (tailX > last.x + 0.5) d += ` L${tailX.toFixed(1)},${last.y.toFixed(1)}`;
     return d;
   };
 
@@ -71,7 +93,7 @@ export function SeatHistoryGraph({ game, width = 320, height = 172 }: {
           </g>
         ))}
         {parties.map((p) => (
-          <path key={p} d={stepPath(p)} fill="none" stroke={PARTIES[p].colour}
+          <path key={p} d={smoothPath(p)} fill="none" stroke={PARTIES[p].colour}
             strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
         ))}
         {/* a dot at each election, on each party's line */}
