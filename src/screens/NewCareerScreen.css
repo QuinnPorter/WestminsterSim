@@ -176,8 +176,8 @@
 }
 
 .nc-bgs {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
@@ -185,15 +185,20 @@
   text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   border: 2px solid transparent;
-  padding: 12px 14px;
+  padding: 10px 12px;
   font-size: var(--fs-sm);
+  min-width: 0; /* let the one-line blurb ellipsis instead of stretching the grid */
 }
 
 .nc-bg span {
   color: var(--muted);
   font-size: var(--fs-xs);
+  /* a single-line teaser — keeps every card a uniform, compact height */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nc-bg.selected {
