@@ -47,6 +47,9 @@ interface UiState {
   /** whether the general-elections history modal is open */
   electionsOpen: boolean;
   setElectionsOpen: (v: boolean) => void;
+  /** whether the historical seat-count graph modal is open */
+  seatHistoryOpen: boolean;
+  setSeatHistoryOpen: (v: boolean) => void;
   debug: boolean;
 }
 
@@ -72,6 +75,8 @@ export const useUiStore = create<UiState>((set) => ({
   setAgendaEditorOpen: (v) => set({ agendaEditorOpen: v }),
   electionsOpen: false,
   setElectionsOpen: (v) => set({ electionsOpen: v }),
+  seatHistoryOpen: false,
+  setSeatHistoryOpen: (v) => set({ seatHistoryOpen: v }),
   debug:
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('debug'),

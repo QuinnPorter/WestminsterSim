@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ElectionResult, GameState, PartyId } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { PARTIES, partyTextColour } from '../data/parties';
@@ -11,15 +11,22 @@ export function ElectionNightScreen({ game }: { game: GameState }) {
   const acknowledge = useGameStore((s) => s.acknowledgeElection);
   const result = game.elections[game.pendingElectionId!];
   const [stage, setStage] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setStage(0);
   }, [game.pendingElectionId]);
 
+  // each staged reveal appends content below; bring the view back to the top so the
+  // player reads the new section from the start rather than being left at the bottom
+  useEffect(() => {
+    rootRef.current?.scrollTo({ top: 0 });
+  }, [stage]);
+
   if (!result) return null;
 
   return (
-    <div className="screen election-night">
+    <div className="screen election-night" ref={rootRef}>
       <div className="en-banner">
         <span className="en-live">ELECTION NIGHT</span>
         <h2>{formatFull(result.date)}</h2>

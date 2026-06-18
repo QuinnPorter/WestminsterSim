@@ -12,6 +12,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
   const setLoHistoryOpen = useUiStore((s) => s.setLoHistoryOpen);
   const setElectionsOpen = useUiStore((s) => s.setElectionsOpen);
+  const setSeatHistoryOpen = useUiStore((s) => s.setSeatHistoryOpen);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const callSnapElection = useGameStore((s) => s.callSnapElection);
   const sorted = (Object.entries(game.seats) as [PartyId, number][])
@@ -119,6 +120,17 @@ export function ParliamentScreen({ game }: { game: GameState }) {
               {PARTIES[p].shortName} {n}
             </span>
           ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+          <button
+            onClick={() => setSeatHistoryOpen(true)}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              color: partyTextColour(gov.governingParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+            }}
+          >
+            Seats over time ›
+          </button>
         </div>
       </div>
 
