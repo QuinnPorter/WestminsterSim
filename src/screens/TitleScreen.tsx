@@ -2,6 +2,9 @@ import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import './TitleScreen.css';
 
+/** Hosted privacy policy (no data collected). Same URL used for the store listings. */
+export const PRIVACY_URL = 'https://github.com/QuinnPorter/WestminsterSim/blob/main/PRIVACY.md';
+
 export function TitleScreen() {
   const game = useGameStore((s) => s.game);
   const slots = useGameStore((s) => s.slots);
@@ -81,7 +84,19 @@ export function TitleScreen() {
       <button className="btn title-secondary" onClick={() => setLanding('tutorial')}>
         Tutorial
       </button>
-      <p className="title-foot">A political simulator · All political figures are fictional</p>
+      <p className="title-foot">
+        A political simulator · All political figures are fictional
+        <br />
+        <a
+          className="title-privacy"
+          href={PRIVACY_URL}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: 'inherit', textDecoration: 'underline' }}
+        >
+          Privacy Policy
+        </a>
+      </p>
     </div>
   );
 }
