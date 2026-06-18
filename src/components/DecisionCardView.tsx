@@ -2,6 +2,7 @@ import { DrawnCard, GameState } from '../types/game';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES } from '../data/parties';
 import { isKeyMoment, keyMomentLabel } from '../engine/cardEngine';
+import { tap } from '../native/haptics';
 import './DecisionCardView.css';
 
 interface DecisionCardViewProps {
@@ -46,7 +47,7 @@ export function DecisionCardView({ game, card, onChoose, onContinue }: DecisionC
           <p className="dcard-body">{card.body}</p>
           <div className="dcard-choices">
             {card.choices.map((c, i) => (
-              <button key={i} className="btn" onClick={() => onChoose(i)}>
+              <button key={i} className="btn" onClick={() => { tap(); onChoose(i); }}>
                 {c.label}
               </button>
             ))}
@@ -67,7 +68,7 @@ export function DecisionCardView({ game, card, onChoose, onContinue }: DecisionC
               ))}
             </div>
           )}
-          <button className="btn btn-primary dcard-continue" onClick={onContinue}>
+          <button className="btn btn-primary dcard-continue" onClick={() => { tap(); onContinue(); }}>
             Continue
           </button>
         </>

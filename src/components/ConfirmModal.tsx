@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useUiStore } from '../store/uiStore';
+import { tap } from '../native/haptics';
 import './ConfirmModal.css';
 
 /** A single in-app confirmation dialog, driven by the UI store's `confirm`
@@ -20,6 +21,7 @@ export function ConfirmModal() {
   if (!confirm) return null;
 
   const accept = () => {
+    tap();
     confirm.onConfirm();
     close();
   };

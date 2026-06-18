@@ -55,6 +55,9 @@ p {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* clear the status bar / notch on a phone (0 on desktop/web) */
+  padding-top: env(safe-area-inset-top, 0px);
+  box-sizing: border-box;
 }
 
 @media (min-width: 480px) {

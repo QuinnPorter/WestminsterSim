@@ -1,4 +1,7 @@
 import { useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { useUiStore } from './store/uiStore';
 import { useGameStore } from './store/gameStore';
 import { TabBar } from './components/TabBar';
@@ -54,6 +57,32 @@ export default function App() {
       setLanding('menu');
     }
   }, [started, game, setStarted, setLanding]);
+
+  // native shell setup (no-op on web): status-bar styling for the cream theme, and
+  // the Android hardware back button — close any open modal first, then walk back
+  // through tabs to Play, then exit. State is read fresh via getState().
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    // Style.Light = dark icons/text, suited to the light (cream) background
+    StatusBar.setStyle({ style: Style.Light }).catch(() => {});
+
+    let handle: { remove: () => void } | undefined;
+    CapacitorApp.addListener('backButton', () => {
+      const s = useUiStore.getState();
+      if (s.confirm) { s.closeConfirm(); return; }
+      if (s.pmHistoryOpen) { s.setPmHistoryOpen(false); return; }
+      if (s.loHistoryOpen) { s.setLoHistoryOpen(false); return; }
+      if (s.mentorHistoryOpen) { s.setMentorHistoryOpen(false); return; }
+      if (s.electionsOpen) { s.setElectionsOpen(false); return; }
+      if (s.agendaEditorOpen) { s.setAgendaEditorOpen(false); return; }
+      if (s.protege) { s.setProtege(null); return; }
+      if (!s.started && s.landing !== 'menu') { s.setLanding('menu'); return; }
+      if (s.started && s.activeTab !== 'play') { s.setTab('play'); return; }
+      CapacitorApp.exitApp();
+    }).then((h) => { handle = h; });
+
+    return () => { handle?.remove(); };
+  }, []);
 
   // ---- landing flow (always shown first on launch) ----
   if (!started) {

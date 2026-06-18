@@ -1,6 +1,7 @@
 import { useUiStore, TabId } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { isKeyMoment } from '../engine/cardEngine';
+import { tap } from '../native/haptics';
 import './TabBar.css';
 
 const ICONS: Record<TabId, JSX.Element> = {
@@ -67,7 +68,7 @@ export function TabBar() {
         <button
           key={tab}
           className={`tabbar-item${tab === activeTab ? ' active' : ''}`}
-          onClick={() => setTab(tab)}
+          onClick={() => { tap(); setTab(tab); }}
           aria-label={LABELS[tab]}
         >
           <span className="tabbar-icon">
