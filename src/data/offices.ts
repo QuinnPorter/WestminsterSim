@@ -174,8 +174,12 @@ export function officeTitleFor(
   if (office.id === 'whip') return `${minorPartyName} Whip`;
   if (office.id === 'pps') return `Aide to the ${minorPartyName} Leader`;
   if (office.department) {
+    // a minor party in government holds the real cabinet brief — give it the full
+    // Secretary-of-State title, not a "spokesperson" label (e.g. a Green in a
+    // coalition runs the department as "Health Secretary").
+    if (inGovernment) return officeTitle(`sos_${office.department}`, true);
     const dept = DEPARTMENTS[office.department].casual;
-    // a single spokesperson rung for minor parties (no "lead" distinction)
+    // in opposition, a single spokesperson rung for minor parties (no "lead" distinction)
     return `${minorPartyName} Spokesperson for ${dept}`;
   }
   return officeTitle(officeId, inGovernment);

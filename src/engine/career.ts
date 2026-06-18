@@ -376,6 +376,13 @@ function deptOfficeId(
 
 /** the next rung the player would plausibly be offered */
 export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
+  const target = computeNextOffice(state, rng);
+  // never offer the player a post they already hold — that reads as a no-op
+  // "reshuffle" offering you your own job. Skip this cycle instead.
+  return target === state.player.officeId ? null : target;
+}
+
+function computeNextOffice(state: GameState, rng: Rng): OfficeId | null {
   const tier = playerTier(state);
   const bg = BACKGROUNDS[state.player.background];
 
@@ -1171,6 +1178,10 @@ export function applyElectionAftermath(
     if (playerIsLeader(state)) {
       // losing your own seat as leader ends the leadership immediately
       state.player.officeId = null;
+      state.player.officeSinceDay = null;
+      // close the career-timeline span (PM / LO / minor leader) — without this the
+      // Profile keeps showing the old role running "…–now" after they've left
+      state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how: 'leftOffice' });
       resolveNpcLeadership(state, rng, state.player.partyId);
     } else if (state.player.officeId) {
       stripOffice(state, rng, 'leftOffice');
@@ -1204,17 +1215,41 @@ export function applyElectionAftermath(
     !playerIsLeader(state)
   ) {
     const nowInGov = state.player.partyId === newGov;
-    const title = officeTitle(state.player.officeId, nowInGov);
-    state.history.push({
-      kind: 'roleChange', date: state.day, officeId: state.player.officeId, how: 'continued',
-      roleSide: currentRoleSide(state), partyId: state.player.partyId,
-    });
-    state.history.push({
-      kind: 'event', date: state.day,
-      headline: nowInGov
-        ? `${state.player.name} takes office as ${title}`
-        : `${state.player.name} becomes ${title}`,
-    });
+    const expected = playerOfficeTitle(state);
+    // the "Emily Thornberry effect": a shadow minister / spokesperson usually slots
+    // straight into the matching brief, but the incoming leader occasionally passes
+    // them over. More likely with weak party standing / competence — ~2% at the top,
+    // ~14% at the bottom, 5-7% for a middling frontbencher.
+    const s = state.player.stats;
+    const snubChance = clamp(0.06 + (55 - (s.partyStanding + s.competence) / 2) * 0.0025, 0.02, 0.15);
+    if (rng.chance(snubChance)) {
+      if (rng.chance(0.7)) {
+        // passed over entirely — back to the backbenches
+        stripOffice(state, rng, 'leftOffice');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} is overlooked for ${expected} and returns to the backbenches`,
+        });
+      } else {
+        // handed a lesser brief instead of the job they shadowed
+        giveOffice(state, rng, deptOfficeId(rng, BACKGROUNDS[state.player.background], 3), 'appointed');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} is passed over for ${expected} and handed a junior brief`,
+        });
+      }
+    } else {
+      state.history.push({
+        kind: 'roleChange', date: state.day, officeId: state.player.officeId, how: 'continued',
+        roleSide: currentRoleSide(state), partyId: state.player.partyId,
+      });
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: nowInGov
+          ? `${state.player.name} takes office as ${expected}`
+          : `${state.player.name} becomes ${expected}`,
+      });
+    }
   }
 
   // defeated leaders usually resign

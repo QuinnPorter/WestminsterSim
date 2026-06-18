@@ -12,17 +12,19 @@ const PER_SEAT_NOISE = 0.015;
 /** election-day campaign wobble (sd) — the only gap between polling and result */
 const CAMPAIGN_NOISE = 0.012;
 /** the right-populist slot — only one of these polls per era and they never co-occur.
- *  Their vote is spread thin (unlike the concentrated LD/Green vote), so a genuine
- *  national surge under-converts to seats; give it a stronger swing-to-seat amplifier
- *  so it is somewhat more responsive (still below the concentrated parties' level). */
+ *  Their vote is spread thin (unlike the concentrated LD/Green vote), so under FPTP
+ *  it should convert to seats a little WORSE than a mainstream party at the same
+ *  share: a foothold is reachable, but a thin national vote must NOT sweep marginals
+ *  everywhere (the old ×2.3 amplifier let 13% → ~290 seats). A real high-share surge
+ *  can still break through. */
 const POPULIST_PARTIES: PartyId[] = ['ukip', 'brexit', 'reform'];
-/** ceiling on a populist's amplified per-seat swing. The ×2.3 amplifier helps a
- *  spread vote convert at low/mid share, but left unbounded it overshoots at high
- *  share (an even vote flips a whole block of marginals at once → landslide). The
- *  cap only binds at large surges, so it flattens the top — a strong populist lands
- *  just below the (concentrated) Lib Dems at the same share — without touching the
- *  low/mid range or a declining vote. Tuned against the seat sims. */
-const POPULIST_SWING_CAP = 0.48;
+/** the populist swing-to-seat amplifier (applied to the portion of a positive swing
+ *  above ~2pts). Set BELOW the mainstream ×1.6 so a spread populist vote converts a
+ *  touch worse than a concentrated one. */
+const POPULIST_SWING_MULT = 1.4;
+/** ceiling on a populist's amplified per-seat swing — a hard cap so even a large
+ *  surge can't flip a whole block of marginals at once. Tuned against the seat sims. */
+const POPULIST_SWING_CAP = 0.52;
 /** per-seat vote-share bonus for the national vote-leader — tips marginals their
  *  way so a clear lead crosses the majority line more often (≈+25% majorities). */
 const WINNER_BONUS = 0.008;
@@ -91,8 +93,8 @@ function computeSeat(
       // while ordinary campaign noise (and a flat vote) stays FPTP-punished
       if (swing > 0.02) {
         if (POPULIST_PARTIES.includes(p)) {
-          // strong amplifier off the floor, but saturating at the top
-          swing = Math.min(POPULIST_SWING_CAP, 0.02 + (swing - 0.02) * 2.3);
+          // a spread populist vote converts a little WORSE than mainstream, hard-capped
+          swing = Math.min(POPULIST_SWING_CAP, 0.02 + (swing - 0.02) * POPULIST_SWING_MULT);
         } else {
           swing = 0.02 + (swing - 0.02) * 1.6;
         }
@@ -179,6 +181,39 @@ function buildConstituencyResult(
     turnout,
     majorityVotes,
   };
+}
+
+/** Convert the internal national shares into a realistic DISPLAY table. Regional
+ *  parties (SNP / Plaid) are polled at their region's strength, which over-reads as a
+ *  GB-wide figure (SNP showing ~23%). Scale a strict regional party down by its
+ *  region's share of seats so the published table is sane and the GB parties aren't
+ *  artificially compressed. DISPLAY ONLY — the seat model keeps using the unscaled
+ *  `national`, so seat counts are unchanged. */
+function displayVoteShares(
+  state: GameState,
+  national: Partial<Record<PartyId, number>>
+): Partial<Record<PartyId, number>> {
+  const regionSeats: Record<string, number> = {};
+  let totalSeats = 0;
+  for (const seat of state.seatMap) {
+    regionSeats[seat.region] = (regionSeats[seat.region] ?? 0) + 1;
+    totalSeats++;
+  }
+  const out: Partial<Record<PartyId, number>> = {};
+  for (const [pk, v] of Object.entries(national)) {
+    const p = pk as PartyId;
+    const regions = PARTIES[p]?.contestsRegions;
+    const coverage = regions
+      ? regions.reduce((n, r) => n + (regionSeats[r] ?? 0), 0) / (totalSeats || 1)
+      : 1;
+    // a strict regional party (contests well under half the seats) reads at region
+    // strength → rescale to a national figure; GB-wide parties are left untouched
+    out[p] = coverage < 0.5 ? (v ?? 0) * coverage : (v ?? 0);
+  }
+  let total = 0;
+  for (const v of Object.values(out)) total += v ?? 0;
+  if (total > 0) for (const k of Object.keys(out)) out[k as PartyId] = (out[k as PartyId] ?? 0) / total;
+  return out;
 }
 
 export interface RunElectionOutput {
@@ -273,7 +308,7 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
     id: `ge_${state.day}`,
     date: state.day,
     seats,
-    voteShares: national,
+    voteShares: displayVoteShares(state, national),
     playerResult,
     outcome,
     governingParty,

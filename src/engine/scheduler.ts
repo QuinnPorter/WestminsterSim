@@ -14,7 +14,7 @@ import { OFFICES } from '../data/offices';
 import { relationshipValue } from './relationships';
 import { runElection } from './election';
 import { gainStat } from './effects';
-import { partyPolling, pollingLead } from './polling';
+import { partyPolling, pollingLead, lastElectionShares } from './polling';
 import { isoToDay, yearOf } from './clock';
 import { Rng } from './rng';
 
@@ -456,12 +456,15 @@ export function nextStep(state: GameState, rng: Rng): void {
     const polls = partyPolling(state, state.player.partyId);
     const tenureYears = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
     const tookOver = (state.player.flags._leaderTookOverPolls as number) ?? polls;
-    const floor = onMinorPartyTrack(state) ? 12 : 25;
+    // a LOW absolute backstop floor (a genuine wipeout still bites), but the
+    // dominant driver is how far they've SLID from the polling they inherited — a
+    // stable-but-low FPTP standing shouldn't by itself force a heave
+    const floor = onMinorPartyTrack(state) ? 10 : 16;
     let pressure = 0;
-    if (polls < floor) pressure += (floor - polls) * 0.8;
+    if (polls < floor) pressure += (floor - polls) * 0.5;
     pressure += state.player.rebellionCount * 4;
     if (tenureYears > 3) pressure += (tenureYears - 3) * 3;
-    if (polls < tookOver - 2) pressure += (tookOver - polls) * 0.6;
+    if (polls < tookOver - 2) pressure += (tookOver - polls) * 0.9;
     const hazard = Math.min(0.1, pressure / 280);
     if (hazard > 0 && rng.chance(hazard)) {
       if (rng.chance(0.4)) state.forcedQueue.push({ kind: 'resignPledge' });
@@ -640,14 +643,20 @@ export function nextStep(state: GameState, rng: Rng): void {
     const leaderId = isGov ? state.government.pmId : state.government.loId;
     if (leaderId === 'player') continue;
 
-    // leader churn: scandal (any time, rare) or a sustained polling collapse
-    const collapseThreshold = isGov ? 23 : 19;
+    // leader churn: scandal (any time, rare) or a polling collapse. The collapse is
+    // anchored to DECLINE from the vote share they won at the last election — under
+    // FPTP a leader can govern on a low-but-stable vote without "sliding" — with a
+    // low absolute backstop floor to still catch a genuine wipeout.
+    const polls = partyPolling(state, party);
+    const ref = (lastElectionShares(state)[party] ?? 0) * 100;
+    const BACKSTOP_FLOOR = 16;
+    const SLIDE_PTS = 8;
     const scandalFall = rng.chance(NPC_LEADER_SCANDAL);
     // a PM gets a ~3-month grace before the polls can fell them — a leader who just
     // won shouldn't resign over polling the same month (only scandal, Liz-Truss-style)
     const pmGrace = !isGov || (state.day - state.government.pmSinceDay) >= 90;
-    const collapse = pmGrace
-      && partyPolling(state, party) < collapseThreshold && rng.chance(LEADER_COLLAPSE_HAZARD);
+    const slid = polls < BACKSTOP_FLOOR || (ref - polls) >= SLIDE_PTS;
+    const collapse = pmGrace && slid && rng.chance(LEADER_COLLAPSE_HAZARD);
     if (scandalFall || collapse) {
       const leaderName = state.characters[leaderId]?.name ?? 'The leader';
       const role = isGov ? 'Prime Minister' : `${PARTIES[party].shortName} leader`;

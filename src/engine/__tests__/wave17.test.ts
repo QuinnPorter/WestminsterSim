@@ -34,21 +34,40 @@ describe('wave 17 — winner\'s bonus / more decisive elections', () => {
   });
 });
 
-describe('wave 17 — populist seat responsiveness', () => {
-  it('a Reform surge now converts to far more than the ~22 seats it used to win', () => {
+describe('wave 20 — populist conversion is hard (a foothold, not a sweep)', () => {
+  it('a spread populist vote converts WORSE than a concentrated party at the same share', () => {
+    const seatsAt = (P: PartyId, share: number) => {
+      let s = 0; const runs = 16;
+      for (let i = 0; i < runs; i++) {
+        const g = makeGame(P, '2024', 100 + i);
+        const rest = 1 - share - 0.05 - 0.03 - 0.01;
+        const base: Record<string, number> = {
+          lab: rest / 2, con: rest / 2, ld: 0.05, green: 0.03, snp: 0.025, pc: 0.005,
+        };
+        base[P] = share;
+        g.polling.shares = base as Record<PartyId, number>;
+        s += runElection(g, new Rng(700 + i)).result.seats[P] ?? 0;
+      }
+      return s / runs;
+    };
+    // a populist on 38% wins far fewer seats than the (concentrated) Lib Dems on 38%
+    expect(seatsAt('reform', 0.38)).toBeLessThan(seatsAt('ld', 0.38) - 40);
+  });
+
+  it('a populist leading a fragmented field gets only a modest foothold, not a landslide', () => {
     let ref = 0;
     const runs = 16;
     for (let i = 0; i < runs; i++) {
       const g = makeGame('reform', '2024', 100 + i);
-      // Reform leads a fragmented field (the reported scenario)
+      // Reform leads a fragmented field (the originally-reported scenario)
       g.polling.shares = { reform: 0.29, lab: 0.19, ld: 0.18, con: 0.15, green: 0.09, snp: 0.03, pc: 0.01 };
       const { result } = runElection(g, new Rng(700 + i));
       ref += result.seats.reform ?? 0;
     }
     const avg = ref / runs;
-    // clearly more responsive than the old ~22, but not a runaway landslide
-    expect(avg).toBeGreaterThan(45);
-    expect(avg).toBeLessThan(260);
+    // a real foothold (more than the near-zero of raw FPTP) but nowhere near a sweep
+    expect(avg).toBeGreaterThan(5);
+    expect(avg).toBeLessThan(70);
   });
 
   it('a flat 2024 baseline still keeps Labour comfortably in government', () => {
