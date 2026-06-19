@@ -830,6 +830,59 @@ function pickContestCandidates(state: GameState, rng: Rng, party: PartyId): stri
     if (ids.length > fieldSize) ids.length = fieldSize;
   }
 
+  // top up a thin field with fresh hopefuls so every contest has a proper 3-6 names
+  while (ids.length < fieldSize) {
+    const c = generateCharacter(rng, usedNamesOf(state), {
+      partyId: party, minAge: 40, maxAge: 60, competenceMean: 60, traitBias: ['ambitious'],
+    }, npcIdCounter(state));
+    state.characters[c.id] = c;
+    ids.push(c.id);
+  }
+
+  // even with a full front bench, a major party's field occasionally includes an
+  // insurgent: a Minister of State (~12%) or a backbencher (~9%) who stands anyway.
+  // They take the weakest senior's slot (never the front-runner's) and rarely win.
+  const isMajor =
+    party === state.government.governingParty || party === state.government.oppositionParty;
+  if (isMajor && ids.length >= 3) {
+    let injected = 0;
+    const injectInsurgent = (id: string) => {
+      if (ids.includes(id)) return;
+      const idx = ids.length - 1 - injected;
+      if (idx >= 1) { ids[idx] = id; injected++; }
+    };
+    if (rng.chance(0.12)) {
+      const realMos = members((c) => !!c.officeId && OFFICES[c.officeId].tier === 3)[0];
+      let mosId: string;
+      if (realMos) {
+        mosId = realMos.id;
+      } else {
+        const depts = Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[];
+        const mos = generateCharacter(rng, usedNamesOf(state), {
+          partyId: party, minAge: 38, maxAge: 58, competenceMean: 58,
+          traitBias: ['ambitious'], officeId: `min_${rng.pick(depts)}` as OfficeId,
+        }, npcIdCounter(state));
+        state.characters[mos.id] = mos;
+        mosId = mos.id;
+      }
+      injectInsurgent(mosId);
+    }
+    if (rng.chance(0.09)) {
+      const realBencher = members((c) => !c.officeId)[0];
+      let benchId: string;
+      if (realBencher) {
+        benchId = realBencher.id;
+      } else {
+        const b = generateCharacter(rng, usedNamesOf(state), {
+          partyId: party, minAge: 38, maxAge: 60, competenceMean: 56, traitBias: ['ambitious'],
+        }, npcIdCounter(state));
+        state.characters[b.id] = b;
+        benchId = b.id;
+      }
+      injectInsurgent(benchId);
+    }
+  }
+
   // a minor party has no front bench; give SOME contenders a spokesperson brief so the
   // field reads as a mix of "[Party] Spokesperson for X" and "Backbench MP" (not all backbench)
   const isMinor =
@@ -862,9 +915,10 @@ function rivalStrengthOf(c: Character, rng: Rng): number {
     (c.traits.includes('dull') ? 5 : 0);
   // seniority weighs heavily: cabinet-rank candidates are the baseline; a Minister of
   // State is a long shot and a backbencher a rank outsider. Anchored at 0 for tier-4 so
-  // a field of front-benchers calibrates exactly as before.
+  // a field of front-benchers calibrates exactly as before. The backbench gap (-12 vs
+  // the -7.1 head-to-head noise sd) leaves a backbencher ~5% odds against a Sec of State.
   const tier = c.officeId ? OFFICES[c.officeId].tier : 0;
-  const tierBonus = tier >= 4 ? 0 : tier === 3 ? -8 : -16;
+  const tierBonus = tier >= 4 ? 0 : tier === 3 ? -8 : -12;
   return 0.6 * c.competence + traitBonus + tierBonus + rng.normal(0, 5);
 }
 
