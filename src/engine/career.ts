@@ -2190,18 +2190,24 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         payload: { step, advance: rng.int(5, 9) },
       };
     }
-    case 'wilderness':
+    case 'wilderness': {
+      // a single decision that stands in for the whole spell out of Parliament:
+      // jump the clock to the next general-election window (the scheduler queues the
+      // campaign before it would draw another wilderness card), so the player isn't
+      // re-prompted every few months. continueCore advances polling across the jump.
+      const toElection = Math.max(150, (state.nextElectionBy - 60) - state.day + rng.int(1, 20));
       return {
         cardId: `forced_wilderness_${state.day}`,
         kind: 'wilderness',
         title: 'Life outside',
-        body: 'Civilian life is quieter. The constituency association still invites you to things, and the local paper still takes your calls. The next election is the road back.',
+        body: 'Civilian life is quieter. The constituency association keeps you on as their candidate, and you will not see the inside of the Commons again until the country next goes to the polls. How do you spend the wilderness years?',
         choices: [
           { label: 'Keep your profile up locally' },
           { label: 'Earn money and lie low' },
         ],
-        payload: { advance: rng.int(150, 200) },
+        payload: { advance: toElection },
       };
+    }
     case 'deputyPmOffer': {
       const pmName = state.characters[state.government.pmId]?.name ?? 'the Prime Minister';
       return {
@@ -2979,12 +2985,14 @@ export function resolveForcedChoice(
     }
 
     case 'wilderness': {
+      // a single choice now covers the whole parliament out of office, so the
+      // effect is scaled up from the old per-6-month values
       if (choiceIndex === 0) {
-        gain('constituencyApproval', 4, 'Approval');
-        return { text: 'Fetes, food banks, and the local radio breakfast show. People remember who shows up.', deltas };
+        gain('constituencyApproval', 12, 'Approval');
+        return { text: 'Years of fetes, food banks, and the local radio breakfast show. People remember who keeps showing up — and the road back runs through them.', deltas };
       }
-      gain('profile', -2, 'Profile');
-      return { text: 'Consultancy pays better than Parliament ever did. You bank it and bide your time.', deltas };
+      gain('profile', -5, 'Profile');
+      return { text: 'Consultancy pays better than Parliament ever did. You bank it and bide your time, slipping quietly out of the national picture.', deltas };
     }
 
     case 'resignPledge': {

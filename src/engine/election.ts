@@ -26,8 +26,9 @@ const POPULIST_SWING_MULT = 1.4;
  *  surge can't flip a whole block of marginals at once. Tuned against the seat sims. */
 const POPULIST_SWING_CAP = 0.52;
 /** per-seat vote-share bonus for the national vote-leader — tips marginals their
- *  way so a clear lead crosses the majority line more often (≈+25% majorities). */
-const WINNER_BONUS = 0.008;
+ *  way so a clear lead crosses the majority line more often. Trimmed slightly so
+ *  blowout 400+ majorities are a touch rarer without dampening ordinary leads. */
+const WINNER_BONUS = 0.007;
 
 /** compute this election's national GB vote shares — anchored to CURRENT POLLING
  *  (not to the last election), so the ballot box reflects the polls within a few
@@ -96,7 +97,8 @@ function computeSeat(
           // a spread populist vote converts a little WORSE than mainstream, hard-capped
           swing = Math.min(POPULIST_SWING_CAP, 0.02 + (swing - 0.02) * POPULIST_SWING_MULT);
         } else {
-          swing = 0.02 + (swing - 0.02) * 1.6;
+          // softened from 1.6 so big swings build slightly smaller landslides
+          swing = 0.02 + (swing - 0.02) * 1.5;
         }
       }
       v += swing;
