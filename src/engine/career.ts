@@ -1753,12 +1753,21 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const body = round === 1
         ? `You are not in the running, but a leadership contest is a market in loyalty. ${field} are the serious names. Whom do you get behind?`
         : `The field narrows to ${field}. A leader will emerge within days. Where do you throw your weight now?`;
+      // each candidate's current position, so the player can tell the (procedurally
+      // named) contenders apart when deciding whom to back
+      const roleOf = (id: string): string | undefined => {
+        const c = state.characters[id];
+        if (!c) return undefined;
+        const gov = state.government.governingParty, opp = state.government.oppositionParty;
+        const minorName = c.partyId !== gov && c.partyId !== opp ? PARTIES[c.partyId].name : undefined;
+        return officeTitleFor(c.officeId, { inGovernment: c.partyId === gov, minorPartyName: minorName });
+      };
       return {
         cardId: `forced_backing_${round}_${state.day}`,
         kind: 'leadershipBacking',
         title: 'Leadership contest',
         body,
-        choices: backable.map((id) => ({ label: `Back ${characterName(state, id)}` })),
+        choices: backable.map((id) => ({ label: `Back ${characterName(state, id)}`, sublabel: roleOf(id) })),
         payload: { ...ev.payload, candidateIds: backable, advance: rng.int(7, 12) },
       };
     }

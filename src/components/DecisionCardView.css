@@ -69,6 +69,21 @@
   gap: 8px;
 }
 
+/* a choice button with a muted second line (e.g. a candidate's current office).
+ * `.btn.dcard-choice-sub` outranks the base `.btn { display: block }` rule. */
+.btn.dcard-choice-sub {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.dcard-sub {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .dcard-deltas {
   display: flex;
   flex-wrap: wrap;

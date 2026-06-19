@@ -47,8 +47,13 @@ export function DecisionCardView({ game, card, onChoose, onContinue }: DecisionC
           <p className="dcard-body">{card.body}</p>
           <div className="dcard-choices">
             {card.choices.map((c, i) => (
-              <button key={i} className="btn" onClick={() => { tap(); onChoose(i); }}>
-                {c.label}
+              <button
+                key={i}
+                className={`btn${c.sublabel ? ' dcard-choice-sub' : ''}`}
+                onClick={() => { tap(); onChoose(i); }}
+              >
+                <span>{c.label}</span>
+                {c.sublabel && <span className="dcard-sub">{c.sublabel}</span>}
               </button>
             ))}
           </div>

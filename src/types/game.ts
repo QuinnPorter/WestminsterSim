@@ -338,7 +338,8 @@ export interface DrawnCard {
   body: string;
   /** character id rendered on the card */
   speakerId?: string;
-  choices: { label: string }[];
+  /** `sublabel` is an optional muted second line (e.g. a candidate's current office) */
+  choices: { label: string; sublabel?: string }[];
   /** forced-event payload (e.g. offered officeId) */
   payload?: Record<string, unknown>;
   /** set once a choice is made; the card then shows the outcome + Continue */
