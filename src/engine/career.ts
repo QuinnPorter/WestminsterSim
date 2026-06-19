@@ -1517,10 +1517,25 @@ function recomputeOpposition(state: GameState, rng: Rng): void {
     || state.government.loId === 'player';
   if (!opp) {
     // no eligible opposition party at all — don't strand the player as LO
-    if (state.government.loId === 'player') state.government.loId = '';
+    if (state.government.loId === 'player') {
+      state.government.loId = '';
+      // close the player's still-open LO tenure (recordLoChange('') no-ops)
+      const last = state.loHistory?.[state.loHistory.length - 1];
+      if (last && last.endDay === null) last.endDay = state.day;
+    }
     return;
   }
   if (opp === state.government.oppositionParty && !oppInvalid) return;
+  // resolve the new opposition leader BEFORE mutating oppositionParty: partyLeaderId
+  // short-circuits `party === oppositionParty` and would just echo back the stale loId
+  // (still the player). Reuse the opp party's existing leader, else mint a fresh one.
+  let newLo = state.government.loId;
+  if (state.government.loId === 'player' || state.characters[state.government.loId]?.partyId !== opp) {
+    const existing = Object.values(state.characters).find(
+      (c) => c.active && c.partyId === opp && c.officeId === 'leader' && c.id !== 'player'
+    );
+    newLo = existing ? existing.id : newFrontbencher(state, rng, opp, 'leader').id;
+  }
   state.government.oppositionParty = opp;
   // the shadow bench now belongs to the new opposition party
   for (const post of state.government.shadowCabinet) {
@@ -1530,9 +1545,7 @@ function recomputeOpposition(state: GameState, rng: Rng): void {
       post.characterId = newFrontbencher(state, rng, opp, post.officeId).id;
     }
   }
-  if (state.government.loId === 'player' || state.characters[state.government.loId]?.partyId !== opp) {
-    state.government.loId = partyLeaderId(state, rng, opp);
-  }
+  state.government.loId = newLo;
   recordLoChange(state, state.government.loId);
 }
 

@@ -4,7 +4,7 @@ import {
   recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
   nextOfficeFor, callForLeaderResignationCore, seatPlayerJuniorPartner, setDeputyPmCore,
   sackMinisterCore, playerOfficeTitle, playerInGovernmentBloc, startBacking,
-  applyElectionAftermath,
+  applyElectionAftermath, recordLoChange,
 } from '../career';
 import { initCalendar, nextStep, resolveCalendarChoice } from '../scheduler';
 import { runElection } from '../election';
@@ -392,10 +392,28 @@ describe('wave 14 — coalition junior partner & leader fixes', () => {
     expect(g.player.flags._isDeputyPM).toBe(true);
     expect(g.government.oppositionParty).toBe('reform');  // the 3rd party, not the player
     expect(g.government.loId).not.toBe('player');         // no longer Leader of the Opposition
+    // the LO is an actual active leader of the new opposition party (not a stale echo)
+    const lo = g.characters[g.government.loId];
+    expect(lo?.partyId).toBe('reform');
+    expect(lo?.officeId).toBe('leader');
     expect(playerOfficeTitle(g)).toContain('Deputy Prime Minister');
     // a roleChange capturing the government role was recorded for the timeline
     const last = [...g.history].reverse().find((h) => h.kind === 'roleChange');
     expect(last && last.roleSide).toBe('gov');
+  });
+
+  it('hands the opposition to the 3rd party when the player WAS the LO (coalition)', () => {
+    const g = juniorGame(40);
+    // the player led the opposition before being offered the coalition
+    g.government.oppositionParty = 'lab';
+    g.government.loId = 'player';
+    recordLoChange(g, 'player');
+    seatPlayerJuniorPartner(g, new Rng(7));
+    expect(g.government.loId).not.toBe('player');
+    expect(g.characters[g.government.loId]?.partyId).toBe('reform');
+    // the player's LO tenure is closed; the current (open) LO is not the player
+    const open = (g.loHistory ?? []).filter((t) => t.endDay === null);
+    expect(open.every((t) => t.characterId !== 'player')).toBe(true);
   });
 
   it('a Deputy PM takes a department brief only some of the time (Clegg-style)', () => {
