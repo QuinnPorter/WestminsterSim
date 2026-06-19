@@ -15,13 +15,13 @@ export interface BackgroundInfo {
 export const BACKGROUNDS: Record<BackgroundId, BackgroundInfo> = {
   advisor: {
     id: 'advisor', name: 'Political Advisor',
-    blurb: 'You know where the bodies are buried — you helped bury several.',
+    blurb: 'You know where the bodies are buried.',
     statMods: { partyStanding: 8, competence: 4, constituencyApproval: -4 },
     deptAffinity: [], deptBonus: 0,
   },
   lawyer: {
     id: 'lawyer', name: 'Barrister',
-    blurb: 'Forensic in committee, lethal at the despatch box.',
+    blurb: 'Forensic, and lethal at the despatch box.',
     statMods: { competence: 8, profile: 3 },
     deptAffinity: ['justice', 'home'], deptBonus: 8,
   },
@@ -33,7 +33,7 @@ export const BACKGROUNDS: Record<BackgroundId, BackgroundInfo> = {
   },
   foreignService: {
     id: 'foreignService', name: 'Diplomat',
-    blurb: 'Fluent in three languages and the dark art of saying nothing.',
+    blurb: 'Fluent in the dark art of saying nothing.',
     statMods: { competence: 6, partyStanding: 3 },
     deptAffinity: ['foreign', 'defence'], deptBonus: 8,
   },
@@ -51,13 +51,13 @@ export const BACKGROUNDS: Record<BackgroundId, BackgroundInfo> = {
   },
   doctor: {
     id: 'doctor', name: 'Doctor',
-    blurb: 'You left the wards to fix the system that runs them.',
+    blurb: 'You left the wards to fix the system.',
     statMods: { competence: 5, integrity: 6, profile: 2 },
     deptAffinity: ['health'], deptBonus: 10,
   },
   journalist: {
     id: 'journalist', name: 'Journalist',
-    blurb: 'You spent years skewering politicians. Now you are one.',
+    blurb: 'You skewered politicians; now you are one.',
     statMods: { profile: 10, integrity: -2, partyStanding: -2 },
     deptAffinity: ['culture'], deptBonus: 8,
   },
@@ -69,7 +69,7 @@ export const BACKGROUNDS: Record<BackgroundId, BackgroundInfo> = {
   },
   councillor: {
     id: 'councillor', name: 'Local Councillor',
-    blurb: 'Bins, planning rows and ward surgeries — you know your patch.',
+    blurb: 'Bins, planning rows and ward surgeries.',
     statMods: { constituencyApproval: 8, competence: 3, partyStanding: 2 },
     deptAffinity: ['dwp', 'transport'], deptBonus: 6,
   },
@@ -81,13 +81,13 @@ export const BACKGROUNDS: Record<BackgroundId, BackgroundInfo> = {
   },
   tradeUnionist: {
     id: 'tradeUnionist', name: 'Trade Unionist',
-    blurb: 'You rose through the movement; you can read any room.',
+    blurb: 'You rose through the movement; you read rooms.',
     statMods: { partyStanding: 8, integrity: 4, constituencyApproval: 3, competence: -2 },
     deptAffinity: ['dwp', 'business'], deptBonus: 7,
   },
   academic: {
     id: 'academic', name: 'Academic',
-    blurb: 'A career of seminars, peer review and hard evidence.',
+    blurb: 'Seminars, peer review and hard evidence.',
     statMods: { competence: 9, profile: 2, constituencyApproval: -3 },
     deptAffinity: ['treasury', 'education'], deptBonus: 8,
   },

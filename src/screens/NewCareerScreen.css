@@ -189,16 +189,19 @@
   border: 2px solid transparent;
   padding: 10px 12px;
   font-size: var(--fs-sm);
-  min-width: 0; /* let the one-line blurb ellipsis instead of stretching the grid */
+  min-width: 0; /* let the blurb wrap/clamp inside the card instead of stretching the grid */
 }
 
 .nc-bg span {
   color: var(--muted);
   font-size: var(--fs-xs);
-  /* a single-line teaser — keeps every card a uniform, compact height */
-  white-space: nowrap;
+  /* wrap inside the card, clamped to two lines so every card stays compact and the
+     blurb never spills past the edge on a narrow phone */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .nc-bg.selected {

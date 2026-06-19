@@ -132,4 +132,29 @@ describe('wave 17 — continue as protégé', () => {
     expect(g.government.cabinet.every((p) => p.characterId !== 'player')).toBe(true);
     expect(g.government.shadowCabinet.every((p) => p.characterId !== 'player')).toBe(true);
   });
+
+  it("does not agglomerate the mentor's PM time/spells into the protégé's legacy", () => {
+    const g = makeGame('lab', '2024', 7);
+    // the retiree served two spells as PM
+    g.pmHistory.push({ characterId: 'player', name: 'Test MP', partyId: 'lab', startDay: g.day, endDay: g.day + 700 });
+    g.pmHistory.push({ characterId: 'player', name: 'Test MP', partyId: 'lab', startDay: g.day + 1500, endDay: g.day + 2000 });
+    g.day += 2200;
+    expect(buildLegacy(g).pmStints).toBe(2); // the retiree's own legacy still counts them
+
+    const input: CreationInput = {
+      name: 'The Heir', gender: 'm', age: 33, region: 'yorkshire',
+      background: 'teacher', partyId: 'lab',
+      avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
+      era: '2024',
+    };
+    continueAsProtegeCore(g, new Rng(3), input);
+
+    // the mentor's tenures are re-attributed off 'player' and kept in the mentor record
+    expect(g.pmHistory.some((t) => t.characterId === 'player')).toBe(false);
+    expect(g.mentors![0].pmTenures.length).toBe(2);
+    // the fresh protégé starts with a clean slate — no inherited PM time
+    const legacy = buildLegacy(g);
+    expect(legacy.pmStints).toBe(0);
+    expect(legacy.yearsAsPM).toBe(0);
+  });
 });

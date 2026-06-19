@@ -3781,6 +3781,12 @@ export function continueAsProtegeCore(state: GameState, rng: Rng, input: Creatio
   const oldSeatId = state.player.seatId;
   // 1. archive the retiree (reads their career entries before we prune them)
   state.mentors = [...(state.mentors ?? []), snapshotMentor(state)];
+  // 1b. re-attribute the retiree's PM/LO tenures from 'player' to the mentor: the world
+  // chronicle keeps them (under the mentor's name), and the protégé's end-screen stats no
+  // longer agglomerate the mentor's time/spells as PM (buildLegacy filters by 'player')
+  const mentorId = state.mentors[state.mentors.length - 1].id;
+  for (const t of state.pmHistory ?? []) if (t.characterId === 'player') t.characterId = mentorId;
+  for (const t of state.loHistory ?? []) if (t.characterId === 'player') t.characterId = mentorId;
   // 2. keep only the world chronicle; the retiree's personal career lives in the mentor
   state.history = state.history.filter((h) => h.kind === 'event');
   // 3. hand the retiree's offices to NPCs and clear every 'player' reference

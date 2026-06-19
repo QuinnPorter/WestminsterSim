@@ -24,11 +24,11 @@ type StepName = (typeof FULL_STEPS)[number];
 const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
   '2015': {
     title: 'May 2015',
-    blurb: "Cameron's surprise majority of 12. Austerity, an EU referendum pledge to keep, UKIP snapping at the right, and the SNP sweeping all but three Scottish seats.",
+    blurb: 'A surprise Conservative majority of 12. Austerity, an EU referendum pledge to keep, UKIP snapping at the right, and the SNP sweeping all but three Scottish seats.',
   },
   '2017': {
     title: 'June 2017',
-    blurb: "Theresa May's gamble backfires: a hung parliament, propped up by the DUP. Brexit consumes everything and the majority has vanished.",
+    blurb: 'The Conservative election gamble backfires: a hung parliament, propped up by the DUP. Brexit consumes everything and the majority has vanished.',
   },
   '2019': {
     title: 'December 2019',
