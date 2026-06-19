@@ -10,7 +10,7 @@ import {
 import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
   callForLeaderResignationCore, setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
-  continueAsProtegeCore, backfillCabinetOffices,
+  continueAsProtegeCore, backfillCabinetOffices, reconcileCharacterOffices,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -124,6 +124,9 @@ export function migrateGameState(game: GameState): GameState {
     backfillCabinetOffices(game, rng);
     game.rngState = rng.state;
   }
+  // clear any "ghost" ministers carrying a cabinet title they no longer hold
+  // (e.g. an NPC the player displaced in an older save). Idempotent.
+  reconcileCharacterOffices(game);
   game.version = SAVE_VERSION;
   return game;
 }

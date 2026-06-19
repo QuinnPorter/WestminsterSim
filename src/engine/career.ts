@@ -238,6 +238,21 @@ export function backfillCabinetOffices(state: GameState, rng: Rng): void {
   fill('shadowCabinet', state.government.oppositionParty);
 }
 
+/** Repair any character carrying a stale CABINET-rank office they no longer hold —
+ *  e.g. a minister the player displaced who kept their old title ("ghost minister").
+ *  Idempotent. Leaves 'leader', minor-party spokesperson (min_*) and other non-bench
+ *  offices untouched (those are intentionally not on a tracked bench). */
+export function reconcileCharacterOffices(state: GameState): void {
+  const seated = new Set<string>();
+  for (const side of ['cabinet', 'shadowCabinet'] as const) {
+    for (const post of state.government[side]) seated.add(`${post.characterId}:${post.officeId}`);
+  }
+  for (const c of Object.values(state.characters)) {
+    if (!c.officeId || !CABINET_OFFICES.includes(c.officeId)) continue;
+    if (!seated.has(`${c.id}:${c.officeId}`)) c.officeId = null;
+  }
+}
+
 /** After an election, make the cabinet / shadow-cabinet rosters match the parties
  *  that actually won government and official-opposition status — so whether a
  *  party (and the player within it) is the official opposition or a third party
@@ -501,8 +516,13 @@ export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 
   // only government/opposition players occupy a tracked cabinet seat; minor-party
   // spokesperson roles are not part of any NPC bench
   if (onFrontbenchTrack(state) && CABINET_OFFICES.includes(officeId)) {
-    // displace the NPC holder
-    setFrontbenchPost(state, frontbenchSide(state), officeId, 'player');
+    // displace the NPC holder — drop them to the backbenches so they don't keep a
+    // stale title (a "ghost minister" who later shows the wrong role in a contest)
+    const side = frontbenchSide(state);
+    const post = state.government[side].find((p) => p.officeId === officeId);
+    const displaced = post && post.characterId !== 'player' ? state.characters[post.characterId] : undefined;
+    if (displaced) displaced.officeId = null;
+    setFrontbenchPost(state, side, officeId, 'player');
   }
   state.history.push({
     kind: 'roleChange', date: state.day, officeId, how,
@@ -778,10 +798,27 @@ export function playerCanStandForLeader(state: GameState): boolean {
 /** assemble the named field for a leadership contest: 3-6 heavyweight rivals */
 function pickContestCandidates(state: GameState, rng: Rng, party: PartyId): string[] {
   const fieldSize = rng.int(3, 6);
-  const pool = Object.values(state.characters)
-    .filter((c) => c.active && c.partyId === party && c.officeId && OFFICES[c.officeId].tier === 4)
-    .sort((a, b) => b.competence - a.competence);
-  const ids = pool.slice(0, fieldSize).map((c) => c.id);
+  const byComp = (a: Character, b: Character) => b.competence - a.competence;
+  const members = (pred: (c: Character) => boolean) => Object.values(state.characters)
+    .filter((c) => c.active && c.partyId === party && c.id !== 'player' && c.officeId !== 'leader' && pred(c))
+    .sort(byComp);
+  // the field is led by the strongest cabinet-rank front-benchers (the usual contest)
+  const ids = members((c) => !!c.officeId && OFFICES[c.officeId].tier === 4)
+    .slice(0, fieldSize).map((c) => c.id);
+  // if the senior bench can't fill the field (a thin or minor party), Ministers of
+  // State and then backbenchers join in — they can stand, they just rarely win
+  // (the tier penalty in rivalStrengthOf), keeping major-party contests unchanged
+  if (ids.length < fieldSize) {
+    const extras = [
+      ...members((c) => !!c.officeId && OFFICES[c.officeId].tier === 3),
+      ...members((c) => !c.officeId),
+    ];
+    for (const c of extras) {
+      if (ids.length >= fieldSize) break;
+      if (!ids.includes(c.id)) ids.push(c.id);
+    }
+  }
+
   // your long-standing rival recurs as an antagonist: force them into the field
   // (if they're an active colleague in this party) so the same name keeps coming back
   const rivalId = getRelationship(state, 'rival')?.characterId;
@@ -792,14 +829,26 @@ function pickContestCandidates(state: GameState, rng: Rng, party: PartyId): stri
     ids.unshift(rivalId);
     if (ids.length > fieldSize) ids.length = fieldSize;
   }
-  while (ids.length < fieldSize) {
-    const c = generateCharacter(rng, usedNamesOf(state), {
-      partyId: party, minAge: 40, maxAge: 60,
-      competenceMean: 60, traitBias: ['ambitious'],
-    }, npcIdCounter(state));
-    state.characters[c.id] = c;
-    ids.push(c.id);
+
+  // a minor party has no front bench; give SOME contenders a spokesperson brief so the
+  // field reads as a mix of "[Party] Spokesperson for X" and "Backbench MP" (not all backbench)
+  const isMinor =
+    party !== state.government.governingParty && party !== state.government.oppositionParty;
+  if (isMinor) {
+    const prominent = ['treasury', 'home', 'foreign', 'health'] as (keyof typeof DEPARTMENTS)[];
+    const allDepts = Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[];
+    const used = new Set<string>();
+    for (const id of ids) {
+      const c = state.characters[id];
+      if (!c || c.officeId) continue;       // leave any existing office / the rival's brief alone
+      if (!rng.chance(0.45)) continue;       // many stay backbenchers
+      const pref = (rng.chance(0.6) ? prominent : allDepts).filter((d) => !used.has(d));
+      const dept = pref.length ? rng.pick(pref) : rng.pick(allDepts);
+      used.add(dept);
+      c.officeId = `min_${dept}` as OfficeId;
+    }
   }
+
   return ids;
 }
 
@@ -811,7 +860,12 @@ function rivalStrengthOf(c: Character, rng: Rng): number {
     (c.traits.includes('charming') ? 3 : 0) +
     (c.traits.includes('fixer') ? 2 : 0) -
     (c.traits.includes('dull') ? 5 : 0);
-  return 0.6 * c.competence + traitBonus + rng.normal(0, 5);
+  // seniority weighs heavily: cabinet-rank candidates are the baseline; a Minister of
+  // State is a long shot and a backbencher a rank outsider. Anchored at 0 for tier-4 so
+  // a field of front-benchers calibrates exactly as before.
+  const tier = c.officeId ? OFFICES[c.officeId].tier : 0;
+  const tierBonus = tier >= 4 ? 0 : tier === 3 ? -8 : -16;
+  return 0.6 * c.competence + traitBonus + tierBonus + rng.normal(0, 5);
 }
 
 /** a leadership vacancy has opened in `party` */
@@ -835,10 +889,13 @@ export function resolveNpcLeadership(
   party: PartyId,
   forcedWinnerId?: string
 ): Character {
-  // strongest available frontbencher of that party, else fresh blood
-  const candidates = Object.values(state.characters).filter(
-    (c) => c.active && c.partyId === party && c.officeId && OFFICES[c.officeId].tier === 4
+  // the field: front-benchers lead, but Ministers of State and even backbenchers can
+  // win (rivalStrengthOf makes the senior names the likely victors), else fresh blood
+  const members = Object.values(state.characters).filter(
+    (c) => c.active && c.partyId === party && c.officeId !== 'leader'
   );
+  const contenders = members.filter((c) => c.officeId && OFFICES[c.officeId].tier >= 3);
+  const fieldForWin = contenders.length > 0 ? contenders : members;
   let winner: Character;
   if (forcedWinnerId && state.characters[forcedWinnerId]) {
     winner = state.characters[forcedWinnerId];
@@ -848,14 +905,13 @@ export function resolveNpcLeadership(
       const fresh = newFrontbencher(state, rng, party, oldOffice);
       setFrontbenchPost(state, side, oldOffice, fresh.id);
     }
-  } else if (candidates.length > 0 && rng.chance(0.8)) {
-    winner = candidates.reduce((a, b) =>
-      a.competence + rng.normal(0, 8) > b.competence ? a : b
-    );
-    // their old post gets a new holder
-    const oldOffice = winner.officeId!;
+  } else if (fieldForWin.length > 0 && rng.chance(0.8)) {
+    const scored = fieldForWin.map((c) => ({ c, s: rivalStrengthOf(c, rng) }));
+    winner = scored.reduce((a, b) => (a.s >= b.s ? a : b)).c;
+    // a cabinet-rank old post gets a new holder (a min_* spokesperson holds no bench seat)
+    const oldOffice = winner.officeId;
     const side = party === state.government.governingParty ? 'cabinet' : 'shadowCabinet';
-    if (CABINET_OFFICES.includes(oldOffice)) {
+    if (oldOffice && CABINET_OFFICES.includes(oldOffice)) {
       const fresh = newFrontbencher(state, rng, party, oldOffice);
       setFrontbenchPost(state, side, oldOffice, fresh.id);
     }
