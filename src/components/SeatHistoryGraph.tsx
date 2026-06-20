@@ -25,9 +25,10 @@ export function SeatHistoryGraph({ game, width = 320, height = 172 }: {
       .map((e) => ({ day: e.date, seats: e.seats, gov: e.governingParty, isElection: true })),
   ];
 
-  // only plot parties that ever held a meaningful number of seats (keeps it legible)
+  // plot every party that ever held a seat (start matrix or any election), not just the
+  // big parties — so minor/NI parties (SNP, DUP, Plaid, Green, …) appear in every era
   const parties = (Object.keys(PARTIES) as PartyId[]).filter((p) =>
-    points.some((pt) => (pt.seats[p] ?? 0) > 10)
+    points.some((pt) => (pt.seats[p] ?? 0) > 0)
   );
 
   const padL = 24, padR = 8, padT = 10, padB = 26;

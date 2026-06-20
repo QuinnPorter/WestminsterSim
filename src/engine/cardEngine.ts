@@ -88,6 +88,8 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
     if (!role || !req.leaderRole.includes(role)) return false;
   }
   if (req.arrangementIn && !req.arrangementIn.includes(state.government.arrangement)) return false;
+  if (req.firstParliament !== undefined &&
+      (Object.keys(state.elections).length === 0) !== req.firstParliament) return false;
   if (req.minorParty !== undefined && onMinorPartyTrack(state) !== req.minorParty) return false;
   if (req.era && !req.era.includes(state.startEra)) return false;
   if (req.causeIn && !req.causeIn.some((c) => state.player.causes?.includes(c))) return false;

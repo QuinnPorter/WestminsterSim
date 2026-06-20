@@ -23,6 +23,9 @@ export interface Requirement {
   minorParty?: boolean;
   /** only fire under these government arrangements (coalition-life cards) */
   arrangementIn?: ('majority' | 'minority' | 'supplyConfidence' | 'coalition')[];
+  /** true → only before the first general election (the game's ORIGINAL government,
+   *  e.g. the 2010 coalition before it ever faces the country) */
+  firstParliament?: boolean;
   /** only fire when the player champions at least one of these causes */
   causeIn?: CauseId[];
 }

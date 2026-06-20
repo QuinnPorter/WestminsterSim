@@ -10,7 +10,7 @@ export const ERA_CARDS: DecisionCard[] = [
     body: 'With the deficit at the heart of every argument, a fresh round of spending cuts reaches services in your patch — a library, a bus route, a youth centre. Small lines in a spreadsheet, large in a town.',
     tags: ['constituency', 'policy'],
     weight: 12, cooldownDays: 540,
-    requires: { era: ['2010'] },
+    requires: { era: ['2010'], partyIn: ['con', 'ld'], arrangementIn: ['coalition'], firstParliament: true },
     choices: [
       {
         label: 'Defend deficit reduction',
@@ -30,7 +30,7 @@ export const ERA_CARDS: DecisionCard[] = [
     body: 'The government moves to treble university tuition fees, and students are marching outside. For the Liberal Democrats it cuts deepest of all — a signed pledge now on a collision course with coalition discipline.',
     tags: ['party', 'serious'],
     weight: 13, cooldownDays: 9999, oncePerCareer: true,
-    requires: { era: ['2010'], maxTier: 4 },
+    requires: { era: ['2010'], partyIn: ['con', 'ld'], arrangementIn: ['coalition'], firstParliament: true, maxTier: 4 },
     choices: [
       {
         label: 'Vote with the government',
@@ -50,7 +50,7 @@ export const ERA_CARDS: DecisionCard[] = [
     body: 'The early warmth of the coalition is wearing thin. Backbenchers on both sides grumble that their party is being swallowed by the other, and the press is hunting for the seam where the partnership splits.',
     tags: ['party', 'westminster'],
     weight: 12, cooldownDays: 600,
-    requires: { era: ['2010'], maxTier: 4 },
+    requires: { era: ['2010'], partyIn: ['con', 'ld'], arrangementIn: ['coalition'], firstParliament: true, maxTier: 4 },
     choices: [
       {
         label: 'Champion the coalition',

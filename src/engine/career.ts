@@ -577,6 +577,27 @@ function clearPlayerDeputyPM(state: GameState): void {
   }
 }
 
+/** The Deputy PM overlay follows the JUNIOR coalition partner's leader. Call when that
+ *  party's leadership changes so the overlay moves to the new leader (or clears a stale
+ *  player overlay). No-op outside a coalition, for other parties, or if the junior leader
+ *  did not hold the DPM (e.g. they took a department brief instead). */
+export function reassignJuniorPartnerDeputy(state: GameState, party: PartyId, newLeaderId: string): void {
+  if (state.government.arrangement !== 'coalition' || party !== state.government.coalitionPartner) return;
+  const dpm = state.government.deputyPmId;
+  const dpmWasJuniorLeader = !!dpm && (dpm === 'player'
+    ? state.player.partyId === party
+    : state.characters[dpm]?.partyId === party);
+  if (!dpmWasJuniorLeader) return;
+  const title = state.government.deputyTitle ?? 'dpm';
+  clearPlayerDeputyPM(state); // clears _isDeputyPM + deputyPmId if it was 'player'
+  state.government.deputyPmId = newLeaderId;
+  state.government.deputyTitle = title;
+  if (newLeaderId === 'player') {
+    state.player.flags._isDeputyPM = true;
+    state.player.flags._everDeputyPM = true;
+  }
+}
+
 /** ~75% of NPC governments run a single deputy (≈2/3 Deputy PM, ≈1/3 First
  *  Secretary of State), drawn from the strongest cabinet hand. Re-rolling this
  *  whole decision keeps the aggregate chance of a deputy at 75% at any snapshot,
@@ -1022,6 +1043,14 @@ export function resolveNpcLeadership(
       kind: 'event', date: state.day,
       headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
     });
+  } else if (party === state.government.coalitionPartner) {
+    // the junior coalition partner's leadership changed — the Deputy PM overlay
+    // follows the new leader (and clears any stale player overlay)
+    reassignJuniorPartnerDeputy(state, party, winner.id);
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
+    });
   }
 
   if (party === state.player.partyId) {
@@ -1082,9 +1111,17 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
     state.player.flags._newLeaderReshuffleBy = state.day + rng.int(7, 35);
   }
   recordPeakTier(state);
+  // re-taking the JUNIOR coalition partner's leadership reclaims the Deputy PM overlay
+  // (it followed the previous leader). Do this BEFORE recording history so the role
+  // label reads as "Deputy Prime Minister…" and not the gov-side default "Prime Minister".
+  const juniorCoalition = state.government.arrangement === 'coalition'
+    && state.government.coalitionPartner === party
+    && party !== state.government.governingParty;
+  if (juniorCoalition) reassignJuniorPartnerDeputy(state, party, 'player');
   state.history.push({
     kind: 'roleChange', date: state.day, officeId: 'leader', how: 'electedLeader',
     roleSide: currentRoleSide(state), partyId: state.player.partyId,
+    ...(juniorCoalition ? { label: playerOfficeTitle(state) } : {}),
   });
   state.history.push({ kind: 'leadershipContest', date: state.day, won: true, partyId: party });
 
