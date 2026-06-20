@@ -192,6 +192,16 @@
   min-width: 0; /* let the blurb wrap/clamp inside the card instead of stretching the grid */
 }
 
+.nc-bg strong {
+  /* clamp the name to a single line so a long label (e.g. "Political Advisor")
+     never wraps and bloats the card past its neighbour in the grid */
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 .nc-bg span {
   color: var(--muted);
   font-size: var(--fs-xs);

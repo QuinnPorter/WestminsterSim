@@ -43,7 +43,7 @@ function runCareer(seed: number, years: number, era: Era): GameState {
 
 describe('election balance (softened amplifier + winner bonus)', () => {
   it('keeps majorities common but makes 400+ landslides a touch rarer', () => {
-    const eras: Era[] = ['2015', '2017', '2019', '2024'];
+    const eras: Era[] = ['2010', '2015', '2017', '2019', '2024'];
     let nElections = 0, nMajority = 0, n400 = 0, nSubPlurality = 0;
     const CAREERS = 240, YEARS = 30;
     for (let i = 0; i < CAREERS; i++) {

@@ -3,6 +3,68 @@ import { DecisionCard } from '../../types/content';
 /** Era-specific flavour: events that capture the texture of each starting
  *  parliament. Gated by `requires.era`, so a 2019 game never sees 2024's cards. */
 export const ERA_CARDS: DecisionCard[] = [
+  // ---------------- 2010: the coalition, the crash, austerity ----------------
+  {
+    id: 'era10_austerity',
+    title: 'The age of austerity',
+    body: 'With the deficit at the heart of every argument, a fresh round of spending cuts reaches services in your patch — a library, a bus route, a youth centre. Small lines in a spreadsheet, large in a town.',
+    tags: ['constituency', 'policy'],
+    weight: 12, cooldownDays: 540,
+    requires: { era: ['2010'] },
+    choices: [
+      {
+        label: 'Defend deficit reduction',
+        effects: { stats: { partyStanding: 3, constituencyApproval: -4 } },
+        outcomeText: 'You make the case that there is no money left and hard choices cannot wait. The Treasury notes a reliable voice; the town notes a shuttered centre.',
+      },
+      {
+        label: 'Fight to save the service',
+        effects: { stats: { constituencyApproval: 5, partyStanding: -3 }, relationships: [{ kind: 'chiefWhip', delta: -3 }] },
+        outcomeText: 'You lead the campaign and win a reprieve. Your constituents are grateful; the whips file you under "wobbly on the deficit".',
+      },
+    ],
+  },
+  {
+    id: 'era10_tuition_fees',
+    title: 'The tuition fees vote',
+    body: 'The government moves to treble university tuition fees, and students are marching outside. For the Liberal Democrats it cuts deepest of all — a signed pledge now on a collision course with coalition discipline.',
+    tags: ['party', 'serious'],
+    weight: 13, cooldownDays: 9999, oncePerCareer: true,
+    requires: { era: ['2010'], maxTier: 4 },
+    choices: [
+      {
+        label: 'Vote with the government',
+        effects: { stats: { partyStanding: 4, constituencyApproval: -3 }, relationships: [{ kind: 'chiefWhip', delta: 4 }] },
+        outcomeText: 'You troop through the government lobby and take the placards on the chin. Loyalty banked — and, for some, a promise visibly broken.',
+      },
+      {
+        label: 'Break ranks and vote against',
+        effects: { stats: { profile: 4, integrity: 3, partyStanding: -4 }, relationships: [{ kind: 'chiefWhip', delta: -6 }], trigger: 'rebel' },
+        outcomeText: 'You keep faith with the pledge and defy the whip. The campuses cheer; the leadership reddens; the rebellion is logged.',
+      },
+    ],
+  },
+  {
+    id: 'era10_coalition_strains',
+    title: 'The rose garden fades',
+    body: 'The early warmth of the coalition is wearing thin. Backbenchers on both sides grumble that their party is being swallowed by the other, and the press is hunting for the seam where the partnership splits.',
+    tags: ['party', 'westminster'],
+    weight: 12, cooldownDays: 600,
+    requires: { era: ['2010'], maxTier: 4 },
+    choices: [
+      {
+        label: 'Champion the coalition',
+        effects: { stats: { partyStanding: 3, competence: 1, profile: -1 } },
+        outcomeText: 'You defend the partnership as grown-up government in the national interest. Steady, unflashy, and quietly appreciated by the leadership.',
+      },
+      {
+        label: 'Differentiate your party loudly',
+        effects: { stats: { profile: 4 }, relationships: [{ kind: 'leader', delta: -3 }, { kind: 'chiefWhip', delta: -2 }], setFlags: { era_coalition_differentiator: true } },
+        outcomeText: 'You stake out your own party\'s distinct ground in public. The base loves the clarity; the leadership wishes you had cleared it first.',
+      },
+    ],
+  },
+
   // ---------------- 2015: Cameron majority, referendum looming ----------------
   {
     id: 'era15_referendum',

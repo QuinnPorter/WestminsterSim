@@ -17,7 +17,7 @@ export type DepartmentId =
 /** Days since 2019-01-01 (UTC). clock.ts converts to dates. */
 export type GameDay = number;
 
-export type Era = '2015' | '2017' | '2019' | '2024';
+export type Era = '2010' | '2015' | '2017' | '2019' | '2024';
 
 /** broad political causes the player champions — see data/causes.ts */
 export type CauseId =

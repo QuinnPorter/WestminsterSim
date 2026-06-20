@@ -84,6 +84,7 @@ describe('wave 8 — bug 1: results-driven official opposition', () => {
 
 describe('wave 8 — bug 2: era-aware playable parties', () => {
   it('swaps the populist slot to the era-correct party', () => {
+    expect(populistPartyForEra('2010')).toBe('ukip');
     expect(populistPartyForEra('2015')).toBe('ukip');
     expect(populistPartyForEra('2017')).toBe('ukip');
     expect(populistPartyForEra('2019')).toBe('brexit');
@@ -97,7 +98,7 @@ describe('wave 8 — bug 2: era-aware playable parties', () => {
   });
 
   it('keeps the same length and the non-populist slots unchanged', () => {
-    for (const era of ['2015', '2017', '2019', '2024'] as const) {
+    for (const era of ['2010', '2015', '2017', '2019', '2024'] as const) {
       const list = playablePartiesForEra(era);
       expect(list).toHaveLength(PLAYABLE_PARTIES.length);
       for (const p of ['con', 'lab', 'ld', 'snp', 'green', 'pc'] as PartyId[]) {

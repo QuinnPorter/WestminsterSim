@@ -22,6 +22,10 @@ const PROTEGE_STEPS = ['You', 'Background', 'Agenda', 'Look'] as const;
 type StepName = (typeof FULL_STEPS)[number];
 
 const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
+  '2010': {
+    title: 'May 2010',
+    blurb: 'A hung parliament after the financial crash, and a Conservative–Liberal Democrat coalition takes office. Austerity is coming, the deficit dominates, and the two governing parties are already pulling in different directions.',
+  },
   '2015': {
     title: 'May 2015',
     blurb: 'A surprise Conservative majority of 12. Austerity, an EU referendum pledge to keep, UKIP snapping at the right, and the SNP sweeping all but three Scottish seats.',
@@ -130,7 +134,7 @@ export function NewCareerScreen() {
       {stepName === 'Era' && (
         <div className="fade-in">
           <h2 className="nc-h">When does your story begin?</h2>
-          {(['2015', '2017', '2019', '2024'] as Era[]).map((e) => (
+          {(['2010', '2015', '2017', '2019', '2024'] as Era[]).map((e) => (
             <button
               key={e}
               className={`card nc-era${era === e ? ' selected' : ''}`}

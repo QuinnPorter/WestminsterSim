@@ -89,14 +89,14 @@ export const POLLED_PARTIES: PartyId[] = [
  *  only one ever appears in that era's polling and parliament. */
 export function polledPartiesForEra(era: Era): PartyId[] {
   const base: PartyId[] = ['con', 'lab', 'ld', 'snp', 'green', 'pc'];
-  if (era === '2015' || era === '2017') return [...base, 'ukip'];
+  if (era === '2010' || era === '2015' || era === '2017') return [...base, 'ukip'];
   if (era === '2019') return [...base, 'brexit'];
   return [...base, 'reform']; // 2024
 }
 
 /** the right-populist party that actually exists in a given era */
 export function populistPartyForEra(era: Era): PartyId {
-  if (era === '2015' || era === '2017') return 'ukip';
+  if (era === '2010' || era === '2015' || era === '2017') return 'ukip';
   if (era === '2019') return 'brexit';
   return 'reform'; // 2024
 }

@@ -9,6 +9,7 @@ import { generateSeatMap, countSeats } from '../generation/constituency';
 import { generateCharacter } from '../generation/characters';
 import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
+import { seatCoalitionCabinet } from './career';
 
 export interface CreationInput {
   name: string;
@@ -87,6 +88,16 @@ export function createNewGame(input: CreationInput): GameState {
     competenceMean: 60, traitBias: ['ambitious'],
   }, idCounter));
 
+  // a coalition era (2010 Con–LD) also has a junior-partner leader, who becomes
+  // Deputy PM. Generated up front so a player who picks the partner inherits them
+  // as their own party leader rather than a throwaway figure.
+  const coalitionLeader = data.coalitionPartner
+    ? add(generateCharacter(rng, usedNames, {
+        partyId: data.coalitionPartner, officeId: 'leader', minAge: 43, maxAge: 60,
+        competenceMean: 60, traitBias: ['ambitious', 'charming'],
+      }, idCounter))
+    : null;
+
   const cabinet: CabinetPost[] = [];
   const shadowCabinet: CabinetPost[] = [];
   for (const officeId of CABINET_OFFICES) {
@@ -112,6 +123,7 @@ export function createNewGame(input: CreationInput): GameState {
   let leaderId: string;
   if (playerParty === govParty) leaderId = pm.id;
   else if (playerParty === oppParty) leaderId = lo.id;
+  else if (coalitionLeader && playerParty === data.coalitionPartner) leaderId = coalitionLeader.id;
   else {
     leaderId = add(generateCharacter(rng, usedNames, {
       partyId: playerParty, officeId: 'leader', minAge: 42, maxAge: 64,
@@ -166,7 +178,7 @@ export function createNewGame(input: CreationInput): GameState {
   const govSeats = seats[govParty] ?? 0;
   const majority = govSeats - (voting - govSeats);
 
-  return {
+  const state: GameState = {
     version: SAVE_VERSION,
     rngState: rng.state,
     day: startDay,
@@ -218,4 +230,18 @@ export function createNewGame(input: CreationInput): GameState {
     nextElectionBy: startDay + Math.round(4.75 * 365),
     gameOver: null,
   };
+
+  // A coalition government (2010 Con–LD) seats the junior partner from day one:
+  // its leader is Deputy PM and it takes a seat-proportionate slice of the Cabinet
+  // (seatCoalitionCabinet swaps in generated partner ministers, never the player).
+  // The player's party never changes, and government-bloc membership is derived
+  // from it each turn — so when an election ends the coalition they move with the
+  // partner, never stranded in a government their party has left.
+  if (state.government.arrangement === 'coalition' && coalitionLeader) {
+    state.government.deputyPmId = coalitionLeader.id;
+    state.government.deputyTitle = 'dpm';
+    seatCoalitionCabinet(state, rng);
+  }
+
+  return state;
 }

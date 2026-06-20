@@ -55,8 +55,8 @@ export interface SimOptions {
  *  Used by balance tests and the repetition report. */
 export function simulateCareer(opts: SimOptions): SimSummary {
   const rng = new Rng(opts.seed ^ 0x5eed);
-  const era: Era = opts.era ?? rng.pick(['2015', '2017', '2019', '2024'] as const);
-  // 2015/2017/2019 had the Conservatives governing; 2024 had Labour
+  const era: Era = opts.era ?? rng.pick(['2010', '2015', '2017', '2019', '2024'] as const);
+  // 2010/2015/2017/2019 had the Conservatives (a Con–LD coalition in 2010) governing; 2024 had Labour
   const partyId: PartyId =
     opts.partyId ?? (era === '2024'
       ? rng.chance(0.5) ? 'lab' : 'con'

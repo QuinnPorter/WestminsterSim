@@ -19,6 +19,24 @@ export interface ParliamentData {
   coalitionPartner?: PartyId;
 }
 
+// 2010 GE: Con 306, Lab 258, LD 57, DUP 8, SNP 6, SF 5, PC 3, SDLP 3,
+// Green 1, Alliance 1, Ind 1, Speaker 1 = 650 (a hung parliament; Con form a
+// formal coalition with the Liberal Democrats). UKIP win no seats.
+const MATRIX_2010: SeatMatrix = {
+  northEast: { lab: 25, con: 2, ld: 2 },
+  northWest: { lab: 47, con: 22, ld: 6 },
+  yorkshire: { lab: 32, con: 19, ld: 3 },
+  eastMidlands: { con: 31, lab: 15 },
+  westMidlands: { con: 33, lab: 24, ld: 2 },
+  east: { con: 52, ld: 4, lab: 2 },
+  london: { lab: 38, con: 28, ld: 7 },
+  southEast: { con: 74, ld: 7, lab: 1, green: 1, spk: 1 },
+  southWest: { con: 36, ld: 12, lab: 7 },
+  scotland: { lab: 41, ld: 11, snp: 6, con: 1 },
+  wales: { lab: 26, con: 8, ld: 3, pc: 3 },
+  ni: { dup: 8, sf: 5, sdlp: 3, alliance: 1, ind: 1 },
+};
+
 // 2019 GE: Con 365, Lab 202, SNP 48, LD 11, DUP 8, SF 7, PC 4, SDLP 2,
 // Green 1, Alliance 1, Speaker 1 = 650
 const MATRIX_2019: SeatMatrix = {
@@ -88,6 +106,19 @@ const MATRIX_2017: SeatMatrix = {
 };
 
 export const PARLIAMENTS: Record<Era, ParliamentData> = {
+  '2010': {
+    era: '2010',
+    firstSitting: '2010-05-18',
+    matrix: MATRIX_2010,
+    baselineShares: {
+      con: 0.361, lab: 0.290, ld: 0.230, ukip: 0.031, snp: 0.017,
+      green: 0.010, pc: 0.006,
+    },
+    governingParty: 'con',
+    oppositionParty: 'lab',
+    arrangement: 'coalition',
+    coalitionPartner: 'ld',
+  },
   '2015': {
     era: '2015',
     firstSitting: '2015-05-18',

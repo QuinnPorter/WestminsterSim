@@ -7,6 +7,27 @@ import { generateSeatMap, countSeats } from '../../generation/constituency';
 import { Rng } from '../rng';
 
 describe('parliament data', () => {
+  it('2010 matrix sums to 650 with correct national totals', () => {
+    const m = PARLIAMENTS['2010'].matrix;
+    expect(totalSeats(m)).toBe(650);
+    const t = nationalTotals(m);
+    expect(t.con).toBe(306);
+    expect(t.lab).toBe(258);
+    expect(t.ld).toBe(57);
+    expect(t.snp).toBe(6);
+    expect(t.pc).toBe(3);
+    expect(t.green).toBe(1);
+    expect(t.spk).toBe(1);
+    expect(t.ukip ?? 0).toBe(0); // UKIP win no seats in 2010
+  });
+
+  it('2010 begins as a Conservative–Lib Dem coalition', () => {
+    expect(PARLIAMENTS['2010'].arrangement).toBe('coalition');
+    expect(PARLIAMENTS['2010'].coalitionPartner).toBe('ld');
+    expect(PARLIAMENTS['2010'].governingParty).toBe('con');
+    expect(PARLIAMENTS['2010'].oppositionParty).toBe('lab');
+  });
+
   it('2019 matrix sums to 650 with correct national totals', () => {
     const m = PARLIAMENTS['2019'].matrix;
     expect(totalSeats(m)).toBe(650);
@@ -85,10 +106,10 @@ describe('parliament data', () => {
 
 describe('seat map generation', () => {
   it('generates 650 seats matching the matrix (player seat may shift one)', () => {
-    for (const era of ['2015', '2017', '2019', '2024'] as const) {
+    for (const era of ['2010', '2015', '2017', '2019', '2024'] as const) {
       const rng = new Rng(42);
       const { seatMap, playerSeatId } = generateSeatMap(
-        rng, PARLIAMENTS[era].matrix, era === '2019' ? 'con' : 'lab', 'southEast', era
+        rng, PARLIAMENTS[era].matrix, era === '2024' ? 'lab' : 'con', 'southEast', era
       );
       expect(seatMap).toHaveLength(650);
       expect(seatMap.find((s) => s.id === playerSeatId)?.isPlayerSeat).toBe(true);
