@@ -104,20 +104,22 @@ describe('election calibration', () => {
     expect(snpTotal / runs).toBeGreaterThan(45);              // SNP landslide in Scotland
   });
 
-  it('2017 baseline leaves the Conservatives largest, often without a majority', () => {
-    let conTotal = 0, labTotal = 0, hung = 0;
+  it('2017 first re-election gives the Conservatives a working majority, not a landslide', () => {
+    // From the (hung) 2017 baseline the Conservatives are a first-term incumbent, so the
+    // Wave 30 first-re-election boost typically converts their narrow lead into a working
+    // majority — but never a 400+ runaway. (Pre-Wave-30 this election was frequently hung.)
+    let conTotal = 0, labTotal = 0;
     const runs = 12;
     for (let i = 0; i < runs; i++) {
       const game = makeGame('2017', 'con', 700 + i);
       const { result } = runElection(game, new Rng(2300 + i));
       conTotal += result.seats.con ?? 0;
       labTotal += result.seats.lab ?? 0;
-      if ((result.seats.con ?? 0) < 326) hung++;
       expect(result.governingParty).toBe('con');
     }
-    expect(conTotal / runs).toBeGreaterThan(labTotal / runs); // Con largest
-    expect(conTotal / runs).toBeLessThan(355);                // a slim win at most, never a landslide
-    expect(hung).toBeGreaterThan(2);                          // frequently hung, as in 2017
+    expect(conTotal / runs).toBeGreaterThan(labTotal / runs); // Con clearly largest
+    expect(conTotal / runs).toBeGreaterThan(326);             // usually a working majority now
+    expect(conTotal / runs).toBeLessThan(380);                // but well short of a landslide
   });
 
   it('a popular incumbent player usually holds a safe seat', () => {

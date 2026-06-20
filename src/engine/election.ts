@@ -53,12 +53,14 @@ export function electionNationalShares(
     out[p] = v;
     total += v;
   }
-  // incumbent fatigue: a slight boost for a first full term, then a growing
-  // anti-incumbency penalty from the first re-election on (the public tires of a
-  // long-governing party). ~-3% per term, capped at -15%.
+  // incumbent fatigue: a first-term government gets a meaningful boost at its FIRST
+  // re-election (a one-term government usually earns a second term), then a growing
+  // anti-incumbency penalty from the SECOND re-election on (the public tires of a
+  // long-governing party). ~-3% per term, capped at -15%. Only the first-term boost
+  // was raised (~+1.8pts) — the penalty schedule for later terms is unchanged.
   const gov = state.government.governingParty;
   const terms = state.government.termsInPower ?? 1;
-  const fatigue = terms <= 1 ? 0.005
+  const fatigue = terms <= 1 ? 0.018
     : -Math.min(0.15, (terms - 1) * 0.03);
   if (out[gov] !== undefined && fatigue !== 0) {
     total += -(out[gov] ?? 0);
