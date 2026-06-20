@@ -3,6 +3,7 @@ import {
   SyntheticSeat,
 } from '../types/game';
 import { PARTIES, POLLED_PARTIES, polledPartiesForEra } from '../data/parties';
+import { PARLIAMENTS } from '../data/parliaments';
 import { REGIONS } from '../data/regions';
 import { generateName } from '../generation/characters';
 import { lastElectionShares } from './polling';
@@ -84,7 +85,9 @@ function computeSeat(
 
   const sens = REGIONS[seat.region].swingSensitivity;
   const shares: Partial<Record<PartyId, number>> = {};
-  for (const [partyKey, base] of Object.entries(seat.shares)) {
+  // swing always from the IMMUTABLE build-time baseline (never the last result), so
+  // the map can't compound/polarise election-on-election (old saves: fall back to shares)
+  for (const [partyKey, base] of Object.entries(seat.base ?? seat.shares)) {
     const p = partyKey as PartyId;
     let v = base ?? 0;
     if (POLLED_PARTIES.includes(p)) {
@@ -97,8 +100,9 @@ function computeSeat(
           // a spread populist vote converts a little WORSE than mainstream, hard-capped
           swing = Math.min(POPULIST_SWING_CAP, 0.02 + (swing - 0.02) * POPULIST_SWING_MULT);
         } else {
-          // softened from 1.6 so big swings build slightly smaller landslides
-          swing = 0.02 + (swing - 0.02) * 1.5;
+          // convert a real swing to seats — big national leads earn a decisive
+          // majority while a spread vote still converts reasonably (tuned vs sims)
+          swing = 0.02 + (swing - 0.02) * 1.4;
         }
       }
       v += swing;
@@ -227,7 +231,10 @@ export interface RunElectionOutput {
  *  and write the new shares/winners back into the seat map.
  *  Government formation and career fallout are handled by the caller. */
 export function runElection(state: GameState, rng: Rng): RunElectionOutput {
-  const anchor = lastElectionShares(state);
+  // FIXED anchor: swing is measured from the era's starting national shares — the
+  // distribution the per-seat baseline corresponds to — NOT the last election (which
+  // would let the map drift/run away). seat.base supplies the matching per-seat base.
+  const anchor = PARLIAMENTS[state.startEra].baselineShares;
   const national = electionNationalShares(state, rng);
   const playerParty = state.player.partyId;
 

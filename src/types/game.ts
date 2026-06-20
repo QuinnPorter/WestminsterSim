@@ -47,8 +47,11 @@ export interface SyntheticSeat {
   id: string;
   name: string;
   region: RegionId;
-  /** baseline vote shares at game start, sum ≈ 1 */
+  /** the latest election's vote shares (for display/UI), sum ≈ 1 */
   shares: Partial<Record<PartyId, number>>;
+  /** the IMMUTABLE build-time baseline shares — every election swings from this,
+   *  so the map never compounds/drifts on its own amplified results */
+  base?: Partial<Record<PartyId, number>>;
   winner: PartyId;
   isPlayerSeat?: boolean;
 }

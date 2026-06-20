@@ -55,7 +55,10 @@ function regionalClimate(
   let sum = 0;
   for (const p of parties) {
     const seatShare = (regionSeats[p] ?? 0) / totalSeats;
-    const v = 0.6 * seatShare + 0.04; // floor keeps minor parties on the board
+    // weight seat-dominance more gently (was 0.6) so a party that holds most of a
+    // region doesn't end up on ~60% in every seat there — keeps regional seats
+    // competitive and their seat count prorated to support rather than a sweep
+    const v = 0.42 * seatShare + 0.06; // floor keeps minor parties on the board
     climate[p] = v;
     sum += v;
   }
@@ -76,9 +79,14 @@ function buildSeatShares(
   const parties = contestants(region, era).filter((p) => p !== winner && p !== 'spk');
   const margin = sampleMargin(rng);
 
-  // winner share scaled by how dominant their party is locally
-  const base = 0.34 + 0.5 * (climate[winner] ?? 0.08);
-  const winnerShare = Math.min(0.72, Math.max(0.3, base + rng.normal(0, 0.04)));
+  // winner share scaled by how dominant their party is locally. A strict regional
+  // party (SNP/PC) gets a touch more local-vote variance so its seats are genuinely
+  // competitive (it can lose some), and a slightly lower ceiling than GB-wide winners.
+  const regional = PARTIES[winner]?.contestsRegions.length < 3;
+  const base = 0.32 + 0.46 * (climate[winner] ?? 0.08);
+  const noiseSd = regional ? 0.06 : 0.04;
+  const cap = regional ? 0.62 : 0.7;
+  const winnerShare = Math.min(cap, Math.max(0.3, base + rng.normal(0, noiseSd)));
   const runnerUpShare = Math.max(0.05, winnerShare - margin);
 
   // strongest non-winner locally is the runner-up
@@ -124,12 +132,14 @@ export function generateSeatMap(
     for (const [partyKey, count] of Object.entries(regionSeats)) {
       const winner = partyKey as PartyId;
       for (let i = 0; i < (count ?? 0); i++) {
+        const shares = buildSeatShares(rng, winner, region, climate, era);
         seatMap.push({
           id: `seat_${counter++}`,
           name: generateName(rng, region, usedNames),
           region,
           winner,
-          shares: buildSeatShares(rng, winner, region, climate, era),
+          shares,
+          base: { ...shares }, // immutable swing baseline
         });
       }
     }
@@ -153,6 +163,7 @@ export function generateSeatMap(
     playerSeat.shares[playerParty] = oldWinnerShare + margin / 2;
     playerSeat.shares[oldWinner] = oldWinnerShare - margin / 2;
     playerSeat.winner = playerParty;
+    playerSeat.base = { ...playerSeat.shares }; // keep the baseline in sync with the upset
   }
   playerSeat.isPlayerSeat = true;
 

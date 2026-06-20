@@ -651,11 +651,13 @@ export function nextStep(state: GameState, rng: Rng): void {
     const ref = (lastElectionShares(state)[party] ?? 0) * 100;
     const BACKSTOP_FLOOR = 16;
     const SLIDE_PTS = 8;
+    // a leader still polling respectably isn't "collapsing", even if down from a big win
+    const SLIDE_CEILING = 30;
     const scandalFall = rng.chance(NPC_LEADER_SCANDAL);
     // a PM gets a ~3-month grace before the polls can fell them — a leader who just
     // won shouldn't resign over polling the same month (only scandal, Liz-Truss-style)
     const pmGrace = !isGov || (state.day - state.government.pmSinceDay) >= 90;
-    const slid = polls < BACKSTOP_FLOOR || (ref - polls) >= SLIDE_PTS;
+    const slid = polls < BACKSTOP_FLOOR || ((ref - polls) >= SLIDE_PTS && polls < SLIDE_CEILING);
     const collapse = pmGrace && slid && rng.chance(LEADER_COLLAPSE_HAZARD);
     if (scandalFall || collapse) {
       const leaderName = state.characters[leaderId]?.name ?? 'The leader';
