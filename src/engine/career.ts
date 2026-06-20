@@ -494,6 +494,22 @@ function computeNextOffice(state: GameState, rng: Rng): OfficeId | null {
         : rng.pick(Object.keys(DEPARTMENTS)) as keyof typeof DEPARTMENTS;
     return `sos_${dept}`;
   }
+  if (tier === 4) {
+    // a sitting Cabinet minister is reshuffled AROUND the Cabinet — a sideways move to
+    // a different department (or, occasionally, a promotion into a great office of state)
+    // so they don't sit in one brief for a decade. Only departmental Secretary-of-State
+    // targets, so it always reads as a lateral shuffle, never a demotion.
+    const cur = state.player.officeId;
+    const current = cur ? OFFICES[cur].department : undefined;
+    if (cur && OFFICES[cur].department && !GREAT_OFFICES.includes(cur) && rng.chance(0.22)) {
+      return rng.pick(GREAT_OFFICES.filter((o) => o !== cur));
+    }
+    const others = (Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[]).filter((d) => d !== current);
+    if (others.length === 0) return null;
+    const affinity = bg.deptAffinity.filter((d) => d !== current);
+    const dept = affinity.length > 0 && rng.chance(0.4) ? rng.pick(affinity) : rng.pick(others);
+    return `sos_${dept}`;
+  }
   return null;
 }
 
@@ -682,8 +698,11 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
     }
   }
 
-  // due a promotion?
-  const target = nextOfficeFor(state, rng);
+  // due a promotion / sideways move? A sitting Cabinet minister is left alone unless
+  // they've served a good while (a fresh Secretary of State isn't shuffled out at every
+  // reshuffle — that churns them too fast; the move-cadence handles longer-tenure moves).
+  const tenureYears = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
+  const target = (tier === 4 && tenureYears < 2.5 && !emergency) ? null : nextOfficeFor(state, rng);
   if (target) {
     const targetTier = OFFICES[target].tier;
     const score = eligibilityScore(state, target) + rng.normal(0, 6);

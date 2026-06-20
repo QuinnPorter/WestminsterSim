@@ -540,7 +540,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     const t = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
     if (t > 0.75) {
       const base = 0.06 + 0.06 * (t - 1);
-      const tierDamp = playerTier(state) === 4 ? 0.6 : 1; // secretaries of state are stickier
+      const tierDamp = playerTier(state) === 4 ? 0.35 : 1; // secretaries of state are much stickier
       if (rng.chance(Math.min(0.22, base * tierDamp))) {
         const target = nextOfficeFor(state, rng);
         if (target) {
