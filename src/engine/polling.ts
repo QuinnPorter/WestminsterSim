@@ -1,6 +1,6 @@
 import { GameState, PartyId } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
-import { polledPartiesForEra } from '../data/parties';
+import { PARTIES, polledPartiesForEra } from '../data/parties';
 import { Rng } from './rng';
 
 /** national vote shares at the last election (or game start) — the swing anchor */
@@ -10,11 +10,27 @@ export function lastElectionShares(state: GameState): Partial<Record<PartyId, nu
   return PARLIAMENTS[state.startEra].baselineShares;
 }
 
+/** how much a NON-major party's fundamental follows its last result vs reverting to the
+ *  era's structural baseline. <1 stops a minor party that overperforms once from
+ *  permanently ratcheting its own support upward — so third parties leapfrog the main
+ *  two less readily across all eras. Con/Lab keep a full ratchet (they alternate power). */
+const MINOR_FUND_BLEND = 0.92;
+
 /** long-run "fundamentals" each party's polling reverts toward */
 function fundamentals(state: GameState): Partial<Record<PartyId, number>> {
-  const base = lastElectionShares(state);
+  const last = lastElectionShares(state);
+  const baseline = PARLIAMENTS[state.startEra].baselineShares;
   const out: Partial<Record<PartyId, number>> = {};
-  for (const p of polledPartiesForEra(state.startEra)) out[p] = base[p] ?? 0.01;
+  for (const p of polledPartiesForEra(state.startEra)) {
+    if (PARTIES[p]?.major) {
+      out[p] = last[p] ?? 0.01;
+    } else {
+      // pull a minor party partway back toward its structural baseline each cycle
+      const l = last[p] ?? baseline[p] ?? 0.01;
+      const b = baseline[p] ?? 0.01;
+      out[p] = MINOR_FUND_BLEND * l + (1 - MINOR_FUND_BLEND) * b;
+    }
+  }
   return out;
 }
 

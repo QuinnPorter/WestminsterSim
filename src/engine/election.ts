@@ -26,6 +26,10 @@ const POPULIST_SWING_MULT = 1.4;
 /** ceiling on a populist's amplified per-seat swing — a hard cap so even a large
  *  surge can't flip a whole block of marginals at once. Tuned against the seat sims. */
 const POPULIST_SWING_CAP = 0.52;
+/** non-major parties (everyone but Con/Lab, incl. populists) convert an above-baseline
+ *  swing into seats ~10% less efficiently, so a third party leapfrogs the main two less
+ *  readily across all eras. Con/Lab are unaffected. */
+const MINOR_AMP_DAMP = 0.9;
 /** per-seat vote-share bonus for the national vote-leader — tips marginals their
  *  way so a clear lead crosses the majority line more often. Trimmed slightly so
  *  blowout 400+ majorities are a touch rarer without dampening ordinary leads. */
@@ -96,13 +100,15 @@ function computeSeat(
       // portion of a positive swing above ~2pts, so a genuine surge wins more seats
       // while ordinary campaign noise (and a flat vote) stays FPTP-punished
       if (swing > 0.02) {
+        // non-major parties (everyone but Con/Lab) convert a surge ~10% less efficiently
+        const damp = PARTIES[p].major ? 1 : MINOR_AMP_DAMP;
         if (POPULIST_PARTIES.includes(p)) {
           // a spread populist vote converts a little WORSE than mainstream, hard-capped
-          swing = Math.min(POPULIST_SWING_CAP, 0.02 + (swing - 0.02) * POPULIST_SWING_MULT);
+          swing = Math.min(POPULIST_SWING_CAP, 0.02 + (swing - 0.02) * POPULIST_SWING_MULT * damp);
         } else {
           // convert a real swing to seats — big national leads earn a decisive
           // majority while a spread vote still converts reasonably (tuned vs sims)
-          swing = 0.02 + (swing - 0.02) * 1.4;
+          swing = 0.02 + (swing - 0.02) * 1.4 * damp;
         }
       }
       v += swing;

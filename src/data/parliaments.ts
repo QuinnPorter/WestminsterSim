@@ -111,7 +111,9 @@ export const PARLIAMENTS: Record<Era, ParliamentData> = {
     firstSitting: '2010-05-18',
     matrix: MATRIX_2010,
     baselineShares: {
-      con: 0.361, lab: 0.290, ld: 0.230, ukip: 0.031, snp: 0.017,
+      // LD anchor trimmed below their 2010 vote (~23%) so the polling walk lets them
+      // overtake Labour only in a strong cycle, not within an election or two
+      con: 0.361, lab: 0.290, ld: 0.205, ukip: 0.031, snp: 0.017,
       green: 0.010, pc: 0.006,
     },
     governingParty: 'con',
