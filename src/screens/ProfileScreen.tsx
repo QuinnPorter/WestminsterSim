@@ -31,6 +31,16 @@ export function buildOfficeSpans(history: GameState['history']): OfficeSpan[] {
   let current: OfficeSpan | null = null;
   for (const entry of history) {
     if (entry.kind !== 'roleChange') continue;
+    // a 'continued' move into the IDENTICAL role just extends the open span — e.g. a
+    // Speaker re-elected each parliament shows as one continuous entry, not one per term
+    if (
+      current && entry.how === 'continued' && entry.officeId === current.officeId &&
+      (entry.label ?? null) === (current.label ?? null) &&
+      (entry.roleSide ?? null) === (current.roleSide ?? null) &&
+      (entry.partyId ?? null) === (current.partyId ?? null)
+    ) {
+      continue;
+    }
     if (current) {
       current.end = entry.date;
       if (current.end !== current.start) spans.push(current);
