@@ -112,8 +112,6 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
   let verdict: string;
   if (result.outcome === 'majority') {
     verdict = 'wins a majority';
-  } else if (pending) {
-    verdict = 'is the largest party, but no one has a majority — talks to form a government begin';
   } else if (gov.arrangement === 'coalition' && partner) {
     verdict = `to govern in coalition with the ${PARTIES[partner].shortName}`;
   } else if (gov.arrangement === 'supplyConfidence' && partner) {
@@ -128,7 +126,9 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
         <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={420} partyId={p} />
       ))}
       <p className="en-outcome" style={{ color: partyTextColour(result.governingParty) }}>
-        {PARTIES[result.governingParty].name}{' '}{verdict}.
+        {pending
+          ? `Hung parliament — ${PARTIES[result.governingParty].name} set to govern, but short of a majority.`
+          : `${PARTIES[result.governingParty].name} ${verdict}.`}
       </p>
     </div>
   );

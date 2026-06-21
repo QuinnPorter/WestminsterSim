@@ -1,7 +1,6 @@
 .statchips {
   display: flex;
-  gap: 6px;
-  overflow-x: auto;
+  gap: 4px;
   padding: 2px 0;
   scrollbar-width: none;
 }
@@ -17,17 +16,22 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 6px 9px;
-  min-width: 72px;
-  flex-shrink: 0;
+  padding: 5px 5px;
+  /* chips size to their label then grow to fill the row, so all five fit without
+     side-scroll and no label is clipped on a narrow phone */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .statchip-label {
-  font-size: 0.65rem;
+  font-size: 0.5rem;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .statchip-bar {
