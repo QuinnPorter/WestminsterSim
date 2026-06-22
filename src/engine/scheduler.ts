@@ -198,7 +198,7 @@ const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
 const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
 const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
 const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
-const DEPUTY_PM_HAZARD = 0.01;          // very rare: the PM elevates a star SoS to deputy
+const DEPUTY_PM_HAZARD = 0.02;          // rare: the PM elevates a star SoS to deputy
 
 // ---------- the brain ----------
 
@@ -505,7 +505,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     state.day >= ((state.player.flags._deputyPmCooldownUntil as number) ?? 0)
   ) {
     const s = state.player.stats;
-    const excellent = s.competence > 70 && s.profile > 60 && s.partyStanding > 65;
+    const excellent = s.competence > 65 && s.profile > 60 && s.partyStanding > 65;
     if (excellent && relationshipValue(state, 'leader') > 40 && rng.chance(DEPUTY_PM_HAZARD)) {
       state.player.flags._deputyPmCooldownUntil = state.day + rng.int(700, 1100);
       state.forcedQueue.push({ kind: 'deputyPmOffer' });
