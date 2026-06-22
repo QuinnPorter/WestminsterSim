@@ -195,7 +195,7 @@ export function NewCareerScreen() {
           </div>
           <label className="nc-label">Age — {age}</label>
           <input
-            type="range" min={25} max={68} value={age}
+            type="range" min={18} max={80} value={age}
             onChange={(e) => setAge(Number(e.target.value))}
             className="nc-range"
           />
