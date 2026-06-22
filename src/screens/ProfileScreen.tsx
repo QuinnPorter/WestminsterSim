@@ -66,6 +66,42 @@ function officeSpans(game: GameState): OfficeSpan[] {
   return buildOfficeSpans(game.history);
 }
 
+export interface DeputySpan { title: 'dpm' | 'firstSec'; start: number; end: number | null; }
+
+/** the Deputy-PM / First-Secretary overlay spans — a concurrent track, paired from
+ *  the deputyOverlay start/end history entries (an open span runs to "now") */
+export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
+  const spans: DeputySpan[] = [];
+  let open: DeputySpan | null = null;
+  for (const entry of history) {
+    if (entry.kind !== 'deputyOverlay') continue;
+    if (entry.action === 'start') {
+      if (open) spans.push(open);
+      open = { title: entry.title ?? 'dpm', start: entry.date, end: null };
+    } else if (entry.action === 'end' && open) {
+      open.end = entry.date;
+      spans.push(open);
+      open = null;
+    }
+  }
+  if (open) spans.push(open);
+  return spans;
+}
+
+export interface TimelineRow { title: string; start: number; end: number | null; }
+
+/** office spans + concurrent deputy-overlay spans, merged newest-first for the timeline */
+function timelineRows(game: GameState): TimelineRow[] {
+  const office: TimelineRow[] = officeSpans(game).map((s) => ({
+    title: spanTitle(game, s), start: s.start, end: s.end,
+  }));
+  const deputy: TimelineRow[] = buildDeputySpans(game.history).map((d) => ({
+    title: d.title === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister',
+    start: d.start, end: d.end,
+  }));
+  return [...office, ...deputy].sort((a, b) => b.start - a.start);
+}
+
 export function spanTitle(game: GameState, span: OfficeSpan): string {
   if (span.becamePM) return 'Prime Minister';
   if (span.label) return span.label; // composite roles (e.g. junior coalition partner)
@@ -93,7 +129,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const player = game.player;
   const seat = game.seatMap.find((s) => s.id === player.seatId);
   const party = PARTIES[player.partyId];
-  const spans = useMemo(() => officeSpans(game), [game]);
+  const rows = useMemo(() => timelineRows(game), [game]);
 
   const playerShare = seat?.shares[player.partyId] ?? 0;
   const runnerUp = seat
@@ -195,24 +231,24 @@ export function ProfileScreen({ game }: { game: GameState }) {
             </button>
           )}
         </div>
-        {spans.length === 0 ? (
+        {rows.length === 0 ? (
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
             Backbencher so far — every great career starts somewhere near the back.
           </p>
         ) : (
-          spans.map((span, i) => (
+          rows.map((row, i) => (
             <div
               key={i}
               style={{
                 display: 'flex', justifyContent: 'space-between', gap: 10,
                 padding: '6px 0',
-                borderBottom: i < spans.length - 1 ? '1px solid var(--line)' : 'none',
+                borderBottom: i < rows.length - 1 ? '1px solid var(--line)' : 'none',
                 fontSize: 'var(--fs-xs)',
               }}
             >
-              <span style={{ fontWeight: 700 }}>{spanTitle(game, span)}</span>
+              <span style={{ fontWeight: 700 }}>{row.title}</span>
               <span style={{ color: 'var(--muted)', flexShrink: 0 }}>
-                {formatMonthYear(span.start)} – {span.end ? formatMonthYear(span.end) : 'now'}
+                {formatMonthYear(row.start)} – {row.end ? formatMonthYear(row.end) : 'now'}
               </span>
             </div>
           ))

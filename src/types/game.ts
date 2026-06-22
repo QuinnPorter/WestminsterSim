@@ -313,6 +313,9 @@ export type HistoryEntry =
       label?: string }
   | { kind: 'election'; date: GameDay; resultId: string; heldSeat: boolean }
   | { kind: 'event'; date: GameDay; headline: string }
+  /** the Deputy-PM / First-Secretary overlay held ON TOP of a brief — a separate,
+   *  concurrent timeline track (paired start→end), so it shows alongside the office */
+  | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
   | { kind: 'enteredParliament'; date: GameDay; seatName: string };
 
@@ -329,7 +332,7 @@ export type ForcedKind =
   | 'leadershipStand' | 'leadershipBallot' | 'leadershipBacking' | 'pmReshuffle' | 'pmPressure'
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
-  | 'deputyPmOffer' | 'speakerContest'
+  | 'deputyPmOffer' | 'deputyRemoval' | 'speakerContest'
   | 'budget' | 'pmqs' | 'conference'
   | 'calendar';
 

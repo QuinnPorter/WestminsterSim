@@ -8,7 +8,7 @@ import {
   openLeadershipVacancy, playerIsLeader, onFrontbenchTrack, onMinorPartyTrack,
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS,
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
-  canHoldOffice,
+  canHoldOffice, reconcilePlayerDeputy,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { relationshipValue } from './relationships';
@@ -199,6 +199,8 @@ const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0
 const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
 const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
 const DEPUTY_PM_HAZARD = 0.02;          // rare: the PM elevates a star SoS to deputy
+const DEPUTY_REMOVAL_FALLOUT = 0.05;    // a soured PM cuts their deputy loose
+const DEPUTY_REMOVAL_REFRESH = 0.006;   // or, rarely, just refreshes the top team
 
 // ---------- the brain ----------
 
@@ -207,6 +209,9 @@ export function nextStep(state: GameState, rng: Rng): void {
     state.currentCard = null;
     return;
   }
+
+  // the Deputy-PM / First-Secretary overlay never survives into opposition
+  reconcilePlayerDeputy(state);
 
   // 1. forced queue first
   const forced = state.forcedQueue.shift();
@@ -509,6 +514,22 @@ export function nextStep(state: GameState, rng: Rng): void {
     if (excellent && relationshipValue(state, 'leader') > 40 && rng.chance(DEPUTY_PM_HAZARD)) {
       state.player.flags._deputyPmCooldownUntil = state.day + rng.int(700, 1100);
       state.forcedQueue.push({ kind: 'deputyPmOffer' });
+      nextStep(state, rng);
+      return;
+    }
+  }
+
+  // ...and the PM can let their deputy go: a falling-out (soured relationship or a
+  // scandal) makes it likely, otherwise it's a rare refresh of the top team. Removing
+  // the title clears _isDeputyPM, so this can't re-fire on a player who's already out.
+  if (
+    state.player.flags._isDeputyPM && !playerIsLeader(state) &&
+    state.government.pmId !== 'player' && canHoldOffice(state)
+  ) {
+    const fallout = relationshipValue(state, 'leader') < 12 || !!state.player.flags.scandal;
+    const hazard = (fallout ? DEPUTY_REMOVAL_FALLOUT : 0) + DEPUTY_REMOVAL_REFRESH;
+    if (rng.chance(hazard)) {
+      state.forcedQueue.push({ kind: 'deputyRemoval' });
       nextStep(state, rng);
       return;
     }

@@ -127,8 +127,12 @@ export function playerOfficeTitle(state: GameState): string {
     inGovernment: playerInGovernmentBloc(state),
     minorPartyName: minorPartyNameOf(state),
   });
-  // Deputy-PM / First-Secretary overlay on a sitting Secretary of State
-  if (state.player.flags._isDeputyPM && state.player.officeId && OFFICES[state.player.officeId]?.tier === 4) {
+  // Deputy-PM / First-Secretary overlay on a sitting Secretary of State — only ever in
+  // government (never a "shadow Deputy PM")
+  if (
+    state.player.flags._isDeputyPM && playerInGovernmentBloc(state) &&
+    state.player.officeId && OFFICES[state.player.officeId]?.tier === 4
+  ) {
     return `${deputyPrefix(state.government.deputyTitle)} and ${base}`;
   }
   return base;
@@ -522,10 +526,28 @@ export function recordPeakTier(state: GameState): void {
   if (tier > peak) state.player.flags._peakTier = tier;
 }
 
-export function giveOffice(state: GameState, rng: Rng, officeId: OfficeId, how: 'appointed' | 'promoted'): void {
+/** a target office on which the Deputy-PM / First-Secretary overlay can sit */
+function deputyEligibleOffice(officeId: OfficeId): boolean {
+  return OFFICES[officeId]?.tier === 4 && !!OFFICES[officeId]?.department && officeId !== 'chief_sec';
+}
+
+/** whether the PM lets the player keep the deputy title across a move — scaled by the
+ *  PM's regard (leader relationship + party standing), never certain either way */
+function pmKeepsDeputy(state: GameState, rng: Rng): boolean {
+  const regard = getRelationship(state, 'leader')?.value ?? 0;       // ~ -100..100
+  const standing = state.player.stats.partyStanding;                 // 0..100
+  const chance = clamp(0.25 + (regard - 30) / 100 + (standing - 55) / 150, 0.05, 0.9);
+  return rng.chance(chance);
+}
+
+export function giveOffice(
+  state: GameState, rng: Rng, officeId: OfficeId, how: 'appointed' | 'promoted', keepDeputy = false
+): void {
   // vacate any cabinet-level post the player held
   removePlayerFromFrontbench(state, rng);
-  clearPlayerDeputyPM(state);
+  // a deputy normally loses the title on a move; keepDeputy (the PM's regard) carries it
+  // across — but only onto another deputy-eligible brief
+  if (!(keepDeputy && deputyEligibleOffice(officeId))) clearPlayerDeputyPM(state);
   state.player.officeId = officeId;
   state.player.officeSinceDay = state.day;
   recordPeakTier(state);
@@ -570,10 +592,21 @@ export function stripOffice(
 function clearPlayerDeputyPM(state: GameState): void {
   if (state.player.flags._isDeputyPM) {
     delete state.player.flags._isDeputyPM;
+    // close the concurrent overlay span on the profile timeline
+    state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'end' });
     if (state.government.deputyPmId === 'player') {
       state.government.deputyPmId = undefined;
       state.government.deputyTitle = undefined;
     }
+  }
+}
+
+/** the Deputy-PM / First-Secretary role only exists in government. If the player has
+ *  fallen into opposition (a lost election, or a mid-term change of government), drop
+ *  the overlay — you can never be a "shadow Deputy PM". Called each turn. */
+export function reconcilePlayerDeputy(state: GameState): void {
+  if (state.player.flags._isDeputyPM && !playerInGovernmentBloc(state)) {
+    clearPlayerDeputyPM(state);
   }
 }
 
@@ -634,7 +667,7 @@ export function appointNpcDeputyPm(state: GameState, rng: Rng): void {
 /** the start-of-parliament re-decision: clears any holder (including a player
  *  deputy — re-earned each term) and re-rolls the NPC appointment */
 function redecideNpcDeputyPm(state: GameState, rng: Rng): void {
-  delete state.player.flags._isDeputyPM;
+  clearPlayerDeputyPM(state); // records the overlay end if the player held it
   appointNpcDeputyPm(state, rng);
 }
 
@@ -1782,15 +1815,24 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const from = onMinorPartyTrack(state)
         ? `the ${PARTIES[state.player.partyId].shortName} leader's office`
         : playerInGovernment(state) ? 'Number 10' : "the Leader's office";
+      // a sitting deputy may carry the title across to the new brief (the PM's call) —
+      // decide it now and state it plainly, so the card and the outcome always agree
+      const isDeputy = !!state.player.flags._isDeputyPM;
+      const keepDeputy = isDeputy && deputyEligibleOffice(officeId) && pmKeepsDeputy(state, rng);
+      const deputyLine = isDeputy
+        ? (keepDeputy
+          ? ` You would keep your post as ${deputyPrefix(state.government.deputyTitle)} alongside the new brief.`
+          : ` Taking it means giving up your post as ${deputyPrefix(state.government.deputyTitle)}.`)
+        : '';
       return {
         cardId: `forced_offer_${state.day}`,
         kind: 'reshuffleOffer',
         title: sideways ? 'A sideways glance' : 'The call',
-        body: sideways
+        body: (sideways
           ? `${from === 'Number 10' ? 'Number 10' : 'The Leader\'s office'} rings with an unusual offer: same rank, new brief — ${title}. A fresh start, a fresh department to master, and a quiet test of your flexibility.`
-          : `Your phone buzzes. It's ${from}. They want you as ${title}. The whips are waiting on your answer.`,
+          : `Your phone buzzes. It's ${from}. They want you as ${title}. The whips are waiting on your answer.`) + deputyLine,
         choices: [{ label: 'Accept the job' }, { label: 'Politely decline' }],
-        payload: { officeId, advance: rng.int(7, 14) },
+        payload: { officeId, advance: rng.int(7, 14), keepDeputy },
       };
     }
     case 'dismissal':
@@ -2289,6 +2331,23 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         payload: { advance: rng.int(7, 14) },
       };
     }
+    case 'deputyRemoval': {
+      const pmName = state.characters[state.government.pmId]?.name ?? 'the Prime Minister';
+      const dep = deputyPrefix(state.government.deputyTitle);
+      const briefTitle = state.player.officeId ? OFFICES[state.player.officeId]?.title : undefined;
+      // mostly a demotion to your own department; occasionally a clean-out of the cabinet
+      const sacked = rng.chance(0.25);
+      return {
+        cardId: `forced_deputyremoval_${state.day}`,
+        kind: 'deputyRemoval',
+        title: 'Number 10 reshuffles its number two',
+        body: sacked
+          ? `${pmName} has decided to move you on. You are relieved of the post of ${dep} — and of the cabinet altogether. The car will not be coming tomorrow.`
+          : `${pmName} has decided to refresh the top team. You lose the post of ${dep}, though you keep${briefTitle ? ` your department as ${briefTitle}` : ' your departmental brief'}. A demotion dressed up as continuity.`,
+        choices: [{ label: 'Accept with grace' }, { label: 'Make your displeasure known' }],
+        payload: { advance: rng.int(7, 14), sacked },
+      };
+    }
     case 'speakerContest': {
       const incumbent = !!state.player.flags._isSpeaker;
       return {
@@ -2332,7 +2391,7 @@ export function resolveForcedChoice(
       const officeId = card.payload?.officeId as OfficeId;
       if (choiceIndex === 0) {
         const promoted = OFFICES[officeId].tier > playerTier(state);
-        giveOffice(state, rng, officeId, promoted ? 'promoted' : 'appointed');
+        giveOffice(state, rng, officeId, promoted ? 'promoted' : 'appointed', card.payload?.keepDeputy === true);
         gain('partyStanding', 6, 'Standing');
         gain('profile', 8, 'Profile');
         const title = officeTitleFor(officeId, {
@@ -3360,6 +3419,10 @@ export function resolveForcedChoice(
         // becoming deputy displaces any incumbent — there is only ever one
         state.government.deputyPmId = 'player';
         state.government.deputyTitle = rng.chance(0.67) ? 'dpm' : 'firstSec';
+        // open the concurrent overlay span on the profile timeline (alongside the brief)
+        state.history.push({
+          kind: 'deputyOverlay', date: state.day, action: 'start', title: state.government.deputyTitle,
+        });
         gain('partyStanding', 8, 'Standing');
         gain('profile', 10, 'Profile');
         adjustRelationship(state, 'leader', 6);
@@ -3379,6 +3442,40 @@ export function resolveForcedChoice(
       gain('integrity', 2, 'Integrity');
       return {
         text: 'You thank the PM but ask to stay focused on your own brief. Some read it as loyalty without ambition; you call it knowing your own mind.',
+        deltas,
+      };
+    }
+
+    case 'deputyRemoval': {
+      const sacked = card.payload?.sacked === true;
+      const dep = deputyPrefix(state.government.deputyTitle);
+      // sacked → out of the cabinet entirely; otherwise a demotion to the brief alone.
+      // (stripOffice and clearPlayerDeputyPM both record the overlay end on the timeline.)
+      if (sacked) {
+        stripOffice(state, rng, 'dismissed');
+      } else {
+        clearPlayerDeputyPM(state);
+      }
+      if (choiceIndex === 1) {
+        // make your displeasure known: a higher profile, a colder PM
+        gain('profile', 5, 'Profile');
+        adjustRelationship(state, 'leader', -8);
+        push('Leader', -8);
+      } else {
+        // accept with grace
+        gain('partyStanding', -3, 'Standing');
+        gain('integrity', 2, 'Integrity');
+      }
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: sacked
+          ? `${state.player.name} sacked as ${dep}`
+          : `${state.player.name} removed as ${dep}`,
+      });
+      return {
+        text: choiceIndex === 1
+          ? `You let it be known, on and off the record, exactly what you think of the decision. The story has legs; the PM's office has a long memory.`
+          : `You thank the PM for the opportunity and leave with your dignity intact. The grace is noted, even if the demotion stings.`,
         deltas,
       };
     }
