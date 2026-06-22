@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import { openLeadershipVacancy, materializeForced, resolveForcedChoice } from '../career';
 import { Rng } from '../rng';
+import { GameState } from '../../types/game';
 
 function makeGame(seed: number) {
   const input: CreationInput = {
@@ -13,60 +14,66 @@ function makeGame(seed: number) {
   return createNewGame(input);
 }
 
-/** drive a full 4-stage contest with given choice picks; returns won */
-function runContest(seed: number, picks: number[]): boolean {
+type Stats = GameState['player']['stats'];
+
+/** drive a whole dynamic contest to its conclusion; returns whether the player won.
+ *  Always stands at the declaration; uses `ballotPick` for every ballot/backing card. */
+function runContest(seed: number, stats: Stats, ballotPick = 1): boolean {
   const game = makeGame(seed);
   const rng = new Rng(seed * 7 + 1);
   game.player.officeId = 'sos_defence';
-  game.player.stats = {
-    profile: 95, partyStanding: 95, competence: 95,
-    constituencyApproval: 80, integrity: 70,
-  };
+  game.player.stats = { ...stats };
   openLeadershipVacancy(game, rng, 'con');
   let stage = 0;
-  while (game.forcedQueue.length > 0 && stage < 6) {
+  while (game.forcedQueue.length > 0 && stage < 16) {
     const ev = game.forcedQueue.shift()!;
     const card = materializeForced(game, rng, ev);
-    resolveForcedChoice(game, rng, card, picks[Math.min(stage, picks.length - 1)]);
+    const pick = card.kind === 'leadershipStand' ? 0 : Math.min(ballotPick, card.choices.length - 1);
+    resolveForcedChoice(game, rng, card, pick);
     stage++;
   }
   return game.player.officeId === 'leader';
 }
 
+const STRONG: Stats = { profile: 92, partyStanding: 92, competence: 92, constituencyApproval: 80, integrity: 72 };
+const MIDDLING: Stats = { profile: 60, partyStanding: 62, competence: 60, constituencyApproval: 55, integrity: 55 };
+
 describe('leadership contest calibration', () => {
   it('a top-rank candidate wins clearly more often than not', () => {
-    let wins = 0;
-    const runs = 60;
-    for (let i = 0; i < runs; i++) {
-      if (runContest(5000 + i * 13, [0, 0, 0, 1])) wins++;
-    }
+    let wins = 0; const runs = 60;
+    for (let i = 0; i < runs; i++) if (runContest(5000 + i * 13, STRONG, 1)) wins++;
     const rate = wins / runs;
     expect(rate).toBeGreaterThan(0.5);
     expect(rate).toBeLessThan(0.95); // never a coronation
   });
 
   it('a middling candidate usually loses', () => {
-    let wins = 0;
-    const runs = 120; // a larger sample keeps this stable against RNG-seed drift
+    let wins = 0; const runs = 120;
+    for (let i = 0; i < runs; i++) if (runContest(8000 + i * 11, MIDDLING, 0)) wins++;
+    expect(wins / runs).toBeLessThan(0.45); // a clear underdog
+  });
+
+  it('a middling candidate is sometimes eliminated before the final two', () => {
+    let preFinalOut = 0; const runs = 80;
     for (let i = 0; i < runs; i++) {
-      const game = makeGame(8000 + i * 11);
-      const rng = new Rng(i * 3 + 2);
+      const game = makeGame(9000 + i * 7);
+      const rng = new Rng(i * 5 + 3);
       game.player.officeId = 'sos_culture';
-      game.player.stats = {
-        profile: 60, partyStanding: 62, competence: 60,
-        constituencyApproval: 55, integrity: 55,
-      };
+      game.player.stats = { ...MIDDLING };
       openLeadershipVacancy(game, rng, 'con');
-      let stage = 0;
-      while (game.forcedQueue.length > 0 && stage < 6) {
+      let reachedFinal = false; let stage = 0;
+      while (game.forcedQueue.length > 0 && stage < 16) {
         const ev = game.forcedQueue.shift()!;
+        if (ev.kind === 'leadershipBallot' && ev.payload?.finalRound) reachedFinal = true;
         const card = materializeForced(game, rng, ev);
-        resolveForcedChoice(game, rng, card, 0);
+        const pick = card.kind === 'leadershipStand' ? 0 : Math.min(1, card.choices.length - 1);
+        resolveForcedChoice(game, rng, card, pick);
         stage++;
       }
-      if (game.player.officeId === 'leader') wins++;
+      if (!reachedFinal) preFinalOut++; // never reached the members' ballot → knocked out earlier
     }
-    expect(wins / runs).toBeLessThan(0.45); // a clear underdog, not a favourite
+    expect(preFinalOut).toBeGreaterThan(0);
+    expect(preFinalOut).toBeLessThan(runs); // ...but not always
   });
 });
 
@@ -83,39 +90,45 @@ describe('leadership contest structure', () => {
       const ids = stand!.payload?.candidateIds as string[];
       expect(ids.length).toBeGreaterThanOrEqual(3);
       expect(ids.length).toBeLessThanOrEqual(6);
-      // every rival resolves to a real, named character
       for (const id of ids) expect(game.characters[id]?.name).toBeTruthy();
-      // the materialised declaration card names them (regression: was "heavyweights are circling")
       const card = materializeForced(game, rng, stand!);
       expect(card.body).toContain(game.characters[ids[0]].name);
     }
   });
 
-  it('runs a full six-stage contest (declaration + five ballots) with named rounds', () => {
+  it('runs dynamic ballots that shed ≥1 candidate each, down to a members\' final', () => {
     const game = makeGame(4321);
     const rng = new Rng(99);
     game.player.officeId = 'sos_treasury';
-    game.player.stats = { profile: 85, partyStanding: 85, competence: 85, constituencyApproval: 70, integrity: 65 };
+    game.player.stats = { profile: 95, partyStanding: 95, competence: 95, constituencyApproval: 80, integrity: 72 };
     openLeadershipVacancy(game, rng, 'con');
+    const ballotSizes: number[] = [];
     const titles: string[] = [];
+    let finalTitle = '';
     let stage = 0;
-    while (game.forcedQueue.length > 0 && stage < 8) {
+    while (game.forcedQueue.length > 0 && stage < 16) {
       const ev = game.forcedQueue.shift()!;
       const card = materializeForced(game, rng, ev);
-      titles.push(card.title);
-      resolveForcedChoice(game, rng, card, 0);
+      if (ev.kind === 'leadershipBallot') {
+        const t = ev.payload?.tallies as Record<string, number>;
+        ballotSizes.push(Object.keys(t).length);
+        titles.push(card.title);
+        if (ev.payload?.finalRound) finalTitle = card.title;
+      }
+      const pick = card.kind === 'leadershipStand' ? 0 : 1;
+      resolveForcedChoice(game, rng, card, pick);
       stage++;
     }
-    // declaration + 5 ballot stages = 6 cards
-    expect(titles.length).toBe(6);
-    expect(titles[0]).toMatch(/leadership is vacant/i);
-    // the final ballot names the finalist
-    expect(titles[titles.length - 1]).toMatch(/Final ballot — you vs /);
+    expect(ballotSizes.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < ballotSizes.length; i++) {
+      expect(ballotSizes[i]).toBeLessThan(ballotSizes[i - 1]); // the field strictly narrows
+    }
+    expect(ballotSizes[ballotSizes.length - 1]).toBe(2); // down to a final two
+    expect(titles[0]).toMatch(/^Ballot 1$/);
+    expect(finalTitle).toMatch(/^Members' ballot — you vs /);
   });
 
   it('a post-election vacancy (settleNpcLeaderships path) also names opponents', () => {
-    // openLeadershipVacancy is what settleNpcLeaderships now calls — the old bug
-    // was a bare leadershipStand with no candidateIds. Guarantee names here.
     const game = makeGame(777);
     const rng = new Rng(5);
     game.player.officeId = 'sos_foreign';

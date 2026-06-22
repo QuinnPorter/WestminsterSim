@@ -67,6 +67,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* a large field (e.g. backing >5 leadership candidates) scrolls within the card
+     instead of running off-screen */
+  max-height: 52vh;
+  overflow-y: auto;
 }
 
 /* a choice button with a muted second line (e.g. a candidate's current office).

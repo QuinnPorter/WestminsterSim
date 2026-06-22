@@ -826,7 +826,9 @@ export function leadershipBaseSupport(state: GameState): number {
   );
 }
 
-const LEADERSHIP_WIN_THRESHOLD = 59;
+/** floor on a player's final members'-ballot score (the appeal-weighted `playerFinal`);
+ *  stops a hopeless candidate sneaking the crown on noise alone. Tuned vs sim. */
+const LEADERSHIP_WIN_THRESHOLD = 48;
 
 /** Any sitting MP may put their name forward when the leadership falls vacant —
  *  even a backbencher. Whether they get anywhere is decided by support in the
@@ -960,6 +962,29 @@ function rivalStrengthOf(c: Character, rng: Rng): number {
   const tier = c.officeId ? OFFICES[c.officeId].tier : 0;
   const tierBonus = tier >= 4 ? 0 : tier === 3 ? -8 : -12;
   return 0.6 * c.competence + traitBonus + tierBonus + rng.normal(0, 5);
+}
+
+/** put a rival's seeded strength on the same ~5–95 "MP support" scale as the player's
+ *  leadershipBaseSupport, so the whole contest can run off a single tally table */
+function rivalTallyFrom(strength: number): number {
+  return clamp(strength + 18, 5, 95);
+}
+
+/** how many candidates fall at a ballot (incl. the player in `remaining`): usually one,
+ *  but a big field sheds its no-hopers faster so the contest converges in ~3–5 ballots */
+function dropCountFor(remaining: number): number {
+  if (remaining >= 7) return 3;
+  if (remaining >= 5) return 2;
+  return 1;
+}
+
+/** the player is held to a slightly higher bar in the ELIMINATION ballots (never the
+ *  members' final), so being knocked out before the last two is ~10% likelier. Tuned vs sim. */
+const PRE_FINAL_HANDICAP = 3;
+
+const ORDINALS = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh'];
+function ordinal(n: number): string {
+  return ORDINALS[n] ?? `${n}th`;
 }
 
 /** a leadership vacancy has opened in `party` */
@@ -1846,73 +1871,49 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       };
     }
     case 'leadershipBallot': {
+      const tallies = (ev.payload?.tallies as Record<string, number>) ?? {};
       const round = (ev.payload?.round as number) ?? 1;
+      const finalRound = !!ev.payload?.finalRound;
+      const justElim = (ev.payload?.justEliminated as { name: string; swungTo: string }[]) ?? [];
       const pass = { ...ev.payload, advance: rng.int(8, 14) };
-      const candidateIds = (ev.payload?.candidateIds as string[]) ?? [];
-      const finalistName = characterName(state, ev.payload?.finalistId as string);
-      const elimNames = ((ev.payload?.eliminatedIds as string[]) ?? [])
-        .map((id) => characterName(state, id)).join(' and ');
-      if (round === 1) {
-        const rivals = candidateIds.map((id) => characterName(state, id)).join(', ');
+
+      // a sorted "vote tally" readout of the surviving field, the player marked as "You"
+      const ranked = Object.entries(tallies)
+        .sort((a, b) => b[1] - a[1])
+        .map(([id, v]) => ({ id, v: Math.max(0, Math.round(v)), name: id === 'player' ? 'You' : characterName(state, id) }));
+      const readout = ranked.map((r) => `${r.name} ${r.v}`).join(' · ');
+      const elimLine = justElim.length
+        ? `${justElim.map((e) => `${e.name} falls, their backers swinging to ${e.swungTo}`).join('; ')}. `
+        : '';
+
+      if (finalRound) {
+        const finalistName = characterName(state, ev.payload?.finalistId as string);
         return {
-          cardId: `forced_ballot1_${state.day}`, kind: 'leadershipBallot',
-          title: 'First ballot',
-          body: `The field is set: you against ${rivals}. Your launch is tonight — lecterns polished, journalists fed and watered. What is your pitch?`,
+          cardId: `forced_ballot_final_${state.day}`, kind: 'leadershipBallot',
+          title: `Members' ballot — you vs ${finalistName}`,
+          body: `${elimLine}It is down to you and ${finalistName}, and now the whole party membership decides — this is won in the country, not the tea room. The hustings tour is done; the ballots are in the post. Your closing pitch to the members?`,
           choices: [
-            { label: 'Unity — heal the party' },
-            { label: 'Bold change — rip up the script' },
-            { label: 'Court the grassroots' },
-          ],
-          payload: pass,
-        };
-      }
-      if (round === 2) {
-        return {
-          cardId: `forced_ballot2_${state.day}`, kind: 'leadershipBallot',
-          title: 'Second ballot',
-          body: `${elimNames ? `${elimNames} fell at the first ballot. ` : ''}The field narrows and the arithmetic sharpens. Where do you put your energy this week?`,
-          choices: [
-            { label: 'Work the parliamentary party' },
-            { label: 'Tour the membership' },
-            { label: 'Dominate the airwaves' },
-          ],
-          payload: pass,
-        };
-      }
-      if (round === 3) {
-        return {
-          cardId: `forced_ballot3_${state.day}`, kind: 'leadershipBallot',
-          title: 'The hustings',
-          body: `${elimNames ? `${elimNames} now eliminated. ` : ''}The set-piece hustings is tonight, the hall packed, the cameras live. ${finalistName} is the one to beat. How do you play it?`,
-          choices: [
-            { label: 'A barnstorming, emotional speech' },
+            { label: 'A barnstorming, emotional rally' },
             { label: 'Sober, detailed, prime-ministerial' },
-            { label: 'Take the fight straight to ' + finalistName },
+            { label: 'Quietly promise jobs to waverers' },
           ],
           payload: pass,
         };
       }
-      if (round === 4) {
-        return {
-          cardId: `forced_ballot4_${state.day}`, kind: 'leadershipBallot',
-          title: 'The endorsement round',
-          body: `It is down to you and ${finalistName}. The eliminated candidates' backers are suddenly the most courted MPs in the building, and their votes will decide this.`,
-          choices: [
-            { label: 'Offer the kingmakers big jobs' },
-            { label: 'Win them over on the argument' },
-            { label: 'No deals — run on your own terms' },
-          ],
-          payload: pass,
-        };
-      }
+
+      const myRank = ranked.findIndex((r) => r.id === 'player') + 1;
+      const frontrunner = ranked.find((r) => r.id !== 'player')?.name ?? 'the frontrunner';
+      const opener = round === 1
+        ? 'The field is set and the first ballot of MPs is called. '
+        : elimLine;
       return {
-        cardId: `forced_ballot5_${state.day}`, kind: 'leadershipBallot',
-        title: `Final ballot — you vs ${finalistName}`,
-        body: `The membership ballot closes at noon. ${finalistName} has run a serious campaign and the polls are within the margin of error. Your closing move?`,
+        cardId: `forced_ballot${round}_${state.day}`, kind: 'leadershipBallot',
+        title: `Ballot ${round}`,
+        body: `${opener}MPs declare — ${readout}. You sit ${ordinal(myRank)} of ${ranked.length}; ${frontrunner} leads. What is your move this round?`,
         choices: [
-          { label: 'Go for the jugular' },
-          { label: 'Stay relentlessly positive' },
-          { label: 'Quietly promise jobs to waverers' },
+          { label: 'Work the parliamentary party' },
+          { label: 'Court the members and the media' },
+          { label: `Go after ${frontrunner}` },
         ],
         payload: pass,
       };
@@ -1921,16 +1922,16 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const survivors = (ev.payload?.survivors as string[]) ?? [];
       const strengths = (ev.payload?.strengths as Record<string, number>) ?? {};
       const round = (ev.payload?.round as number) ?? 1;
-      // offer the leading contenders to back (cap so the card stays tidy)
+      // offer EVERY surviving contender to back, strongest first (cap generously)
       const backable = [...survivors]
         .sort((a, b) => (strengths[b] ?? 0) - (strengths[a] ?? 0))
-        .slice(0, 4);
+        .slice(0, 8);
       const names = backable.map((id) => characterName(state, id));
       const field = names.length > 1
         ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
         : names[0] ?? 'the survivors';
       const body = round === 1
-        ? `You are not in the running, but a leadership contest is a market in loyalty. ${field} are the serious names. Whom do you get behind?`
+        ? `You are not in the running, but a leadership contest is a market in loyalty. ${field} are in the field. Whom do you get behind?`
         : `The field narrows to ${field}. A leader will emerge within days. Where do you throw your weight now?`;
       // each candidate's current position, so the player can tell the (procedurally
       // named) contenders apart when deciding whom to back
@@ -1944,7 +1945,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       return {
         cardId: `forced_backing_${round}_${state.day}`,
         kind: 'leadershipBacking',
-        title: 'Leadership contest',
+        title: `Leadership contest — ballot ${round}`,
         body,
         choices: backable.map((id) => ({ label: `Back ${characterName(state, id)}`, sublabel: roleOf(id) })),
         payload: { ...ev.payload, candidateIds: backable, advance: rng.int(7, 12) },
@@ -2481,9 +2482,9 @@ export function resolveForcedChoice(
       const candidateIds = (card.payload?.candidateIds as string[]) ?? [];
       const sitOutIndex = card.choices.length - 1;
       if (choiceIndex !== sitOutIndex) {
-        // base support reflects the player's current standing (tier, Deputy-PM),
-        // so compute it BEFORE resigning the office to stand
-        state.player.flags._ldrSupport = Math.round(leadershipBaseSupport(state));
+        // the player's MP support reflects their standing (tier, Deputy-PM), computed
+        // BEFORE resigning the office to stand
+        let playerTally = Math.round(leadershipBaseSupport(state));
         // cashing in a favour from a senior friend gives a real launch boost
         const usingFavour = choiceIndex === 1 && !!card.payload?.favourKind;
         let favourName = '';
@@ -2494,7 +2495,7 @@ export function resolveForcedChoice(
             favourName = characterName(state, state.player.favours[fi].characterId);
             state.player.favours.splice(fi, 1);
           }
-          state.player.flags._ldrSupport = (state.player.flags._ldrSupport as number) + 12;
+          playerTally += 12;
           push('Support', 12);
         }
         // a frontbencher resigns their post to mount a challenge — win or lose,
@@ -2506,37 +2507,18 @@ export function resolveForcedChoice(
             headline: `${state.player.name} resigns from the front bench to stand for the leadership`,
           });
         }
-        // rank the field by seeded strength (weakest first); strongest is the finalist
-        const ranked = candidateIds
-          .map((id) => ({ id, strength: rivalStrengthOf(state.characters[id], rng) }))
-          .filter((r) => state.characters[r.id])
-          .sort((a, b) => a.strength - b.strength);
-        const finalist = ranked[ranked.length - 1];
-        const challengers = ranked.slice(0, -1); // everyone but the finalist
-        // split the challengers across the three ballot rounds (weakest go first)
-        const elim: string[][] = [[], [], []];
-        challengers.forEach((c, i) => {
-          const bucket = challengers.length > 0
-            ? Math.min(2, Math.floor((i * 3) / challengers.length))
-            : 0;
-          elim[bucket].push(c.id);
+        // seed one tally table: the player plus every rival on a shared MP-support scale.
+        // The contest then plays out dynamically — one (or more) eliminated per ballot.
+        const tallies: Record<string, number> = { player: playerTally };
+        for (const id of candidateIds) {
+          if (state.characters[id]) {
+            tallies[id] = Math.round(rivalTallyFrom(rivalStrengthOf(state.characters[id], rng)));
+          }
+        }
+        state.forcedQueue.unshift({
+          kind: 'leadershipBallot',
+          payload: { tallies, round: 1, fieldSize: candidateIds.length, justEliminated: [] },
         });
-        const finalistId = finalist?.id;
-        const finalistStrength = finalist?.strength ?? 35;
-        const avgRivalStrength = ranked.length
-          ? ranked.reduce((a, r) => a + r.strength, 0) / ranked.length
-          : 40;
-        const base = {
-          candidateIds, finalistId, finalistStrength,
-          fieldSize: candidateIds.length, avgRivalStrength,
-        };
-        state.forcedQueue.unshift(
-          { kind: 'leadershipBallot', payload: { ...base, round: 1, eliminatedIds: elim[0] } },
-          { kind: 'leadershipBallot', payload: { ...base, round: 2, eliminatedIds: elim[1] } },
-          { kind: 'leadershipBallot', payload: { ...base, round: 3, eliminatedIds: elim[2] } },
-          { kind: 'leadershipBallot', payload: { ...base, round: 4 } },
-          { kind: 'leadershipBallot', payload: { ...base, round: 5 } }
-        );
         gain('profile', 6, 'Profile');
         return {
           text: usingFavour && favourName
@@ -2555,156 +2537,149 @@ export function resolveForcedChoice(
     }
 
     case 'leadershipBallot': {
+      const tallies = { ...((card.payload?.tallies as Record<string, number>) ?? {}) };
       const round = (card.payload?.round as number) ?? 1;
-      const support = (state.player.flags._ldrSupport as number) ?? 50;
-      const finalistName = characterName(state, card.payload?.finalistId as string);
-      const addSupport = (n: number) => {
-        state.player.flags._ldrSupport = support + n;
-        if (n !== 0) push('Support', Math.round(n));
-      };
+      const finalRound = !!card.payload?.finalRound;
+      const fieldSize = (card.payload?.fieldSize as number) ?? 3;
 
-      // In each field-thinning ballot (rounds 1-3) the lowest-polling candidate
-      // is knocked out. A long-shot (a backbencher who stood on a whim) is
-      // usually that candidate — the bar rises each round toward the field's
-      // average strength. Returns an elimination outcome, or null to continue.
-      const checkEliminated = (preface: string): { text: string; deltas: StatDelta[] } | null => {
-        const avg = (card.payload?.avgRivalStrength as number) ?? 40;
-        const bar = avg * [0.62, 0.82, 1.0][round - 1] + rng.normal(0, 5);
-        const current = (state.player.flags._ldrSupport as number) ?? support;
-        if (current >= bar) return null;
-        // eliminated — but you're not done: get behind one of the survivors for
-        // the rest of the contest (the same backing mini-game as not standing)
-        delete state.player.flags._ldrSupport;
-        state.forcedQueue = state.forcedQueue.filter((e) => e.kind !== 'leadershipBallot');
+      const recordLoss = () => {
         state.history.push({
           kind: 'leadershipContest', date: state.day, won: false, partyId: state.player.partyId,
         });
         state.player.flags._contestLossDay = state.day;
         state.player.flags._contestLosses =
           (((state.player.flags._contestLosses as number) ?? 0) + 1);
-        const eliminatedNow = (card.payload?.eliminatedIds as string[]) ?? [];
-        const survivors = ((card.payload?.candidateIds as string[]) ?? [])
-          .filter((id) => !eliminatedNow.includes(id) && state.characters[id]?.active);
+      };
+
+      // ---- the members' ballot: decided on PUBLIC appeal, not MP support ----
+      if (finalRound) {
+        const finalist = state.characters[card.payload?.finalistId as string];
+        let change = 0;
+        if (choiceIndex === 0) change = rng.int(-6, 16);        // rally: high variance
+        if (choiceIndex === 1) change = rng.int(2, 10);         // steady, statesmanlike
+        if (choiceIndex === 2) { change = rng.int(4, 12); gain('integrity', -4, 'Integrity'); }
+        const s = state.player.stats;
+        // grassroots appeal: profile leads, then competence/approval/integrity — NOT party standing
+        const memberAppeal =
+          0.34 * s.profile + 0.22 * s.competence + 0.18 * s.constituencyApproval + 0.12 * s.integrity + 8;
+        const playerFinal = 0.7 * memberAppeal + 0.3 * (tallies.player ?? 50) + change + rng.normal(0, 6);
+        const finalistComp = finalist ? finalist.competence : 60;
+        const finalistAppeal = 0.6 * finalistComp + (finalist ? rivalStrengthOf(finalist, rng) - 0.6 * finalistComp : 0) + 18;
+        // a bigger field leaves a more fractured membership and a stronger
+        // "anyone-but-the-frontrunner" coalition behind the runner-up
+        const finalistFinal =
+          0.7 * finalistAppeal + 0.3 * (tallies[finalist?.id ?? ''] ?? 45) + (fieldSize - 3) * 2.5 + rng.normal(0, 7);
+
+        // a small (~5%) edge tips the closest contests the player's way
+        if (playerFinal * 1.08 >= finalistFinal && playerFinal >= LEADERSHIP_WIN_THRESHOLD) {
+          makePlayerLeader(state, rng);
+          gain('profile', 15, 'Profile');
+          gain('partyStanding', 10, 'Standing');
+          if (finalist) {
+            const rivalRel = state.relationships.find((r) => r.kind === 'rival');
+            if (rivalRel) { rivalRel.characterId = finalist.id; rivalRel.value = -15; }
+          }
+          const leaderRole = playerLeaderRole(state);
+          const closer = leaderRole === 'pm'
+            ? 'You are the leader of the party — and Prime Minister.'
+            : leaderRole === 'lo'
+              ? 'You are the leader of the party — and Leader of the Opposition.'
+              : `You are the leader of the ${PARTIES[state.player.partyId].name}.`;
+          return {
+            text: `The returning officer reads the membership's verdict${finalist ? ` — and ${finalist.name}'s face tells the room before the words do` : ''}. You have won. ${closer}`,
+            deltas,
+          };
+        }
+        recordLoss();
+        resolveNpcLeadership(state, rng, state.player.partyId, finalist?.id);
+        gain('profile', 8, 'Profile');
+        gain('partyStanding', -6, 'Standing');
+        const winnerNm = characterName(state, getRelationship(state, 'leader')?.characterId);
+        return {
+          text: `So close. The members give it to ${winnerNm} on the final ballot. Your concession speech is, everyone agrees, leadership material — which stings.`,
+          deltas,
+        };
+      }
+
+      // ---- an elimination ballot (MPs voting) ----
+      let change = 0; let flavour = '';
+      if (choiceIndex === 0) { change = 3 + rng.int(0, 6); flavour = 'You work the corridors; wavering MPs feel courted.'; }
+      else if (choiceIndex === 1) { change = rng.int(-3, 12); flavour = change > 3 ? 'A commanding media and membership week.' : 'The membership warms to you; some MPs sniff populism.'; }
+      else {
+        // go after the frontrunner: risky — dent them, or it rebounds on you
+        const frontId = Object.entries(tallies).filter(([id]) => id !== 'player')
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+        if (rng.chance(0.55)) {
+          change = 5 + rng.int(0, 6);
+          if (frontId) tallies[frontId] -= 4 + rng.int(0, 5);
+          flavour = 'You land blows on the frontrunner and climb at their expense.';
+        } else {
+          change = -4 - rng.int(0, 5);
+          flavour = 'The attack looks desperate; it rebounds on you.';
+        }
+      }
+      tallies.player = (tallies.player ?? 50) + change;
+      if (change !== 0) push('Support', Math.round(change));
+      // a little campaign drift for every rival
+      for (const id of Object.keys(tallies)) if (id !== 'player') tallies[id] += rng.normal(0, 4);
+
+      // eliminate the lowest (more at once for a big field); the player is held to a
+      // slightly higher bar (PRE_FINAL_HANDICAP) so they fall before the last two more often
+      const effTally = (id: string) => (tallies[id] ?? 0) - (id === 'player' ? PRE_FINAL_HANDICAP : 0);
+      const order = Object.keys(tallies).sort((a, b) => effTally(a) - effTally(b));
+      const drop = Math.min(dropCountFor(order.length), order.length - 2);
+      const eliminated = order.slice(0, drop);
+
+      if (eliminated.includes('player')) {
+        // knocked out — endorse a survivor for the rest of the contest (kingmaker)
+        recordLoss();
+        const survivors = Object.keys(tallies)
+          .filter((id) => id !== 'player' && !eliminated.includes(id) && state.characters[id]?.active);
         startBacking(state, rng, state.player.partyId, survivors);
         gain('profile', 2, 'Profile');
         return {
-          text: `${preface} It is not enough: you are eliminated in round ${round}, your support draining to stronger names. You are out of the running — but the contest goes on, and your endorsement is suddenly worth having. Whom do you get behind?`,
-          deltas,
-        };
-      };
-
-      if (round === 1) {
-        let change = 0; let flavour = '';
-        if (choiceIndex === 0) { change = 3 + rng.int(0, 4); flavour = 'The unity pitch lands well with weary colleagues.'; }
-        if (choiceIndex === 1) { change = rng.int(-7, 13); flavour = change > 3 ? 'The radical pitch electrifies the contest.' : 'The radical pitch alarms the cautious middle.'; }
-        if (choiceIndex === 2) { change = 3 + rng.int(0, 7); flavour = 'The members love you; MPs grumble about populism.'; }
-        addSupport(change);
-        return checkEliminated(flavour) ?? { text: `${flavour} You clear the first ballot and the field thins.`, deltas };
-      }
-
-      if (round === 2) {
-        let change = 0; let flavour = '';
-        if (choiceIndex === 0) { change = 4 + rng.int(0, 6); flavour = 'You spend the week in Portcullis House tea rooms; colleagues feel courted.'; }
-        if (choiceIndex === 1) { change = rng.int(-2, 10); flavour = change > 4 ? 'The membership halls are rapturous.' : 'The membership is warm but the MPs you skipped notice.'; }
-        if (choiceIndex === 2) { change = rng.int(-4, 12); flavour = change > 4 ? 'A commanding media week — you look like the frontrunner.' : 'The relentless media blitz tips into overexposure.'; }
-        addSupport(change);
-        return checkEliminated(flavour) ?? { text: `${flavour} The second ballot narrows it further.`, deltas };
-      }
-
-      if (round === 3) {
-        // the hustings: a performance with a real chance of a great or poor night
-        let change = 0; let text = '';
-        if (choiceIndex === 0) {
-          change = rng.chance(0.55) ? 8 + rng.int(0, 6) : -6 - rng.int(0, 5);
-          text = change > 0
-            ? 'The barnstormer brings the hall to its feet — the clip leads every bulletin.'
-            : 'The big swing reads as bluster on television; the panel is unkind.';
-        } else if (choiceIndex === 1) {
-          change = 3 + rng.int(0, 5);
-          text = 'Measured and detailed: no fireworks, but you look ready for Number 10.';
-        } else {
-          change = rng.chance(0.5) ? 7 + rng.int(0, 6) : -8 - rng.int(0, 5);
-          text = change > 0
-            ? `You best ${finalistName} in a head-on clash and the room knows it.`
-            : `The attack on ${finalistName} backfires — they look gracious, you look desperate.`;
-        }
-        addSupport(change);
-        return checkEliminated(text) ?? { text: `${text} It is down to you and ${finalistName}.`, deltas };
-      }
-
-      if (round === 4) {
-        let change = 0; let text = '';
-        if (choiceIndex === 0) {
-          change = 7 + rng.int(0, 5);
-          gain('integrity', -4, 'Integrity');
-          text = 'Over discreet breakfasts you promise the great offices around. By noon the kingmakers are calling you "the unity candidate". Politics is a market; you paid the asking price.';
-        } else if (choiceIndex === 1) {
-          change = rng.int(-2, 11);
-          text = change > 5
-            ? 'You win the eliminated camps on the merits — persuaded, not purchased. Those votes are the durable kind.'
-            : 'You make the case on merit; the kingmakers listen politely and split down the middle.';
-        } else {
-          change = rng.int(-1, 5);
-          gain('integrity', 3, 'Integrity');
-          text = '"No deals" becomes your defining line. Some backers drift to you on principle; the rest call it arrogance.';
-        }
-        addSupport(change);
-        return { text, deltas };
-      }
-
-      // round 5 — the final head-to-head
-      let change = 0;
-      if (choiceIndex === 0) change = rng.int(-8, 14);
-      if (choiceIndex === 1) change = rng.int(0, 8);
-      if (choiceIndex === 2) { change = rng.int(4, 12); gain('integrity', -4, 'Integrity'); }
-      delete state.player.flags._ldrSupport;
-
-      const finalist = state.characters[card.payload?.finalistId as string];
-      const baseStrength = (card.payload?.finalistStrength as number) ?? 35;
-      const fieldSize = (card.payload?.fieldSize as number) ?? 3;
-      // a bigger field means a more fractured, unpredictable membership ballot,
-      // and the runner-up gathers an "anyone-but-the-frontrunner" coalition that
-      // grows with how strong the player looks — so contests stay hard to win
-      const finalistFinal =
-        baseStrength + (fieldSize - 3) * 2.5 + 0.42 * support + rng.normal(0, 7);
-      const playerFinal = support + change + rng.normal(0, 6);
-
-      // give the player a small (~5%) edge in the head-to-head — close contests
-      // tip the player's way a little more often
-      if (playerFinal * 1.05 >= finalistFinal && support + change >= LEADERSHIP_WIN_THRESHOLD - 17) {
-        makePlayerLeader(state, rng);
-        gain('profile', 15, 'Profile');
-        gain('partyStanding', 10, 'Standing');
-        if (finalist) {
-          const rivalRel = state.relationships.find((r) => r.kind === 'rival');
-          if (rivalRel) { rivalRel.characterId = finalist.id; rivalRel.value = -15; }
-        }
-        const leaderRole = playerLeaderRole(state);
-        // a minor party isn't the official opposition, so don't claim that title
-        const closer = leaderRole === 'pm'
-          ? 'You are the leader of the party — and Prime Minister.'
-          : leaderRole === 'lo'
-            ? 'You are the leader of the party — and Leader of the Opposition.'
-            : `You are the leader of the ${PARTIES[state.player.partyId].name}.`;
-        return {
-          text: `The returning officer reads the numbers${finalist ? ` — and ${finalist.name}'s face tells the room before the words do` : ''}. You have won. ${closer}`,
+          text: `${flavour} It is not enough — you are knocked out at ballot ${round}, your support draining to stronger names. But the contest goes on, and your endorsement is suddenly worth having. Whom do you get behind?`,
           deltas,
         };
       }
-      state.history.push({
-        kind: 'leadershipContest', date: state.day, won: false, partyId: state.player.partyId,
-      });
-      state.player.flags._contestLossDay = state.day;
-      state.player.flags._contestLosses =
-        (((state.player.flags._contestLosses as number) ?? 0) + 1);
-      resolveNpcLeadership(state, rng, state.player.partyId, finalist?.id);
-      gain('profile', 8, 'Profile');
-      gain('partyStanding', -6, 'Standing');
-      const winner = characterName(state, getRelationship(state, 'leader')?.characterId);
-      return {
-        text: `So close. ${winner} edges it on the final ballot. You give a generous concession speech that everyone agrees was leadership material — which stings.`,
-        deltas,
-      };
+
+      // swing each eliminated rival's backers (mostly to the frontrunner, partly to you)
+      const justEliminated: { name: string; swungTo: string }[] = [];
+      for (const id of eliminated) {
+        const pot = Math.max(0, tallies[id] ?? 0);
+        delete tallies[id];
+        const frontId = Object.entries(tallies).filter(([k]) => k !== 'player')
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+        const pShare = clamp(0.18 + rng.next() * 0.34, 0.1, 0.55);
+        tallies.player += pot * pShare;
+        if (frontId) tallies[frontId] += pot * (1 - pShare);
+        justEliminated.push({
+          name: characterName(state, id),
+          swungTo: pShare > 0.45 ? 'you' : characterName(state, frontId ?? ''),
+        });
+      }
+
+      // advance: another elimination ballot, the members' final, or a walkover
+      const remaining = Object.keys(tallies);
+      if (remaining.length > 2) {
+        state.forcedQueue.unshift({
+          kind: 'leadershipBallot',
+          payload: { tallies, round: round + 1, fieldSize, justEliminated },
+        });
+        return { text: `${flavour} The field narrows.`, deltas };
+      }
+      const finalistId = remaining.find((id) => id !== 'player');
+      if (finalistId) {
+        state.forcedQueue.unshift({
+          kind: 'leadershipBallot',
+          payload: { tallies, round: round + 1, finalRound: true, finalistId, fieldSize, justEliminated },
+        });
+        return { text: `${flavour} You are through to the membership ballot.`, deltas };
+      }
+      // every rival fell — an unopposed coronation
+      makePlayerLeader(state, rng);
+      gain('profile', 12, 'Profile');
+      return { text: `${flavour} Your last rival withdraws — you are elected unopposed.`, deltas };
     }
 
     case 'leadershipBacking': {

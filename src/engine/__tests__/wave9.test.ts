@@ -36,8 +36,11 @@ describe('wave 9 — standing for leader resigns the current office', () => {
     });
     resolveForcedChoice(game, rng, card, 0); // stand
     expect(game.player.officeId).toBeNull(); // resigned to stand
-    expect(game.player.flags._ldrSupport).toBe(expectedSupport); // seeded pre-strip
-    expect(game.forcedQueue.some((e) => e.kind === 'leadershipBallot')).toBe(true);
+    const ballot = game.forcedQueue.find((e) => e.kind === 'leadershipBallot');
+    expect(ballot).toBeDefined();
+    // the player's seeded MP support (computed pre-strip) lives in the ballot tally table
+    const tallies = ballot!.payload?.tallies as Record<string, number>;
+    expect(tallies.player).toBe(expectedSupport);
   });
 
   it('a tier-4 office gives more base support than a backbencher (bonus counted pre-strip)', () => {
@@ -70,19 +73,19 @@ describe('wave 9 — a new NPC leader schedules a player-facing reshuffle', () =
   });
 });
 
-describe('wave 9 — the final ballot is winnable with the 5% edge', () => {
-  function finalBallotWins(support: number, runs = 50): number {
+describe('wave 9 — the members\' final ballot is decided on public appeal', () => {
+  function finalBallotWins(stats: GameState['player']['stats'], tally: number, runs = 50): number {
     let wins = 0;
     for (let i = 0; i < runs; i++) {
       const game = makeGame(2000 + i);
       game.player.hasSeat = true;
       game.player.officeId = null;
-      game.player.flags._ldrSupport = support;
+      game.player.stats = { ...stats };
       const rng = new Rng(7000 + i);
       const finalistId = partyNpcIds(game, 'con', 1)[0];
       const card = materializeForced(game, rng, {
         kind: 'leadershipBallot',
-        payload: { round: 5, finalistId, finalistStrength: 35, fieldSize: 3, candidateIds: partyNpcIds(game, 'con') },
+        payload: { finalRound: true, finalistId, fieldSize: 3, tallies: { player: tally, [finalistId]: 45 } },
       });
       resolveForcedChoice(game, rng, card, 1);
       if (game.player.officeId === 'leader') wins++;
@@ -90,11 +93,19 @@ describe('wave 9 — the final ballot is winnable with the 5% edge', () => {
     return wins / runs;
   }
 
-  it('marginal support is genuinely competitive, strong support almost always wins', () => {
-    const marginal = finalBallotWins(46);
-    const strong = finalBallotWins(70);
-    expect(marginal).toBeGreaterThan(0.2); // the edge keeps close contests live
-    expect(marginal).toBeLessThan(0.95);
-    expect(strong).toBeGreaterThan(marginal);
+  it('a high-appeal candidate wins the membership clearly more than a modest one', () => {
+    const modest = finalBallotWins({ profile: 48, partyStanding: 50, competence: 50, constituencyApproval: 50, integrity: 50 }, 46);
+    const strong = finalBallotWins({ profile: 85, partyStanding: 60, competence: 82, constituencyApproval: 75, integrity: 70 }, 64);
+    expect(modest).toBeGreaterThan(0.1);  // close contests stay live
+    expect(modest).toBeLessThan(0.9);
+    expect(strong).toBeGreaterThan(modest);
+  });
+
+  it('profile (members) matters more than party standing (MPs) in the final', () => {
+    // two candidates with the SAME MP tally: the high-profile / low-standing one
+    // should fare better in the membership ballot than the reverse
+    const grassroots = finalBallotWins({ profile: 82, partyStanding: 40, competence: 65, constituencyApproval: 70, integrity: 60 }, 52);
+    const insider = finalBallotWins({ profile: 45, partyStanding: 85, competence: 65, constituencyApproval: 50, integrity: 60 }, 52);
+    expect(grassroots).toBeGreaterThan(insider);
   });
 });
