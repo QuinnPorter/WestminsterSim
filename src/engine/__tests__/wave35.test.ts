@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import {
   materializeForced, resolveForcedChoice, giveOffice, reconcilePlayerDeputy, playerOfficeTitle,
+  applyElectionAftermath,
 } from '../career';
 import { buildDeputySpans, buildOfficeSpans } from '../../screens/ProfileScreen';
-import { DrawnCard, GameState } from '../../types/game';
+import { DrawnCard, ElectionResult, GameState } from '../../types/game';
 import { Rng } from '../rng';
 
 function makeGame(seed = 7) {
@@ -151,5 +152,60 @@ describe('wave 35D — no shadow Deputy PM', () => {
     expect(game.player.flags._isDeputyPM).toBeFalsy();
     expect(game.government.deputyPmId).not.toBe('player');
     expect(playerOfficeTitle(game)).not.toMatch(/Deputy Prime Minister|First Secretary/);
+    // ...and the player is told via a news headline
+    const news = game.history.filter((h) => h.kind === 'event') as { headline: string }[];
+    expect(news.some((h) => /First Secretary|Deputy Prime Minister/.test(h.headline))).toBe(true);
+  });
+});
+
+function deputyGame(seed: number, regard: number, standing = 70) {
+  const game = makeGame(seed);
+  giveOffice(game, new Rng(seed), 'sos_health', 'appointed');
+  game.player.flags._isDeputyPM = true;
+  game.government.deputyPmId = 'player';
+  game.government.deputyTitle = 'firstSec';
+  game.player.stats.partyStanding = standing;
+  setLeaderRegard(game, regard);
+  return game;
+}
+
+function conMajority(game: GameState, governingParty: 'con' | 'lab'): ElectionResult {
+  return {
+    id: 'ge', date: game.day + 100,
+    seats: { con: 360, lab: 230, ld: 30, snp: 20, reform: 8, green: 2 } as GameState['seats'],
+    voteShares: { con: 0.44, lab: 0.30, ld: 0.10, snp: 0.05, reform: 0.07, green: 0.04 },
+    playerResult: null, outcome: 'majority', governingParty, playerHeldSeat: true,
+  };
+}
+
+describe('wave 36 — the Deputy PM is not auto-dropped at every election', () => {
+  function keptRate(regard: number, runs = 120): number {
+    let kept = 0;
+    for (let i = 0; i < runs; i++) {
+      const game = deputyGame(700 + i, regard);
+      const result = conMajority(game, 'con'); // player's party stays in government
+      game.day += 100; game.seats = { ...result.seats };
+      applyElectionAftermath(game, new Rng(1500 + i), result, true);
+      if (game.player.flags._isDeputyPM) kept++;
+    }
+    return kept / runs;
+  }
+
+  it('retention varies with the PM\'s regard — never automatic either way', () => {
+    const high = keptRate(80);
+    const low = keptRate(-40);
+    expect(high).toBeGreaterThan(low);
+    expect(high).toBeLessThan(1);  // not kept every time
+    expect(low).toBeGreaterThan(0); // not dropped every time
+  });
+
+  it('losing government always drops the role, and tells the player', () => {
+    const game = deputyGame(50, 90);
+    const result = conMajority(game, 'lab'); // Labour now governs → player (con) in opposition
+    game.day += 100; game.seats = { ...result.seats };
+    applyElectionAftermath(game, new Rng(9), result, true);
+    expect(game.player.flags._isDeputyPM).toBeFalsy();
+    const news = game.history.filter((h) => h.kind === 'event') as { headline: string }[];
+    expect(news.some((h) => /First Secretary|Deputy Prime Minister/.test(h.headline))).toBe(true);
   });
 });

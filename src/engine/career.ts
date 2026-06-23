@@ -606,7 +606,12 @@ function clearPlayerDeputyPM(state: GameState): void {
  *  the overlay — you can never be a "shadow Deputy PM". Called each turn. */
 export function reconcilePlayerDeputy(state: GameState): void {
   if (state.player.flags._isDeputyPM && !playerInGovernmentBloc(state)) {
+    const dep = deputyPrefix(state.government.deputyTitle);
     clearPlayerDeputyPM(state);
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${state.player.name} loses the office of ${dep} as the party leaves government`,
+    });
   }
 }
 
@@ -667,7 +672,19 @@ export function appointNpcDeputyPm(state: GameState, rng: Rng): void {
 /** the start-of-parliament re-decision: clears any holder (including a player
  *  deputy — re-earned each term) and re-rolls the NPC appointment */
 function redecideNpcDeputyPm(state: GameState, rng: Rng): void {
-  clearPlayerDeputyPM(state); // records the overlay end if the player held it
+  if (state.player.flags._isDeputyPM) {
+    const dep = deputyPrefix(state.government.deputyTitle); // capture before clearing
+    // re-appointed for the new term only if still in government AND the PM still rates
+    // you (relationship + standing + a little chance); losing government always loses it
+    const eligible = playerInGovernmentBloc(state)
+      && !!state.player.officeId && deputyEligibleOffice(state.player.officeId);
+    if (eligible && pmKeepsDeputy(state, rng)) return; // kept — no NPC re-decision, no notice
+    clearPlayerDeputyPM(state); // records the overlay end on the timeline
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${state.player.name} is dropped as ${dep} in the post-election reshuffle`,
+    });
+  }
   appointNpcDeputyPm(state, rng);
 }
 
