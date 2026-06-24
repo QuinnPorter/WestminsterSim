@@ -69,6 +69,15 @@ p {
   }
 }
 
+/* On tablets (iPad), widen the centred column a little so it reads as a deliberate,
+   comfortably-sized card rather than a thin phone strip — same single-column layout.
+   Both the shell and the fixed tab bar consume --shell-max, so they stay aligned. */
+@media (min-width: 768px) {
+  :root {
+    --shell-max: 480px;
+  }
+}
+
 .screen {
   flex: 1;
   padding: 16px 16px calc(var(--tabbar-h) + 24px);
