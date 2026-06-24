@@ -19,3 +19,6 @@ npm-debug.log*
 .env.local
 
 .vercel
+
+# store assets — uploaded manually to App Store Connect / Play Console, not shipped in the binary
+marketing/

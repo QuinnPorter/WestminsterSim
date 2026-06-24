@@ -96,4 +96,31 @@ describe('save slots', () => {
     s.deleteSlot(id);
     expect(store.useGameStore.getState().slots).toHaveLength(0);
   });
+
+  it('loadSlot survives a corrupt slot without throwing or clobbering the live game', () => {
+    const s = store.useGameStore.getState();
+    s.startNewGame(input);
+    const liveDay = store.useGameStore.getState().game!.day;
+    // inject a structurally broken snapshot (migrateGameState would throw on it)
+    store.useGameStore.setState({
+      slots: [{
+        id: 'bad', name: 'bad', savedAt: 0, era: '2024', legacyLabel: 'x',
+        game: { junk: true } as never,
+      }],
+    });
+    expect(() => store.useGameStore.getState().loadSlot('bad')).not.toThrow();
+    // the corrupt slot must not have replaced the live game
+    expect(store.useGameStore.getState().game!.day).toBe(liveDay);
+  });
+});
+
+describe('continue as protégé', () => {
+  it('re-seeds the event calendar so set-pieces still fire in the dynasty run', () => {
+    const s = store.useGameStore.getState();
+    s.startNewGame(input);
+    store.useGameStore.getState().continueAsProtege({ ...input, name: 'Heir MP', seed: 2 });
+    const game = store.useGameStore.getState().game!;
+    // continueAsProtegeCore wipes calendarDone; the store must re-seed it
+    expect(Object.keys(game.calendarDone).length).toBeGreaterThan(0);
+  });
 });

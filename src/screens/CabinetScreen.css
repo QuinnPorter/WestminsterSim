@@ -130,7 +130,9 @@
   font-weight: 700;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 2px 8px;
+  /* keep the compact pill look but give a ~44px-tall touch target */
+  padding: 4px 10px;
+  min-height: 44px;
   background: var(--surface);
 }
 

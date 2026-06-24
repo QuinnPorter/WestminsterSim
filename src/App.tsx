@@ -11,6 +11,7 @@ import { LoHistoryModal } from './components/LoHistoryModal';
 import { MentorHistoryModal } from './components/MentorHistoryModal';
 import { ElectionsModal } from './components/ElectionsModal';
 import { SeatHistoryModal } from './components/SeatHistoryModal';
+import { SettingsModal } from './components/SettingsModal';
 import { AgendaEditor } from './components/AgendaEditor';
 import { TitleScreen } from './screens/TitleScreen';
 import { NewCareerScreen } from './screens/NewCareerScreen';
@@ -76,6 +77,7 @@ export default function App() {
       if (s.mentorHistoryOpen) { s.setMentorHistoryOpen(false); return; }
       if (s.electionsOpen) { s.setElectionsOpen(false); return; }
       if (s.seatHistoryOpen) { s.setSeatHistoryOpen(false); return; }
+      if (s.settingsOpen) { s.setSettingsOpen(false); return; }
       if (s.agendaEditorOpen) { s.setAgendaEditorOpen(false); return; }
       if (s.protege) { s.setProtege(null); return; }
       if (!s.started && s.landing !== 'menu') { s.setLanding('menu'); return; }
@@ -146,6 +148,7 @@ export default function App() {
       <ElectionsModal game={game} />
       <SeatHistoryModal game={game} />
       <AgendaEditor game={game} />
+      <SettingsModal />
     </div>
   );
 }

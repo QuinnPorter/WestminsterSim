@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { GameState } from '../types/game';
 import { CreationInput, createNewGame, SAVE_VERSION } from '../engine/newGame';
 import { initCalendar, nextStep, queueGeneralElection } from '../engine/scheduler';
@@ -131,6 +131,42 @@ export function migrateGameState(game: GameState): GameState {
   return game;
 }
 
+/** the platform store, or null when unavailable (SSR / test env without a stub) */
+function getLS(): Storage | null {
+  return typeof localStorage !== 'undefined' ? localStorage : null;
+}
+
+/** localStorage wrapper that never throws: a full disk (QuotaExceededError) or a
+ *  corrupt blob degrades to a console warning instead of crashing the app. Reads
+ *  validate the JSON and discard an unparseable blob so boot can't fail on it. */
+const safeStorage = {
+  getItem: (name: string): string | null => {
+    try {
+      const raw = getLS()?.getItem(name);
+      if (raw == null) return null;
+      JSON.parse(raw); // validate; a corrupt blob is discarded rather than thrown
+      return raw;
+    } catch (e) {
+      console.error('Westminster.sim: discarding unreadable save', e);
+      return null;
+    }
+  },
+  setItem: (name: string, value: string): void => {
+    try {
+      getLS()?.setItem(name, value);
+    } catch (e) {
+      console.error('Westminster.sim: could not write save (storage full?)', e);
+    }
+  },
+  removeItem: (name: string): void => {
+    try {
+      getLS()?.removeItem(name);
+    } catch (e) {
+      console.error('Westminster.sim: could not clear save', e);
+    }
+  },
+};
+
 function makeSlotId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -180,6 +216,10 @@ export const useGameStore = create<GameStore>()(
       continueAsProtege: (input) =>
         mutateGame(get, set, (game, rng) => {
           continueAsProtegeCore(game, rng, input);
+          // continueAsProtegeCore wipes calendarDone; re-seed it so the
+          // Budget/conference/locals/recess/PMQs set-pieces still fire in the
+          // dynasty run (mirrors startNewGame).
+          initCalendar(game);
           nextStep(game, rng);
         }),
 
@@ -256,7 +296,12 @@ export const useGameStore = create<GameStore>()(
       loadSlot: (id) => {
         const slot = get().slots.find((s) => s.id === id);
         if (!slot) return;
-        set({ game: migrateGameState(structuredClone(slot.game)) });
+        try {
+          set({ game: migrateGameState(structuredClone(slot.game)) });
+        } catch (e) {
+          // a corrupt slot must not crash the app — keep the current game
+          console.error('Westminster.sim: failed to load save slot', e);
+        }
       },
 
       deleteSlot: (id) => set({ slots: get().slots.filter((s) => s.id !== id) }),
@@ -266,12 +311,30 @@ export const useGameStore = create<GameStore>()(
     {
       name: 'westminstersim-save',
       version: SAVE_VERSION,
+      storage: createJSONStorage(() => safeStorage),
       migrate: (persisted) => {
-        const store = persisted as GameStore;
-        if (store.game) migrateGameState(store.game);
-        if (!store.slots) store.slots = [];
-        for (const slot of store.slots) migrateGameState(slot.game);
-        return store;
+        try {
+          const store = persisted as GameStore;
+          if (store.game) migrateGameState(store.game);
+          if (!store.slots || !Array.isArray(store.slots)) store.slots = [];
+          // drop any individual slot that can't be migrated rather than failing boot
+          const goodSlots: SaveSlot[] = [];
+          for (const slot of store.slots) {
+            try {
+              migrateGameState(slot.game);
+              goodSlots.push(slot);
+            } catch (e) {
+              console.error('Westminster.sim: dropping unreadable save slot', e);
+            }
+          }
+          store.slots = goodSlots;
+          return store;
+        } catch (e) {
+          // a structurally broken root blob starts the player fresh rather than
+          // white-screening on launch
+          console.error('Westminster.sim: save migration failed; starting fresh', e);
+          return { game: null, slots: [] } as Partial<GameStore>;
+        }
       },
     }
   )

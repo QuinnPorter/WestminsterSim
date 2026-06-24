@@ -91,13 +91,17 @@ export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
 export interface TimelineRow { title: string; start: number; end: number | null; }
 
 /** office spans + concurrent deputy-overlay spans, merged newest-first for the timeline */
-function timelineRows(game: GameState): TimelineRow[] {
+export function timelineRows(game: GameState): TimelineRow[] {
+  // once the career is over, an office still "open" ended on the final day — so the
+  // timeline (and the shared rundown) reads as a closed date range, not "– present"
+  const end = game.gameOver ? game.day : null;
+  const close = (e: number | null) => (e === null ? end : e);
   const office: TimelineRow[] = officeSpans(game).map((s) => ({
-    title: spanTitle(game, s), start: s.start, end: s.end,
+    title: spanTitle(game, s), start: s.start, end: close(s.end),
   }));
   const deputy: TimelineRow[] = buildDeputySpans(game.history).map((d) => ({
     title: d.title === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister',
-    start: d.start, end: d.end,
+    start: d.start, end: close(d.end),
   }));
   return [...office, ...deputy].sort((a, b) => b.start - a.start);
 }
@@ -191,7 +195,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
           <button
             onClick={() => setAgendaEditorOpen(true)}
             style={{
-              background: 'none', border: 'none', padding: 0,
+              background: 'none', border: 'none', padding: '6px 0',
               color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
             }}
           >
@@ -444,6 +448,24 @@ export function ProfileScreen({ game }: { game: GameState }) {
       >
         Retire from politics
       </button>
+
+      {/* discreet settings access — version / privacy / about */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4 }}>
+        <button
+          aria-label="Settings"
+          onClick={() => useUiStore.getState().setSettingsOpen(true)}
+          style={{
+            background: 'none', border: 'none', padding: 8, cursor: 'pointer',
+            color: 'var(--muted)', opacity: 0.5, lineHeight: 0,
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
 
       {saving && (
         <SaveModal

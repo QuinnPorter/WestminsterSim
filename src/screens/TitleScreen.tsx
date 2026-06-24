@@ -1,9 +1,7 @@
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
+import { PRIVACY_URL } from '../config';
 import './TitleScreen.css';
-
-/** Hosted privacy policy (no data collected). Same URL used for the store listings. */
-export const PRIVACY_URL = 'https://github.com/QuinnPorter/WestminsterSim/blob/main/PRIVACY.md';
 
 export function TitleScreen() {
   const game = useGameStore((s) => s.game);

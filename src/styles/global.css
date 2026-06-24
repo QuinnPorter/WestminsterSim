@@ -80,7 +80,9 @@ p {
 
 .screen {
   flex: 1;
-  padding: 16px 16px calc(var(--tabbar-h) + 24px);
+  /* clear the tab bar plus the home-indicator inset so the last control isn't
+     tucked under it on Face-ID iPhones (0 on desktop/web) */
+  padding: 16px 16px calc(var(--tabbar-h) + 24px + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
 }
 

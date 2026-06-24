@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { GameState, PlayerStats } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES } from '../data/parties';
 import { CAUSES_BY_ID } from '../data/causes';
+import { timelineRows } from './ProfileScreen';
+import { formatMonthYear } from '../engine/clock';
+import { shareCareerText } from '../native/shareCard';
 
 const REASON_TEXT: Record<string, string> = {
   retired: 'You left on your own terms — rarer than it sounds in this trade.',
@@ -40,8 +44,89 @@ export function GameOverScreen({ game }: { game: GameState }) {
 
   const causes = (legacy.causes ?? []).map((c) => CAUSES_BY_ID[c]?.label).filter(Boolean);
 
+  const [sharing, setSharing] = useState(false);
+  const [shareMsg, setShareMsg] = useState('');
+
+  // a plain-text rundown of the end screen — what the player sees, in words
+  const buildShareText = () => {
+    const lines: string[] = [];
+    lines.push(legacy.rating ? `${game.player.name} — ${legacy.rating}` : game.player.name);
+    if (legacy.verdict) lines.push(legacy.verdict);
+    lines.push('');
+    lines.push(`${legacy.yearsServed} years in public life`);
+    lines.push(`Highest office: ${legacy.highestOfficeTitle}`);
+    if (legacy.becamePM && (legacy.pmStints ?? 0) > 0) {
+      lines.push(`Years as Prime Minister: ${legacy.yearsAsPM ?? 0}`);
+    }
+    lines.push(`Elections won: ${legacy.electionsContested !== undefined
+      ? `${legacy.electionsWon} of ${legacy.electionsContested}`
+      : `${legacy.electionsWon}`}`);
+    if (legacy.headlines.length > 0) {
+      lines.push('');
+      lines.push(`“${legacy.headlines[0]}”`);
+    }
+    // career history — the same timeline shown on the profile (newest first)
+    const rows = timelineRows(game);
+    if (rows.length > 0) {
+      lines.push('');
+      lines.push('Career:');
+      for (const r of rows) {
+        const range = r.end === null
+          ? `${formatMonthYear(r.start)} – present`
+          : `${formatMonthYear(r.start)} – ${formatMonthYear(r.end)}`;
+        lines.push(`• ${r.title} (${range})`);
+      }
+    }
+    lines.push('');
+    lines.push('Play your own career in WestminsterSim');
+    return lines.join('\n');
+  };
+
+  const shareCareer = async () => {
+    if (sharing) return;
+    setSharing(true);
+    setShareMsg('');
+    const result = await shareCareerText({
+      title: `${game.player.name} — WestminsterSim`,
+      text: buildShareText(),
+    });
+    setSharing(false);
+    setShareMsg(
+      result === 'copied' ? 'Copied to clipboard ✓'
+        : result === 'failed' ? 'Could not share — please try again'
+          : '' // 'shared' / 'cancelled' need no message
+    );
+  };
+
   return (
-    <div className="screen" style={{ textAlign: 'center', paddingTop: 32 }}>
+    <div className="screen" style={{ textAlign: 'center', paddingTop: 32, position: 'relative' }}>
+      {/* share the career as text — top-right */}
+      <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+        <button
+          className="btn"
+          aria-label="Share career"
+          title="Share career"
+          onClick={shareCareer}
+          disabled={sharing}
+          style={{
+            width: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            padding: '9px 16px', opacity: sharing ? 0.6 : 1,
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+          </svg>
+        </button>
+        {shareMsg && (
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>{shareMsg}</span>
+        )}
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
         <Avatar
           config={game.player.avatar}

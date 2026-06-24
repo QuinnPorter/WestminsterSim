@@ -56,11 +56,11 @@ export function ParliamentScreen({ game }: { game: GameState }) {
               ? `minority, with ${PARTIES[gov.confidencePartner].shortName} support`
               : 'minority government'}
       </p>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 8, alignItems: 'center', marginBottom: 12 }}>
         <button
           onClick={() => setPmHistoryOpen(true)}
           style={{
-            background: 'none', border: 'none', padding: 0,
+            background: 'none', border: 'none', padding: '6px 0',
             color: partyTextColour(gov.governingParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
           }}
         >
@@ -69,7 +69,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
         <button
           onClick={() => setLoHistoryOpen(true)}
           style={{
-            background: 'none', border: 'none', padding: 0,
+            background: 'none', border: 'none', padding: '6px 0',
             color: partyTextColour(gov.oppositionParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
           }}
         >
@@ -78,7 +78,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
         <button
           onClick={() => setElectionsOpen(true)}
           style={{
-            background: 'none', border: 'none', padding: 0,
+            background: 'none', border: 'none', padding: '6px 0',
             color: partyTextColour(gov.governingParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
           }}
         >
@@ -93,7 +93,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
               onConfirm: callSnapElection,
             })}
             style={{
-              background: 'none', border: 'none', padding: 0,
+              background: 'none', border: 'none', padding: '6px 0',
               color: 'var(--party)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
             }}
           >
@@ -125,7 +125,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           <button
             onClick={() => setSeatHistoryOpen(true)}
             style={{
-              background: 'none', border: 'none', padding: 0,
+              background: 'none', border: 'none', padding: '6px 0',
               color: partyTextColour(gov.governingParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
             }}
           >

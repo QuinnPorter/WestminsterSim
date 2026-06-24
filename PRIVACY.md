@@ -14,7 +14,7 @@ information. There are:
 - **No analytics or tracking** of any kind.
 - **No advertising** and no ad networks.
 - **No third‑party services** that receive your data.
-- **No network requests** — the app runs entirely on your device.
+- **No network requests of its own** — the app runs entirely on your device.
 
 ## Your game save stays on your device
 

@@ -50,6 +50,9 @@ interface UiState {
   /** whether the historical seat-count graph modal is open */
   seatHistoryOpen: boolean;
   setSeatHistoryOpen: (v: boolean) => void;
+  /** whether the Settings (version / privacy / about) modal is open */
+  settingsOpen: boolean;
+  setSettingsOpen: (v: boolean) => void;
   debug: boolean;
 }
 
@@ -77,6 +80,8 @@ export const useUiStore = create<UiState>((set) => ({
   setElectionsOpen: (v) => set({ electionsOpen: v }),
   seatHistoryOpen: false,
   setSeatHistoryOpen: (v) => set({ seatHistoryOpen: v }),
+  settingsOpen: false,
+  setSettingsOpen: (v) => set({ settingsOpen: v }),
   debug:
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).has('debug'),
