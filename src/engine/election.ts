@@ -30,6 +30,9 @@ const POPULIST_SWING_CAP = 0.52;
  *  swing into seats ~10% less efficiently, so a third party leapfrogs the main two less
  *  readily across all eras. Con/Lab are unaffected. */
 const MINOR_AMP_DAMP = 0.9;
+/** how much a real above-baseline swing is amplified into seats (the FPTP distortion).
+ *  Lower = more proportional (seat share tracks vote share more closely). */
+const MAINSTREAM_AMP = 1.2;
 /** per-seat vote-share bonus for the national vote-leader — tips marginals their
  *  way so a clear lead crosses the majority line more often. Trimmed slightly so
  *  blowout 400+ majorities are a touch rarer without dampening ordinary leads. */
@@ -110,7 +113,7 @@ function computeSeat(
         } else {
           // convert a real swing to seats — big national leads earn a decisive
           // majority while a spread vote still converts reasonably (tuned vs sims)
-          swing = 0.02 + (swing - 0.02) * 1.4 * damp;
+          swing = 0.02 + (swing - 0.02) * MAINSTREAM_AMP * damp;
         }
       }
       v += swing;

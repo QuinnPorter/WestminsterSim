@@ -462,9 +462,31 @@ describe('wave 14 — coalition junior partner & leader fixes', () => {
     const g = makeGame();
     g.player.stats.profile = 80;
     g.player.stats.integrity = 80;
+    // a top-office holder (here a party leader) earns the "household name" clause
+    g.history.push({ kind: 'roleChange', date: g.day, officeId: 'leader', how: 'electedLeader', roleSide: 'opp', partyId: g.player.partyId });
     const legacy = buildLegacy(g);
     expect(legacy.verdict).not.toMatch(/\bA a\b/);
     expect(legacy.verdict).toContain('Household Name');
+  });
+
+  it('a high-profile backbencher is NOT a household name', () => {
+    const g = makeGame();
+    g.player.stats.profile = 88;
+    expect(buildLegacy(g).verdict).not.toContain('Household Name');
+  });
+
+  it('only a Minister of State (tier 3+) is rated "Minister" — not a PPS/Whip', () => {
+    const pps = makeGame();
+    pps.history.push({ kind: 'roleChange', date: pps.day, officeId: 'pps', how: 'appointed' });
+    expect(buildLegacy(pps).rating).not.toBe('Minister');
+
+    const whip = makeGame();
+    whip.history.push({ kind: 'roleChange', date: whip.day, officeId: 'whip', how: 'appointed' });
+    expect(buildLegacy(whip).rating).not.toBe('Minister');
+
+    const minister = makeGame();
+    minister.history.push({ kind: 'roleChange', date: minister.day, officeId: 'min_health', how: 'appointed' });
+    expect(buildLegacy(minister).rating).toBe('Minister');
   });
 });
 

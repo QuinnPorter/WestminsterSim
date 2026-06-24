@@ -4307,8 +4307,12 @@ export function reconstructPmHistory(state: GameState): PmTenure[] {
 /** one-word rating + a one-line characterisation of the whole career */
 function careerVerdict(
   level: number, everSpeaker: boolean, everDeputyPM: boolean,
+  everGreatOffice: boolean, everMinister: boolean,
   stats: PlayerStats, rebellions: number, years: number
 ): { rating: string; verdict: string } {
+  // only an actual Minister of State (tier 3+) earns the "Minister" rating; a
+  // PPS / parliamentary aide / Whip falls through to the backbencher ratings
+  const realMinister = level === 1 && everMinister;
   let rating: string;
   if (level === 4) {
     rating = stats.integrity >= 68 && years >= 12 ? 'Colossus' : 'Statesman';
@@ -4318,7 +4322,7 @@ function careerVerdict(
     rating = 'Contender';
   } else if (everDeputyPM || level === 2) {
     rating = 'Heavyweight';
-  } else if (level === 1) {
+  } else if (realMinister) {
     rating = 'Minister';
   } else {
     rating = years >= 15 ? 'Stalwart' : 'Footnote';
@@ -4333,7 +4337,10 @@ function careerVerdict(
   else if (stats.integrity <= 35) adjectives.push('unscrupulous');
   if (rebellions >= 4) adjectives.push('rebellious');
   if (stats.profile <= 30) adjectives.push('low-profile');
-  if (stats.profile >= 75) nouns.push('a household name');
+  // a "household name" only for those who reached a top office: a great office of
+  // state, a party leader (PM / LO / minor-party), the Deputy PM, or the Speaker
+  const topOffice = everGreatOffice || level >= 3 || everDeputyPM || everSpeaker;
+  if (stats.profile >= 75 && topOffice) nouns.push('a household name');
   if (stats.competence >= 75) nouns.push('a safe pair of hands');
 
   const office =
@@ -4342,7 +4349,7 @@ function careerVerdict(
     : level === 3 ? 'party leader'
     : everDeputyPM ? 'Deputy Prime Minister'
     : level === 2 ? 'cabinet minister'
-    : level === 1 ? 'minister'
+    : realMinister ? 'minister'
     : 'backbencher';
   const adj = adjectives.slice(0, 2).join(', ');
   let phrase = adj ? `a ${adj} ${office}` : `a ${office}`;
@@ -4360,6 +4367,8 @@ export function buildLegacy(state: GameState): LegacySummary {
   let ministerTitle = '';
   let ministerScore = -1;
   let everSpeaker = !!state.player.flags._wasSpeaker;
+  let everGreatOffice = false; // held a great office of state (Chancellor/Home/Foreign)
+  let everMinister = false;    // held an actual Minister-of-State+ post (tier 3+)
   for (const entry of state.history) {
     if (entry.kind !== 'roleChange') continue;
     if (entry.officeId === 'speaker') everSpeaker = true;
@@ -4376,6 +4385,7 @@ export function buildLegacy(state: GameState): LegacySummary {
       const sideTitle = inGov ? office.title : office.shadowTitle;
       if (office.tier === 4) {
         level = Math.max(level, 2);
+        if (GREAT_OFFICES.includes(office.id)) everGreatOffice = true;
         const score = (inGov ? 1000 : 0)
           + (GREAT_OFFICES.includes(office.id) ? 100
             : office.id === 'chief_sec' ? 10
@@ -4383,6 +4393,7 @@ export function buildLegacy(state: GameState): LegacySummary {
         if (score > cabinetScore) { cabinetScore = score; cabinetTitle = sideTitle; }
       } else if (office.tier >= 1 && office.tier <= 3) {
         level = Math.max(level, 1);
+        if (office.tier >= 3) everMinister = true; // a real ministerial post, not PPS/Whip
         const score = (inGov ? 1000 : 0) + office.tier * 10 + (office.rank ?? 0);
         if (score > ministerScore) { ministerScore = score; ministerTitle = sideTitle; }
       }
@@ -4416,7 +4427,8 @@ export function buildLegacy(state: GameState): LegacySummary {
   const leadershipContestsWon = state.history.filter((h) => h.kind === 'leadershipContest' && h.won).length;
   const electionsWonAsLeader = (state.player.flags._electionsWonAsLeader as number) ?? 0;
   const { rating, verdict } = careerVerdict(
-    level, everSpeaker, everDeputyPM, state.player.stats, state.player.rebellionCount, yearsServed
+    level, everSpeaker, everDeputyPM, everGreatOffice, everMinister,
+    state.player.stats, state.player.rebellionCount, yearsServed
   );
   return {
     yearsServed,

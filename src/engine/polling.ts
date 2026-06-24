@@ -15,6 +15,10 @@ export function lastElectionShares(state: GameState): Partial<Record<PartyId, nu
  *  permanently ratcheting its own support upward — so third parties leapfrog the main
  *  two less readily across all eras. Con/Lab keep a full ratchet (they alternate power). */
 const MINOR_FUND_BLEND = 0.92;
+/** ceiling on how far a minor party's long-run fundamental may sit ABOVE its
+ *  structural baseline — caps the decade-in ratchet so a third party can rise but not
+ *  run away to overtake the main parties every time (they still can in a strong cycle). */
+const MINOR_FUND_CAP = 1.3;
 
 /** long-run "fundamentals" each party's polling reverts toward */
 function fundamentals(state: GameState): Partial<Record<PartyId, number>> {
@@ -25,10 +29,11 @@ function fundamentals(state: GameState): Partial<Record<PartyId, number>> {
     if (PARTIES[p]?.major) {
       out[p] = last[p] ?? 0.01;
     } else {
-      // pull a minor party partway back toward its structural baseline each cycle
+      // pull a minor party partway back toward its structural baseline each cycle,
+      // and cap how far it can ratchet above that baseline over a long game
       const l = last[p] ?? baseline[p] ?? 0.01;
       const b = baseline[p] ?? 0.01;
-      out[p] = MINOR_FUND_BLEND * l + (1 - MINOR_FUND_BLEND) * b;
+      out[p] = Math.min(MINOR_FUND_BLEND * l + (1 - MINOR_FUND_BLEND) * b, b * MINOR_FUND_CAP);
     }
   }
   return out;
