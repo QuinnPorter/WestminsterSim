@@ -1,8 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
-import { openLeadershipVacancy, materializeForced, resolveForcedChoice } from '../career';
+import {
+  openLeadershipVacancy, materializeForced, resolveForcedChoice, seatProportionalTallies,
+} from '../career';
 import { Rng } from '../rng';
 import { GameState } from '../../types/game';
+
+describe('seatProportionalTallies', () => {
+  const sum = (m: Record<string, number>) => Object.values(m).reduce((a, b) => a + b, 0);
+
+  it('counts always sum to exactly the party seat total', () => {
+    const raw = { a: 80, b: 55, c: 40, d: 20, e: 8 };
+    for (const seats of [5, 9, 73, 201, 365, 411, 650]) {
+      expect(sum(seatProportionalTallies(raw, seats))).toBe(seats);
+    }
+  });
+
+  it('a stronger candidate never gets fewer MPs than a weaker one', () => {
+    const out = seatProportionalTallies({ a: 90, b: 60, c: 30, d: 12 }, 330);
+    expect(out.a).toBeGreaterThanOrEqual(out.b);
+    expect(out.b).toBeGreaterThanOrEqual(out.c);
+    expect(out.c).toBeGreaterThanOrEqual(out.d);
+  });
+
+  it('gives every listed candidate at least one MP when seats allow', () => {
+    const out = seatProportionalTallies({ a: 90, b: 5, c: 5, d: 5 }, 60);
+    for (const v of Object.values(out)) expect(v).toBeGreaterThanOrEqual(1);
+    expect(sum(out)).toBe(60);
+  });
+
+  it('does not throw on empty fields or zero seats', () => {
+    expect(seatProportionalTallies({}, 100)).toEqual({});
+    expect(sum(seatProportionalTallies({ a: 1, b: 1 }, 0))).toBe(0);
+  });
+});
 
 function makeGame(seed: number) {
   const input: CreationInput = {

@@ -201,7 +201,7 @@ export const CRISIS_CARDS: DecisionCard[] = [
         effects: {
           setFlags: { scandal_stage: 0, scandal: false, scandal_denied: false, scandal_stonewall: false },
           stats: { integrity: 5, partyStanding: 1 },
-          trigger: 'resignOffice',
+          trigger: 'resignScandal',
         },
         outcomeText: 'You make a full and contrite statement, and where you hold an office, you lay it down. Painful in the moment — but a clean break the public can forgive, and a story that finally has its ending.',
       },

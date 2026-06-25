@@ -31,7 +31,11 @@ export interface Requirement {
 }
 
 export type CardTrigger =
-  | 'resignOffice' | 'leadershipChallenge' | 'rebel';
+  | 'resignOffice' | 'leadershipChallenge' | 'rebel'
+  /** accept a scandal and face the resign-or-cling-on reckoning */
+  | 'resignScandal'
+  /** the coalition partner walks — break the coalition into a minority */
+  | 'coalitionBreak';
 
 export interface EffectSpec {
   stats?: Partial<Record<keyof PlayerStats, number>>;

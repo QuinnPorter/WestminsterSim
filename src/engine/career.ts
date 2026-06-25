@@ -590,8 +590,9 @@ export function stripOffice(
 
 /** clear the Deputy-PM overlay when the player loses the underlying SoS post */
 function clearPlayerDeputyPM(state: GameState): void {
-  if (state.player.flags._isDeputyPM) {
+  if (state.player.flags._isDeputyPM || state.player.flags._govOverlayOpen) {
     delete state.player.flags._isDeputyPM;
+    delete state.player.flags._govOverlayOpen;
     // close the concurrent overlay span on the profile timeline
     state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'end' });
     if (state.government.deputyPmId === 'player') {
@@ -605,12 +606,14 @@ function clearPlayerDeputyPM(state: GameState): void {
  *  fallen into opposition (a lost election, or a mid-term change of government), drop
  *  the overlay — you can never be a "shadow Deputy PM". Called each turn. */
 export function reconcilePlayerDeputy(state: GameState): void {
-  if (state.player.flags._isDeputyPM && !playerInGovernmentBloc(state)) {
-    const dep = deputyPrefix(state.government.deputyTitle);
+  if ((state.player.flags._isDeputyPM || state.player.flags._govOverlayOpen) && !playerInGovernmentBloc(state)) {
+    const role = state.player.flags._isDeputyPM
+      ? `the office of ${deputyPrefix(state.government.deputyTitle)}`
+      : 'their government office';
     clearPlayerDeputyPM(state);
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${state.player.name} loses the office of ${dep} as the party leaves government`,
+      headline: `${state.player.name} loses ${role} as the party leaves government`,
     });
   }
 }
@@ -876,6 +879,47 @@ export function leadershipBaseSupport(state: GameState): number {
   );
 }
 
+/** Distribute a party's seats across leadership candidates in proportion to their raw
+ *  support scores, as whole MPs that sum EXACTLY to totalSeats (largest-remainder
+ *  rounding). Used purely for display — so the vote tallies the player reads (both when
+ *  standing and when backing an NPC) add up to the party's actual size. Every listed
+ *  candidate gets at least 1 when there are enough seats to go round. */
+export function seatProportionalTallies(
+  raw: Record<string, number>, totalSeats: number
+): Record<string, number> {
+  const ids = Object.keys(raw);
+  const out: Record<string, number> = {};
+  if (ids.length === 0 || totalSeats <= 0) {
+    for (const id of ids) out[id] = 0;
+    return out;
+  }
+  // shift scores positive so a weak candidate still gets a sliver of weight, not zero
+  const min = Math.min(...ids.map((id) => raw[id] ?? 0));
+  const weight = (id: string) => Math.max(0.0001, (raw[id] ?? 0) - min + 1);
+  const sum = ids.reduce((t, id) => t + weight(id), 0);
+
+  // largest-remainder: floor each share, then give the leftover seats to the biggest
+  // fractional parts — the result always sums to exactly totalSeats
+  const exact = ids.map((id) => ({ id, q: (totalSeats * weight(id)) / sum }));
+  let assigned = 0;
+  for (const e of exact) { out[e.id] = Math.floor(e.q); assigned += out[e.id]; }
+  let leftover = totalSeats - assigned;
+  const byFrac = [...exact].sort((a, b) => (b.q - Math.floor(b.q)) - (a.q - Math.floor(a.q)));
+  for (let i = 0; leftover > 0; i = (i + 1) % byFrac.length) { out[byFrac[i].id]++; leftover--; }
+
+  // no listed candidate should read "0 MPs" when the party is big enough to share round:
+  // borrow a seat from whoever currently has the most (keeps the total exact)
+  if (totalSeats >= ids.length) {
+    for (const id of ids) {
+      if (out[id] === 0) {
+        const big = ids.reduce((m, x) => (out[x] > out[m] ? x : m), ids[0]);
+        if (out[big] > 1) { out[big]--; out[id]++; }
+      }
+    }
+  }
+  return out;
+}
+
 /** floor on a player's final members'-ballot score (the appeal-weighted `playerFinal`);
  *  stops a hopeless candidate sneaking the crown on noise alone. Tuned vs sim. */
 const LEADERSHIP_WIN_THRESHOLD = 48;
@@ -1122,6 +1166,13 @@ export function resolveNpcLeadership(
     // the junior coalition partner's leadership changed — the Deputy PM overlay
     // follows the new leader (and clears any stale player overlay)
     reassignJuniorPartnerDeputy(state, party, winner.id);
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
+    });
+  } else {
+    // any other party (a minor/third party that is neither the government, the official
+    // opposition, nor the coalition partner) — record it so no leadership change is silent
     state.history.push({
       kind: 'event', date: state.day,
       headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
@@ -1662,10 +1713,16 @@ function recomputeOpposition(state: GameState, rng: Rng): void {
   // (still the player). Reuse the opp party's existing leader, else mint a fresh one.
   let newLo = state.government.loId;
   if (state.government.loId === 'player' || state.characters[state.government.loId]?.partyId !== opp) {
-    const existing = Object.values(state.characters).find(
-      (c) => c.active && c.partyId === opp && c.officeId === 'leader' && c.id !== 'player'
-    );
-    newLo = existing ? existing.id : newFrontbencher(state, rng, opp, 'leader').id;
+    if (opp === state.player.partyId && playerIsLeader(state)) {
+      // the player leads the largest opposition party (e.g. just after withdrawing from
+      // a coalition) — they ARE the Leader of the Opposition again, not a minted NPC
+      newLo = 'player';
+    } else {
+      const existing = Object.values(state.characters).find(
+        (c) => c.active && c.partyId === opp && c.officeId === 'leader' && c.id !== 'player'
+      );
+      newLo = existing ? existing.id : newFrontbencher(state, rng, opp, 'leader').id;
+    }
   }
   state.government.oppositionParty = opp;
   // the shadow bench now belongs to the new opposition party
@@ -1724,16 +1781,22 @@ export function seatPlayerJuniorPartner(state: GameState, rng: Rng, forceBrief =
   }
   // hand the official opposition to the largest party outside the new government bloc
   recomputeOpposition(state, rng);
-  // record the player's new GOVERNMENT role so the Profile timeline closes the
-  // (same-day, zero-length) opposition span and shows the coalition job
-  const title = playerOfficeTitle(state);
+  // The player REMAINS their party's leader. The timeline shows that as the office span
+  // ("Leader of [Party]"), with the government job (Deputy PM, or a department brief) on
+  // the concurrent overlay track — so both read at once, regardless of party size.
+  const leaderTitle = `Leader of the ${PARTIES[state.player.partyId].name}`;
   state.history.push({
     kind: 'roleChange', date: state.day, officeId: 'leader', how: 'continued',
-    roleSide: 'gov', partyId: state.player.partyId, label: title,
+    roleSide: 'gov', partyId: state.player.partyId, label: leaderTitle,
   });
+  const govRole = deputy
+    ? 'Deputy Prime Minister'
+    : (post ? officeTitleFor(post.officeId, { inGovernment: true }) : playerOfficeTitle(state));
+  state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', label: govRole });
+  if (!deputy) state.player.flags._govOverlayOpen = true; // the DPM case uses _isDeputyPM
   state.history.push({
     kind: 'event', date: state.day,
-    headline: `${state.player.name} becomes ${title} in coalition`,
+    headline: `${state.player.name} becomes ${govRole} in coalition`,
   });
 }
 
@@ -1762,6 +1825,76 @@ export function seatCoalitionCabinet(state: GameState, rng: Rng): void {
     if (old) { old.officeId = null; old.active = false; }
     post.characterId = newFrontbencher(state, rng, partner, post.officeId).id;
   }
+}
+
+/** End the coalition: the junior partner's ministers (including the player if they led
+ *  the junior party) leave cabinet, those seats revert to the senior governing party,
+ *  and the government drops to a normal minority (or majority if the senior party clears
+ *  it alone) — with the standard vulnerability that implies, no bespoke danger. Generic:
+ *  works whether the player is the senior PM, the junior leader, or uninvolved. */
+export function dissolveCoalition(state: GameState, rng: Rng): void {
+  const partner = state.government.coalitionPartner;
+  if (state.government.arrangement !== 'coalition' || !partner) return;
+  const gov = state.government.governingParty;
+  for (const post of state.government.cabinet) {
+    const holderParty = post.characterId === 'player'
+      ? state.player.partyId
+      : state.characters[post.characterId]?.partyId;
+    if (holderParty === partner) {
+      const old = state.characters[post.characterId];
+      if (old && old.id !== 'player') { old.officeId = null; old.active = false; }
+      post.characterId = newFrontbencher(state, rng, gov, post.officeId).id;
+    }
+  }
+  // a Deputy PM drawn from the partner leaves with them
+  if (state.government.deputyPmId && state.government.deputyPmId !== 'player') {
+    const dep = state.characters[state.government.deputyPmId];
+    if (dep?.partyId === partner) {
+      state.government.deputyPmId = undefined;
+      state.government.deputyTitle = undefined;
+    }
+  }
+  state.government.coalitionPartner = undefined;
+  const sfSeats = state.seats.sf ?? 0;
+  const votingSeats = 650 - sfSeats - 1;
+  const govSeats = state.seats[gov] ?? 0;
+  state.government.majority = govSeats - (votingSeats - govSeats);
+  state.government.arrangement = state.government.majority > 0 ? 'majority' : 'minority';
+  // the former partner is no longer in the government bloc — it may now be the opposition
+  recomputeOpposition(state, rng);
+}
+
+/** Player-initiated coalition exit. Junior partner → the player loses their government
+ *  role and their party leaves cabinet (they stay party leader, and resume as Leader of
+ *  the Opposition if their party is now the largest opposition). Senior PM → the player
+ *  stays PM and the junior partner is dropped. Either way the government becomes a normal
+ *  minority. */
+export function withdrawFromCoalitionCore(state: GameState, rng: Rng): void {
+  if (state.government.arrangement !== 'coalition') return;
+  const isJunior = state.player.partyId === state.government.coalitionPartner;
+  const isSenior = state.player.partyId === state.government.governingParty;
+  if (!isJunior && !isSenior) return;
+  const govParty = state.government.governingParty;
+
+  if (isJunior) clearPlayerDeputyPM(state); // close the gov-role overlay; stays party leader
+  dissolveCoalition(state, rng);
+
+  if (isJunior) {
+    // close the (now-ended) government-leader span and reopen an opposition-leader one
+    const oppLabel = state.government.loId === 'player'
+      ? 'Leader of the Opposition'
+      : `Leader of the ${PARTIES[state.player.partyId].name}`;
+    state.history.push({
+      kind: 'roleChange', date: state.day, officeId: 'leader', how: 'continued',
+      roleSide: 'opp', partyId: state.player.partyId, label: oppLabel,
+    });
+  }
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: isJunior
+      ? `${state.player.name} withdraws the ${PARTIES[state.player.partyId].name} from the coalition; ${PARTIES[govParty].name} governs as a minority`
+      : `${state.player.name} ends the coalition; the ${PARTIES[govParty].name} government continues as a minority`,
+  });
 }
 
 function settleNpcLeaderships(
@@ -1883,6 +2016,16 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           payload: { reason, advance: rng.int(7, 14) },
         };
       }
+      if (reason === 'scandal') {
+        return {
+          cardId: `forced_resign_${state.day}`,
+          kind: 'resignPrompt',
+          title: 'The reckoning',
+          body: 'You have accepted the charge in public; now comes the act itself. The honourable thing is to lay down your office cleanly and let the story end — or you can defy the lot of them and cling on, daring the leadership to wield the knife.',
+          choices: [{ label: 'Resign your office' }, { label: 'Cling on anyway' }],
+          payload: { reason: 'scandal', advance: rng.int(7, 14) },
+        };
+      }
       return {
         cardId: `forced_resign_${state.day}`,
         kind: 'resignPrompt',
@@ -1936,10 +2079,12 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const justElim = (ev.payload?.justEliminated as { name: string; swungTo: string }[]) ?? [];
       const pass = { ...ev.payload, advance: rng.int(8, 14) };
 
-      // a sorted "vote tally" readout of the surviving field, the player marked as "You"
+      // a sorted "vote tally" readout of the surviving field, the player marked as "You".
+      // counts are scaled so the whole field sums to the party's actual seats.
+      const counts = seatProportionalTallies(tallies, state.seats[state.player.partyId] ?? 0);
       const ranked = Object.entries(tallies)
         .sort((a, b) => b[1] - a[1])
-        .map(([id, v]) => ({ id, v: Math.max(0, Math.round(v)), name: id === 'player' ? 'You' : characterName(state, id) }));
+        .map(([id]) => ({ id, v: counts[id] ?? 0, name: id === 'player' ? 'You' : characterName(state, id) }));
       const readout = ranked.map((r) => `${r.name} ${r.v}`).join(' · ');
       const elimLine = justElim.length
         ? `${justElim.map((e) => `${e.name} falls, their backers swinging to ${e.swungTo}`).join('; ')}. `
@@ -2001,12 +2146,21 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         const minorName = c.partyId !== gov && c.partyId !== opp ? PARTIES[c.partyId].name : undefined;
         return officeTitleFor(c.officeId, { inGovernment: c.partyId === gov, minorPartyName: minorName });
       };
+      // MP backing for each contender, scaled so the field sums to the party's seats —
+      // the player reads who is likely to win while still seeing each candidate's role
+      const party = (ev.payload?.party as PartyId) ?? state.player.partyId;
+      const counts = seatProportionalTallies(strengths, state.seats[party] ?? 0);
       return {
         cardId: `forced_backing_${round}_${state.day}`,
         kind: 'leadershipBacking',
         title: `Leadership contest — ballot ${round}`,
         body,
-        choices: backable.map((id) => ({ label: `Back ${characterName(state, id)}`, sublabel: roleOf(id) })),
+        choices: backable.map((id) => {
+          const role = roleOf(id);
+          const n = counts[id] ?? 0;
+          const mps = `${n} MP${n === 1 ? '' : 's'}`;
+          return { label: `Back ${characterName(state, id)}`, sublabel: role ? `${role} · ${mps}` : mps };
+        }),
         payload: { ...ev.payload, candidateIds: backable, advance: rng.int(7, 12) },
       };
     }
@@ -2510,6 +2664,36 @@ export function resolveForcedChoice(
         });
         return {
           text: 'You tear up your own timetable and announce you are staying after all. The betrayal is total and the reaction immediate: your party turns on you, and a formal challenge is already being lodged.',
+          deltas,
+        };
+      }
+      if (reason === 'scandal') {
+        if (choiceIndex === 0) {
+          stripOffice(state, rng, 'resigned');
+          gain('integrity', 4, 'Integrity');
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} resigns over the scandal`,
+          });
+          return {
+            text: 'You take responsibility and lay down your office. Painful — but the story finally has its ending, and your integrity survives the wreckage.',
+            deltas,
+          };
+        }
+        // cling on anyway — severe, and now a marked minister living on borrowed time
+        gain('partyStanding', -18, 'Standing');
+        gain('profile', -12, 'Profile');
+        gain('integrity', -10, 'Integrity');
+        adjustRelationship(state, 'leader', -16);
+        push('Leader', -16);
+        applyPollingShock(state, state.player.partyId, -1);
+        state.player.flags._scandalExposed = state.day + 365;
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} refuses to resign amid scandal`,
+        });
+        return {
+          text: 'You refuse to go. The leadership says nothing in public and sharpens its knives in private. You are a marked minister now, and everyone in the building knows it.',
           deltas,
         };
       }
@@ -4410,7 +4594,10 @@ export function buildLegacy(state: GameState): LegacySummary {
     : level === 2 ? `Cabinet — ${cabinetTitle}`
     : level === 1 ? ministerTitle
     : 'Backbench MP';
-  const elections = Object.values(state.elections);
+  // count only THIS character's own elections — a protégé must not inherit the
+  // mentor's wins (state.elections spans the whole dynasty/world)
+  const elections = Object.values(state.elections)
+    .filter((e) => e.date >= state.player.enteredParliament);
   const electionsWon = elections.filter((e) => e.playerHeldSeat).length;
   const electionsContested = elections.filter((e) => e.playerResult !== null).length;
   const headlines = state.history

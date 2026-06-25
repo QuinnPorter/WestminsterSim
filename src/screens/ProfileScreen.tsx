@@ -66,10 +66,11 @@ function officeSpans(game: GameState): OfficeSpan[] {
   return buildOfficeSpans(game.history);
 }
 
-export interface DeputySpan { title: 'dpm' | 'firstSec'; start: number; end: number | null; }
+export interface DeputySpan { title: 'dpm' | 'firstSec'; label?: string; start: number; end: number | null; }
 
-/** the Deputy-PM / First-Secretary overlay spans — a concurrent track, paired from
- *  the deputyOverlay start/end history entries (an open span runs to "now") */
+/** the concurrent government-overlay spans (Deputy PM / First Secretary, or a junior
+ *  coalition leader's department brief), paired from the deputyOverlay start/end history
+ *  entries (an open span runs to "now") */
 export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
   const spans: DeputySpan[] = [];
   let open: DeputySpan | null = null;
@@ -77,7 +78,7 @@ export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
     if (entry.kind !== 'deputyOverlay') continue;
     if (entry.action === 'start') {
       if (open) spans.push(open);
-      open = { title: entry.title ?? 'dpm', start: entry.date, end: null };
+      open = { title: entry.title ?? 'dpm', label: entry.label, start: entry.date, end: null };
     } else if (entry.action === 'end' && open) {
       open.end = entry.date;
       spans.push(open);
@@ -100,7 +101,7 @@ export function timelineRows(game: GameState): TimelineRow[] {
     title: spanTitle(game, s), start: s.start, end: close(s.end),
   }));
   const deputy: TimelineRow[] = buildDeputySpans(game.history).map((d) => ({
-    title: d.title === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister',
+    title: d.label ?? (d.title === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister'),
     start: d.start, end: close(d.end),
   }));
   return [...office, ...deputy].sort((a, b) => b.start - a.start);

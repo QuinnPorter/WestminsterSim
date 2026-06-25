@@ -165,8 +165,9 @@ export const LEADER_EXTRA_CARDS: DecisionCard[] = [
         label: 'Call their bluff',
         effects: { stats: { profile: 3 }, pollingShock: { party: 'own', delta: 0.1 } },
         outcomeText: [
-          { weight: 2, text: 'They blink. The bill passes intact and your authority is enhanced — coalition is a game of nerve, and tonight you had more of it.' },
-          { weight: 1, text: 'They do not blink. The partnership wobbles to the brink before a 3am fudge saves it — bruised, diminished, and visibly mortal.', extra: { stats: { partyStanding: -4 }, setFlags: { scandal: false } } },
+          { weight: 6, text: 'They blink. The bill passes intact and your authority is enhanced — coalition is a game of nerve, and tonight you had more of it.' },
+          { weight: 3, text: 'They do not blink. The partnership wobbles to the brink before a 3am fudge saves it — bruised, diminished, and visibly mortal.', extra: { stats: { partyStanding: -4 }, setFlags: { scandal: false } } },
+          { weight: 1, text: 'They do not blink — and this time they mean it. The partner walks out of government overnight and the coalition is finished. You carry on, but as a bare minority now, exposed to every vote.', extra: { stats: { partyStanding: -3, profile: 2 }, trigger: 'coalitionBreak' } },
         ],
       },
       {

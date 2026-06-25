@@ -535,6 +535,22 @@ export function nextStep(state: GameState, rng: Rng): void {
     }
   }
 
+  // a minister who clung on through a scandal is living on borrowed time — until the
+  // window passes, the leadership is sharply more likely to find a moment to sack them
+  if (
+    onFrontbenchTrack(state) && !playerIsLeader(state) && state.player.officeId &&
+    typeof state.player.flags._scandalExposed === 'number'
+  ) {
+    if (state.day >= (state.player.flags._scandalExposed as number)) {
+      delete state.player.flags._scandalExposed; // they rode it out
+    } else if (rng.chance(0.25)) {
+      delete state.player.flags._scandalExposed;
+      state.forcedQueue.push({ kind: 'dismissal' });
+      nextStep(state, rng);
+      return;
+    }
+  }
+
   // reshuffles — the player-leader runs their own; everyone else is subject to them
   if (onFrontbenchTrack(state) && playerIsLeader(state) && rng.chance(PM_RESHUFFLE_HAZARD)) {
     state.forcedQueue.push({ kind: 'pmReshuffle' });

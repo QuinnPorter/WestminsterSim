@@ -11,6 +11,7 @@ import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
   callForLeaderResignationCore, setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
   continueAsProtegeCore, backfillCabinetOffices, reconcileCharacterOffices,
+  withdrawFromCoalitionCore,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -47,6 +48,8 @@ interface GameStore {
   callForLeaderResignation: () => void;
   /** player-PM dissolves Parliament; the campaign fires at the next decision */
   callSnapElection: () => void;
+  /** the player pulls their party out of (or, as PM, ends) the governing coalition */
+  withdrawFromCoalition: () => void;
   /** update the player's chosen causes (the agenda) mid-career */
   setCauses: (causes: CauseId[]) => void;
   retire: () => void;
@@ -260,6 +263,9 @@ export const useGameStore = create<GameStore>()(
             headline: `${game.player.name} calls a snap general election`,
           });
         }),
+
+      withdrawFromCoalition: () =>
+        mutateGame(get, set, (game, rng) => { withdrawFromCoalitionCore(game, rng); }),
 
       setCauses: (causes) =>
         mutateGame(get, set, (game) => {

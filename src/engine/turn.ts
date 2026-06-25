@@ -3,7 +3,7 @@ import { ALL_CARDS } from '../content/cards';
 import {
   nextStep, resolveCalendarChoice, resolveEarlyElectionChoice,
 } from './scheduler';
-import { resolveForcedChoice } from './career';
+import { resolveForcedChoice, dissolveCoalition } from './career';
 import { applyEffects } from './effects';
 import { resolveTokens } from './cardEngine';
 import { updatePolling, samplePolling } from './polling';
@@ -21,19 +21,30 @@ export function resolveChoiceCore(game: GameState, rng: Rng, choiceIndex: number
     const deltas = applyEffects(game, choice.effects);
 
     let text: string;
+    // a trigger may come from the choice itself or from the picked weighted outcome
+    let triggered = choice.effects.trigger;
     if (Array.isArray(choice.outcomeText)) {
       const picked = rng.pickWeighted(choice.outcomeText, (o) => o.weight);
       text = picked.text;
-      if (picked.extra) deltas.push(...applyEffects(game, picked.extra));
+      if (picked.extra) {
+        deltas.push(...applyEffects(game, picked.extra));
+        triggered = triggered ?? picked.extra.trigger;
+      }
     } else {
       text = choice.outcomeText;
     }
 
-    if (choice.effects.trigger === 'resignOffice' && game.player.officeId) {
+    if (triggered === 'resignOffice' && game.player.officeId) {
       game.forcedQueue.push({ kind: 'resignPrompt', payload: { reason: 'principle' } });
     }
-    if (choice.effects.trigger === 'leadershipChallenge') {
+    if (triggered === 'resignScandal' && game.player.officeId) {
+      game.forcedQueue.push({ kind: 'resignPrompt', payload: { reason: 'scandal' } });
+    }
+    if (triggered === 'leadershipChallenge') {
       game.forcedQueue.push({ kind: 'leadershipStand' });
+    }
+    if (triggered === 'coalitionBreak') {
+      dissolveCoalition(game, rng);
     }
     card.outcome = { text: resolveTokens(game, text), deltas };
   } else if (card.kind === 'calendar') {

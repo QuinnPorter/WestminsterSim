@@ -315,7 +315,7 @@ export type HistoryEntry =
   | { kind: 'event'; date: GameDay; headline: string }
   /** the Deputy-PM / First-Secretary overlay held ON TOP of a brief — a separate,
    *  concurrent timeline track (paired start→end), so it shows alongside the office */
-  | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' }
+  | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec'; label?: string }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
   | { kind: 'enteredParliament'; date: GameDay; seatName: string };
 

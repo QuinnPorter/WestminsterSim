@@ -15,6 +15,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const setSeatHistoryOpen = useUiStore((s) => s.setSeatHistoryOpen);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const callSnapElection = useGameStore((s) => s.callSnapElection);
+  const withdrawFromCoalition = useGameStore((s) => s.withdrawFromCoalition);
   const sorted = (Object.entries(game.seats) as [PartyId, number][])
     .filter(([, n]) => (n ?? 0) > 0)
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
@@ -32,6 +33,10 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   // hide the snap-election button once an election is already on its way
   const electionImminent = game.day >= game.nextElectionBy - 60
     || game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight');
+  // the player can pull out of a coalition as either partner (junior leader or senior PM)
+  const isJuniorPartner = game.player.partyId === gov.coalitionPartner;
+  const inCoalition = gov.arrangement === 'coalition'
+    && (isJuniorPartner || game.player.partyId === gov.governingParty);
 
   const ranked = polledPartiesForEra(game.startEra)
     .map((p) => ({ p, v: partyPolling(game, p) }))
@@ -98,6 +103,25 @@ export function ParliamentScreen({ game }: { game: GameState }) {
             }}
           >
             Call a snap election ›
+          </button>
+        )}
+        {inCoalition && (
+          <button
+            onClick={() => requestConfirm({
+              title: 'Withdraw from the coalition?',
+              message: isJuniorPartner
+                ? `Your party leaves government and you give up your ministerial role (you remain party leader). The ${PARTIES[gov.governingParty].name} government drops to a minority — and becomes far easier to bring down.`
+                : 'The junior partner leaves the government. You stay as Prime Minister, but your government drops to a minority — and becomes far easier to bring down.',
+              confirmLabel: 'Withdraw',
+              danger: true,
+              onConfirm: withdrawFromCoalition,
+            })}
+            style={{
+              background: 'none', border: 'none', padding: '6px 0',
+              color: 'var(--danger)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
+            }}
+          >
+            Withdraw from coalition ›
           </button>
         )}
       </div>
