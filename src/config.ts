@@ -5,4 +5,4 @@
 export const APP_VERSION = '1.0';
 
 /** Hosted privacy policy (no data collected). Same URL used for the store listings. */
-export const PRIVACY_URL = 'https://github.com/QuinnPorter/WestminsterSim/blob/main/PRIVACY.md';
+export const PRIVACY_URL = 'https://www.meridiananalytica.co.uk/privacy.html';
