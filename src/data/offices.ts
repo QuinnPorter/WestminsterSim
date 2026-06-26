@@ -22,6 +22,7 @@ export const DEPARTMENTS: Record<DepartmentId, DepartmentInfo> = {
   culture: { id: 'culture', name: 'DCMS', casual: 'Culture' },
   housing: { id: 'housing', name: 'Ministry of Housing, Communities & Local Government', casual: 'Housing' },
   energy: { id: 'energy', name: 'Department for Energy Security and Net Zero', casual: 'Energy' },
+  scienceTech: { id: 'scienceTech', name: 'Department for Science, Innovation and Technology', casual: 'Science and Technology' },
 };
 
 const DEPT_IDS = Object.keys(DEPARTMENTS) as DepartmentId[];
@@ -41,6 +42,7 @@ const SOS_TITLES: Record<DepartmentId, { gov: string; shadow: string }> = {
   culture: { gov: 'Culture Secretary', shadow: 'Shadow Culture Secretary' },
   housing: { gov: 'Housing Secretary', shadow: 'Shadow Housing Secretary' },
   energy: { gov: 'Energy Secretary', shadow: 'Shadow Energy Secretary' },
+  scienceTech: { gov: 'Science Secretary', shadow: 'Shadow Science Secretary' },
 };
 
 function buildOffices(): Record<OfficeId, Office> {
@@ -147,7 +149,7 @@ export const GREAT_OFFICES: OfficeId[] = ['sos_treasury', 'sos_home', 'sos_forei
 export const CABINET_OFFICES: OfficeId[] = [
   'sos_treasury', 'sos_home', 'sos_foreign', 'chancellor_duchy',
   'sos_health', 'sos_education', 'sos_defence', 'sos_justice', 'sos_business',
-  'sos_energy', 'sos_dwp', 'sos_transport', 'sos_environment', 'sos_culture', 'sos_housing',
+  'sos_scienceTech', 'sos_energy', 'sos_dwp', 'sos_transport', 'sos_environment', 'sos_culture', 'sos_housing',
   'sos_scotland', 'sos_wales', 'sos_ni', 'chief_sec', 'chiefWhip',
 ];
 

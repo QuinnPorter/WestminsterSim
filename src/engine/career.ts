@@ -2970,6 +2970,11 @@ export function resolveForcedChoice(
       if (remaining.length > 2) {
         const weakest = remaining.reduce((a, b) => (eff(a) <= eff(b) ? a : b));
         remaining = remaining.filter((id) => id !== weakest);
+        // drop the eliminated candidate from the tallies so next round's MP counts
+        // re-apportion the party's seats over the SURVIVORS only — their backers
+        // redistribute, and the displayed totals still sum to the party's seats
+        delete strengths[weakest];
+        delete backing[weakest];
       }
 
       if (remaining.length > 2) {
@@ -4491,7 +4496,7 @@ export function reconstructPmHistory(state: GameState): PmTenure[] {
 /** one-word rating + a one-line characterisation of the whole career */
 function careerVerdict(
   level: number, everSpeaker: boolean, everDeputyPM: boolean,
-  everGreatOffice: boolean, everMinister: boolean,
+  everGreatOffice: boolean, everMinister: boolean, everChiefRole: boolean, chiefNoun: string,
   stats: PlayerStats, rebellions: number, years: number
 ): { rating: string; verdict: string } {
   // only an actual Minister of State (tier 3+) earns the "Minister" rating; a
@@ -4506,6 +4511,9 @@ function careerVerdict(
     rating = 'Contender';
   } else if (everDeputyPM || level === 2) {
     rating = 'Heavyweight';
+  } else if (everChiefRole) {
+    // Chief Whip / Chief Secretary: senior, but below the full cabinet
+    rating = 'Senior Minister';
   } else if (realMinister) {
     rating = 'Minister';
   } else {
@@ -4533,7 +4541,8 @@ function careerVerdict(
     : level === 3 ? 'party leader'
     : everDeputyPM ? 'Deputy Prime Minister'
     : level === 2 ? 'cabinet minister'
-    : realMinister ? 'minister'
+    : everChiefRole ? chiefNoun
+    : realMinister ? 'junior minister'
     : 'backbencher';
   const adj = adjectives.slice(0, 2).join(', ');
   let phrase = adj ? `a ${adj} ${office}` : `a ${office}`;
@@ -4553,6 +4562,12 @@ export function buildLegacy(state: GameState): LegacySummary {
   let everSpeaker = !!state.player.flags._wasSpeaker;
   let everGreatOffice = false; // held a great office of state (Chancellor/Home/Foreign)
   let everMinister = false;    // held an actual Minister-of-State+ post (tier 3+)
+  // Chief Whip / Chief Secretary are senior but NOT full cabinet — their own rung,
+  // ranked above a minister and below a real cabinet seat
+  let everChiefRole = false;
+  let chiefTitle = '';   // full side title, e.g. "Chief Secretary to the Treasury"
+  let chiefNoun = '';    // short verdict noun, e.g. "chief whip"
+  let chiefScore = -1;
   for (const entry of state.history) {
     if (entry.kind !== 'roleChange') continue;
     if (entry.officeId === 'speaker') everSpeaker = true;
@@ -4567,13 +4582,20 @@ export function buildLegacy(state: GameState): LegacySummary {
         ? entry.roleSide === 'gov'
         : governingPartyAt(state, entry.date) === state.player.partyId;
       const sideTitle = inGov ? office.title : office.shadowTitle;
-      if (office.tier === 4) {
+      if (office.tier === 4 && (office.id === 'chief_sec' || office.id === 'chiefWhip')) {
+        // a senior post, but not a full cabinet seat — its own rung below cabinet
+        level = Math.max(level, 1);
+        everChiefRole = true;
+        const score = (inGov ? 1000 : 0) + (office.id === 'chiefWhip' ? 5 : 0);
+        if (score > chiefScore) {
+          chiefScore = score;
+          chiefTitle = sideTitle;
+          chiefNoun = office.id === 'chiefWhip' ? 'chief whip' : 'chief secretary';
+        }
+      } else if (office.tier === 4) {
         level = Math.max(level, 2);
         if (GREAT_OFFICES.includes(office.id)) everGreatOffice = true;
-        const score = (inGov ? 1000 : 0)
-          + (GREAT_OFFICES.includes(office.id) ? 100
-            : office.id === 'chief_sec' ? 10
-            : office.id === 'chiefWhip' ? 15 : 50);
+        const score = (inGov ? 1000 : 0) + (GREAT_OFFICES.includes(office.id) ? 100 : 50);
         if (score > cabinetScore) { cabinetScore = score; cabinetTitle = sideTitle; }
       } else if (office.tier >= 1 && office.tier <= 3) {
         level = Math.max(level, 1);
@@ -4592,6 +4614,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     : level === 3 ? 'Party Leader'
     : everDeputyPM ? 'Deputy Prime Minister'
     : level === 2 ? `Cabinet — ${cabinetTitle}`
+    : everChiefRole ? chiefTitle
     : level === 1 ? ministerTitle
     : 'Backbench MP';
   // count only THIS character's own elections — a protégé must not inherit the
@@ -4614,7 +4637,7 @@ export function buildLegacy(state: GameState): LegacySummary {
   const leadershipContestsWon = state.history.filter((h) => h.kind === 'leadershipContest' && h.won).length;
   const electionsWonAsLeader = (state.player.flags._electionsWonAsLeader as number) ?? 0;
   const { rating, verdict } = careerVerdict(
-    level, everSpeaker, everDeputyPM, everGreatOffice, everMinister,
+    level, everSpeaker, everDeputyPM, everGreatOffice, everMinister, everChiefRole, chiefNoun,
     state.player.stats, state.player.rebellionCount, yearsServed
   );
   return {

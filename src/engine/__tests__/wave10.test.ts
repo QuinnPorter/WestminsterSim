@@ -97,7 +97,8 @@ describe('wave 10 — coalition cabinet seats', () => {
       (p) => game.characters[p.characterId]?.partyId === 'ld'
     );
     expect(ldPosts.length).toBeGreaterThan(0);
-    expect(ldPosts.length).toBeLessThanOrEqual(2);
+    // ~14% of the distributable cabinet (a seat larger since Science & Tech was added)
+    expect(ldPosts.length).toBeLessThanOrEqual(3);
     for (const p of ldPosts) {
       expect(p.officeId).not.toBe('chiefWhip');
       expect(GREAT_OFFICES.includes(p.officeId)).toBe(false);

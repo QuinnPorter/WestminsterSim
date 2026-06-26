@@ -12,7 +12,7 @@ export type RegionId =
 export type DepartmentId =
   | 'treasury' | 'home' | 'foreign' | 'health' | 'education' | 'defence'
   | 'justice' | 'transport' | 'environment' | 'business' | 'dwp' | 'culture'
-  | 'housing' | 'energy';
+  | 'housing' | 'energy' | 'scienceTech';
 
 /** Days since 2019-01-01 (UTC). clock.ts converts to dates. */
 export type GameDay = number;
