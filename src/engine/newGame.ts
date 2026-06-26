@@ -46,6 +46,7 @@ function buildPlayer(input: CreationInput, seatId: string, startDay: number): Pl
     },
     officeId: null,
     officeSinceDay: null,
+    committeeChair: null,
     rebellionCount: 0,
     flags: {},
     seatId,

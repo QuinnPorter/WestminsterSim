@@ -94,6 +94,13 @@ function buildOffices(): Record<OfficeId, Office> {
       title: 'Attorney General',
       shadowTitle: 'Shadow Attorney General',
     },
+    // Leader of the House (also Lord President of the Council): a tier-4 cabinet
+    // office with no department — manages the business of the House
+    leader_house: {
+      id: 'leader_house', tier: 4, rank: 2,
+      title: 'Leader of the House of Commons',
+      shadowTitle: 'Shadow Leader of the House of Commons',
+    },
     // territorial Secretaries of State — only offered to a player from that nation
     sos_scotland: {
       id: 'sos_scotland', tier: 4, region: 'scotland',
@@ -150,7 +157,7 @@ export const CABINET_OFFICES: OfficeId[] = [
   'sos_treasury', 'sos_home', 'sos_foreign', 'chancellor_duchy',
   'sos_health', 'sos_education', 'sos_defence', 'sos_justice', 'sos_business',
   'sos_scienceTech', 'sos_energy', 'sos_dwp', 'sos_transport', 'sos_environment', 'sos_culture', 'sos_housing',
-  'sos_scotland', 'sos_wales', 'sos_ni', 'chief_sec', 'chiefWhip',
+  'sos_scotland', 'sos_wales', 'sos_ni', 'leader_house', 'chief_sec', 'chiefWhip',
 ];
 
 export function officeTitle(officeId: OfficeId | null, inGovernment: boolean): string {

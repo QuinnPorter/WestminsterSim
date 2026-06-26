@@ -1,5 +1,5 @@
 import {
-  CauseId, DepartmentId, Era, OfficeTier, PartyId, PlayerStats, RelationshipKind,
+  CauseId, DepartmentId, Era, OfficeId, OfficeTier, PartyId, PlayerStats, RelationshipKind,
 } from './game';
 
 export type CardTag =
@@ -11,6 +11,9 @@ export interface Requirement {
   maxTier?: OfficeTier;
   inGovernment?: boolean;
   department?: DepartmentId[];
+  /** only fire when the player holds one of these specific offices (e.g. a
+   *  non-departmental cabinet role like Leader of the House) */
+  office?: OfficeId[];
   era?: Era[];
   stats?: Partial<Record<keyof PlayerStats, { min?: number; max?: number }>>;
   /** flag -> required value; `false` means "must be unset or false" */

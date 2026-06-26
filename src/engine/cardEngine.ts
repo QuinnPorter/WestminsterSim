@@ -1,6 +1,7 @@
 import { DrawnCard, GameState } from '../types/game';
 import { DecisionCard } from '../types/content';
 import { DEPARTMENTS, OFFICES } from '../data/offices';
+import { COMMITTEE_NAMES } from '../data/committees';
 import { PARTIES } from '../data/parties';
 import { getRelationship, relationshipName } from './relationships';
 import {
@@ -59,6 +60,8 @@ export function resolveTokens(state: GameState, text: string): string {
     journalist: relationshipName(state, 'journalist'),
     constituency: seat?.name ?? 'your constituency',
     department: dept ? DEPARTMENTS[dept].casual : 'the department',
+    committee: state.player.committeeChair ? COMMITTEE_NAMES[state.player.committeeChair] : 'your committee',
+    cmtdept: state.player.committeeChair ? DEPARTMENTS[state.player.committeeChair].casual : 'the department',
     party: PARTIES[state.player.partyId].name,
     govparty: PARTIES[state.government.governingParty].name,
     oppparty: PARTIES[state.government.oppositionParty].name,
@@ -98,6 +101,7 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
     const dept = state.player.officeId ? OFFICES[state.player.officeId].department : undefined;
     if (!dept || !req.department.includes(dept)) return false;
   }
+  if (req.office && (!state.player.officeId || !req.office.includes(state.player.officeId))) return false;
   if (req.stats) {
     for (const [key, range] of Object.entries(req.stats)) {
       const v = state.player.stats[key as keyof typeof state.player.stats];

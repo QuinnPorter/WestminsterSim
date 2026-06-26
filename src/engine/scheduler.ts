@@ -8,7 +8,7 @@ import {
   openLeadershipVacancy, playerIsLeader, onFrontbenchTrack, onMinorPartyTrack,
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS,
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
-  canHoldOffice, reconcilePlayerDeputy,
+  canHoldOffice, reconcilePlayerDeputy, canChairCommittee, pickCommittee,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { relationshipValue } from './relationships';
@@ -196,6 +196,7 @@ const NPC_LEADER_SCANDAL = 0.0025;      // an NPC leader felled by scandal
 const NPC_RESHUFFLE_HAZARD = 0.04;      // an NPC-led front bench reshuffles itself
 const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
 const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
+const COMMITTEE_CHAIR_HAZARD = 0.06;    // a select-committee chair comes up for a backbencher
 const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
 const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
 const DEPUTY_PM_HAZARD = 0.02;          // rare: the PM elevates a star SoS to deputy
@@ -606,6 +607,22 @@ export function nextStep(state: GameState, rng: Rng): void {
     state.forcedQueue.push({
       kind: 'reshuffleOffer',
       payload: { officeId: target ?? (rng.chance(0.55) ? 'pps' : 'whip') },
+    });
+    nextStep(state, rng);
+    return;
+  }
+
+  // a select-committee chairmanship comes up for an established backbencher (any
+  // party) — a prestige scrutiny role won by a ballot of the whole House
+  if (
+    canChairCommittee(state) && !state.player.committeeChair &&
+    (state.player.stats.profile > 45 || state.player.stats.competence > 50) &&
+    (state.day - state.parliamentStart) > 200 &&
+    rng.chance(COMMITTEE_CHAIR_HAZARD)
+  ) {
+    state.forcedQueue.push({
+      kind: 'committeeChairContest',
+      payload: { dept: pickCommittee(state, rng) },
     });
     nextStep(state, rng);
     return;

@@ -18,6 +18,8 @@ import { ERA_CARDS } from './era';
 import { WHIP_CARDS } from './whips';
 import { MINISTRY_FOCUS_CARDS } from './ministryFocus';
 import { SCIENCE_TECH_CARDS } from './scienceTech';
+import { LEADER_HOUSE_CARDS } from './leaderHouse';
+import { COMMITTEE_CARDS } from './committee';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling */
 export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
@@ -42,6 +44,8 @@ export const ALL_CARDS: DecisionCard[] = [
   ...WHIP_CARDS,
   ...MINISTRY_FOCUS_CARDS,
   ...SCIENCE_TECH_CARDS,
+  ...LEADER_HOUSE_CARDS,
+  ...COMMITTEE_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {

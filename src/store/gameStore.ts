@@ -100,6 +100,9 @@ export function migrateGameState(game: GameState): GameState {
   if (game.player.favours === undefined) {
     game.player.favours = [];
   }
+  if (game.player.committeeChair === undefined) {
+    game.player.committeeChair = null;
+  }
   if (!game.pmHistory) {
     game.pmHistory = reconstructPmHistory(game);
   }

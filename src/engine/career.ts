@@ -1,9 +1,10 @@
 import {
-  CabinetPost, Character, DrawnCard, ElectionResult, ForcedEvent, GameState, HistoryEntry,
+  CabinetPost, Character, DepartmentId, DrawnCard, ElectionResult, ForcedEvent, GameState, HistoryEntry,
   LegacySummary, Mentor, OfficeId, PartyId, Player, PlayerStats, PmTenure, RegionId, Relationship,
   RelationshipKind, StatDelta,
 } from '../types/game';
 import type { CreationInput } from './newGame';
+import { COMMITTEE_NAMES, committeeChairTitle } from '../data/committees';
 import { CABINET_OFFICES, DEPARTMENTS, GREAT_OFFICES, OFFICES, officeTitle, officeTitleFor } from '../data/offices';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { causeDepartments } from '../data/causes';
@@ -104,6 +105,12 @@ export function playerOfficeTitle(state: GameState): string {
   // the Speaker is non-partisan — neither government nor opposition framing
   if (state.player.officeId === 'speaker') return 'Speaker of the House of Commons';
 
+  // a select-committee chairmanship is a prestige backbench role (held with no
+  // frontbench office) — it takes over the title pill from "Backbench MP"
+  if (state.player.officeId === null && state.player.committeeChair) {
+    return committeeChairTitle(state.player.committeeChair);
+  }
+
   // the leader of a JUNIOR coalition partner keeps leading their party while
   // holding a government overlay — they are never "Prime Minister"
   if (state.player.officeId === 'leader'
@@ -136,6 +143,47 @@ export function playerOfficeTitle(state: GameState): string {
     return `${deputyPrefix(state.government.deputyTitle)} and ${base}`;
   }
   return base;
+}
+
+// ---------- select committees ----------
+
+/** the player can win a committee chair only as a pure backbencher with a seat
+ *  (no frontbench office, not the Speaker) — matching the real convention */
+export function canChairCommittee(state: GameState): boolean {
+  return state.player.hasSeat && state.player.officeId === null && !state.player.flags._isSpeaker;
+}
+
+/** pick a committee for a contest, biased toward the player's causes/background
+ *  (their expertise), else any department */
+export function pickCommittee(state: GameState, rng: Rng): DepartmentId {
+  const depts = Object.keys(COMMITTEE_NAMES) as DepartmentId[];
+  const affinity = new Set<DepartmentId>([
+    ...causeDepartments(state.player.causes ?? []),
+    ...(BACKGROUNDS[state.player.background]?.deptAffinity ?? []),
+  ]);
+  const preferred = depts.filter((d) => affinity.has(d));
+  return preferred.length > 0 && rng.chance(0.7) ? rng.pick(preferred) : rng.pick(depts);
+}
+
+/** take a committee chair (a backbench overlay — officeId stays null) */
+function setCommitteeChair(state: GameState, dept: DepartmentId): void {
+  state.player.committeeChair = dept;
+  state.player.flags._committeeChair = true;
+  state.player.flags._wasCommitteeChair = true;
+}
+
+/** relinquish the chair (on taking office, losing the seat, or being voted out) */
+function clearCommitteeChair(state: GameState, reason: 'tookOffice' | 'lostSeat' | 'votedOut'): void {
+  const dept = state.player.committeeChair;
+  if (!dept) return;
+  state.player.committeeChair = null;
+  delete state.player.flags._committeeChair;
+  if (reason === 'tookOffice') {
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${state.player.name} stands down as Chair of the ${COMMITTEE_NAMES[dept]} Select Committee to take office`,
+    });
+  }
 }
 
 export type RoleSide = 'gov' | 'opp' | 'minor';
@@ -491,6 +539,8 @@ function computeNextOffice(state: GameState, rng: Rng): OfficeId | null {
     // or the Attorney General — a tier-4 law officer (ranks like the Chief
     // Secretary), in government or as Shadow Attorney General in opposition
     if (rng.chance(0.06)) return 'attorney_general';
+    // or the Leader of the House — a tier-4 cabinet post running Commons business
+    if (rng.chance(0.07)) return 'leader_house';
     const dept = current && rng.chance(0.45)
       ? current
       : bg.deptAffinity.length > 0 && rng.chance(0.4)
@@ -528,7 +578,10 @@ export function recordPeakTier(state: GameState): void {
 
 /** a target office on which the Deputy-PM / First-Secretary overlay can sit */
 function deputyEligibleOffice(officeId: OfficeId): boolean {
-  return OFFICES[officeId]?.tier === 4 && !!OFFICES[officeId]?.department && officeId !== 'chief_sec';
+  // a full cabinet office: a departmental Secretary of State (not the Chief
+  // Secretary), or the non-departmental Leader of the House
+  return officeId === 'leader_house'
+    || (OFFICES[officeId]?.tier === 4 && !!OFFICES[officeId]?.department && officeId !== 'chief_sec');
 }
 
 /** whether the PM lets the player keep the deputy title across a move — scaled by the
@@ -545,6 +598,8 @@ export function giveOffice(
 ): void {
   // vacate any cabinet-level post the player held
   removePlayerFromFrontbench(state, rng);
+  // a select-committee chair must give up the chair to take a frontbench office
+  clearCommitteeChair(state, 'tookOffice');
   // a deputy normally loses the title on a move; keepDeputy (the PM's regard) carries it
   // across — but only onto another deputy-eligible brief
   if (!(keepDeputy && deputyEligibleOffice(officeId))) clearPlayerDeputyPM(state);
@@ -652,7 +707,7 @@ export function appointNpcDeputyPm(state: GameState, rng: Rng): void {
   // and never a coalition partner's minister
   const pool = state.government.cabinet
     .filter((p) => p.characterId !== 'player'
-      && (OFFICES[p.officeId]?.department || p.officeId === 'chancellor_duchy')
+      && (OFFICES[p.officeId]?.department || p.officeId === 'chancellor_duchy' || p.officeId === 'leader_house')
       && p.officeId !== 'chief_sec')
     .map((p) => ({ post: p, c: state.characters[p.characterId] }))
     .filter((x): x is { post: typeof x.post; c: Character } =>
@@ -707,7 +762,7 @@ export function setDeputyPmCore(state: GameState, _rng: Rng, characterId: string
   const post = state.government.cabinet.find((p) => p.characterId === characterId);
   // a departmental SoS or the Chancellor of the Duchy of Lancaster — not the Chief
   // Whip, the Chief Secretary, or a territorial secretary
-  if (!post || (!OFFICES[post.officeId]?.department && post.officeId !== 'chancellor_duchy') || post.officeId === 'chief_sec') return;
+  if (!post || (!OFFICES[post.officeId]?.department && post.officeId !== 'chancellor_duchy' && post.officeId !== 'leader_house') || post.officeId === 'chief_sec') return;
   delete state.player.flags._isDeputyPM;
   state.government.deputyPmId = characterId;
   state.government.deputyTitle = state.government.deputyTitle ?? 'dpm';
@@ -872,7 +927,9 @@ export function leadershipBaseSupport(state: GameState): number {
       0.15 * (50 + averageColleagueWarmth(state) / 2) +
       0.14 * s.competence +
       (playerTier(state) >= 4 ? 6 : 0) +
-      (state.player.flags._isDeputyPM ? 12 : 0) -
+      (state.player.flags._isDeputyPM ? 12 : 0) +
+      // a respected select-committee chair is a credible backbench figure
+      (state.player.committeeChair || state.player.flags._wasCommitteeChair ? 3 : 0) -
       3 * state.player.rebellionCount -
       7 * pastLosses,
     5, 90
@@ -1467,6 +1524,7 @@ export function applyElectionAftermath(
   // ---- player seat lost? ----
   if (!playerWonSeat) {
     state.player.hasSeat = false;
+    clearCommitteeChair(state, 'lostSeat'); // a chair who loses their seat loses the chair
     if (playerIsLeader(state)) {
       // losing your own seat as leader ends the leadership immediately
       state.player.officeId = null;
@@ -1562,6 +1620,16 @@ export function applyElectionAftermath(
     (isSpeaker || state.player.stats.integrity > 55);
   if (eligibleForChair) {
     state.forcedQueue.push({ kind: 'speakerContest' });
+  }
+
+  // a sitting select-committee chair must seek re-election to the chair each
+  // parliament (incumbents are strongly favoured). Fresh chairs come up via the
+  // mid-parliament scheduler hazard, so this doesn't clash with the Speaker offer.
+  if (state.player.hasSeat && state.player.committeeChair && state.player.officeId === null) {
+    state.forcedQueue.push({
+      kind: 'committeeChairContest',
+      payload: { dept: state.player.committeeChair, incumbent: true },
+    });
   }
 
   settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
@@ -2533,6 +2601,24 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           { label: 'Stay on the benches' },
         ],
         payload: { advance: rng.int(7, 14) },
+      };
+    }
+    case 'committeeChairContest': {
+      const incumbent = ev.payload?.incumbent === true;
+      const dept = (ev.payload?.dept as DepartmentId) ?? 'treasury';
+      const name = COMMITTEE_NAMES[dept];
+      return {
+        cardId: `forced_committee_${state.day}`,
+        kind: 'committeeChairContest',
+        title: incumbent ? `Re-electing the ${name} Committee Chair` : `The ${name} Committee chairmanship`,
+        body: incumbent
+          ? `A new parliament means a fresh ballot for the chair of the ${name} Select Committee. Colleagues across the House have valued your scrutiny — but the post is in the gift of MPs, and you must stand again. Put your name forward?`
+          : `The chair of the ${name} Select Committee is vacant, and it is elected by the whole House. It is a prize for a respected backbencher: a platform to scrutinise the government, summon ministers, and build a reputation independent of the front bench. Do you stand?`,
+        choices: [
+          { label: incumbent ? 'Seek re-election as Chair' : 'Stand for the chairmanship' },
+          { label: 'Stay on the benches' },
+        ],
+        payload: { dept, incumbent, advance: rng.int(7, 14) },
       };
     }
     case 'calendar':
@@ -3749,6 +3835,72 @@ export function resolveForcedChoice(
       };
     }
 
+    case 'committeeChairContest': {
+      const incumbent = card.payload?.incumbent === true;
+      const dept = (card.payload?.dept as DepartmentId) ?? 'treasury';
+      const name = COMMITTEE_NAMES[dept];
+      // guard: only a pure backbencher can chair — if the player has since taken
+      // office or the Chair, an incumbent loses the chair and the contest passes
+      if (!canChairCommittee(state)) {
+        if (incumbent) clearCommitteeChair(state, 'votedOut');
+        return { text: 'Events have moved on, and the committee chooses its chair without you.', deltas };
+      }
+      if (choiceIndex === 1) {
+        if (incumbent) {
+          clearCommitteeChair(state, 'votedOut');
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} steps down as Chair of the ${name} Select Committee`,
+          });
+          return { text: `You let the chairmanship go and return to the ordinary business of the backbenches.`, deltas };
+        }
+        gain('profile', 2, 'Profile');
+        return { text: 'You decide against putting your name forward, at least for now.', deltas };
+      }
+      const s = state.player.stats;
+      const affinity = new Set<DepartmentId>([
+        ...causeDepartments(state.player.causes ?? []),
+        ...(BACKGROUNDS[state.player.background]?.deptAffinity ?? []),
+      ]);
+      const score = 0.35 * s.competence + 0.3 * s.profile + 0.25 * s.partyStanding + 0.1 * s.integrity
+        + (incumbent ? 12 : 0) + (affinity.has(dept) ? 6 : 0) + rng.normal(0, 8);
+      if (score >= 70) {
+        setCommitteeChair(state, dept);
+        if (incumbent) {
+          // the prestige/expertise reward for another term in the chair
+          gain('profile', 2, 'Profile');
+          gain('competence', 2, 'Competence');
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} re-elected Chair of the ${name} Select Committee`,
+          });
+          return { text: `The committee corridor keeps you: you are re-elected to the chair of the ${name} Select Committee.`, deltas };
+        }
+        gain('profile', 5, 'Profile');
+        gain('competence', 3, 'Competence');
+        gain('partyStanding', 2, 'Standing');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} elected Chair of the ${name} Select Committee`,
+        });
+        return {
+          text: `The ballot of the whole House goes your way. You are the new Chair of the ${name} Select Committee — a backbench platform with real teeth.`,
+          deltas,
+        };
+      }
+      // lost the contest
+      if (incumbent) {
+        clearCommitteeChair(state, 'votedOut');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} loses the chair of the ${name} Select Committee`,
+        });
+        return { text: `Your colleagues turn to a fresh face this time. You lose the chair and return to the ordinary backbenches.`, deltas };
+      }
+      gain('profile', 2, 'Profile');
+      return { text: `The chairmanship goes to a better-connected colleague. Your candidacy was noted, if not rewarded.`, deltas };
+    }
+
     default:
       return { text: 'Time passes.', deltas };
   }
@@ -4497,7 +4649,7 @@ export function reconstructPmHistory(state: GameState): PmTenure[] {
 function careerVerdict(
   level: number, everSpeaker: boolean, everDeputyPM: boolean,
   everGreatOffice: boolean, everMinister: boolean, everChiefRole: boolean, chiefNoun: string,
-  stats: PlayerStats, rebellions: number, years: number
+  stats: PlayerStats, rebellions: number, years: number, everCommitteeChair = false
 ): { rating: string; verdict: string } {
   // only an actual Minister of State (tier 3+) earns the "Minister" rating; a
   // PPS / parliamentary aide / Whip falls through to the backbencher ratings
@@ -4516,6 +4668,8 @@ function careerVerdict(
     rating = 'Senior Minister';
   } else if (realMinister) {
     rating = 'Minister';
+  } else if (everCommitteeChair) {
+    rating = 'Committee Chair';
   } else {
     rating = years >= 15 ? 'Stalwart' : 'Footnote';
   }
@@ -4543,6 +4697,7 @@ function careerVerdict(
     : level === 2 ? 'cabinet minister'
     : everChiefRole ? chiefNoun
     : realMinister ? 'junior minister'
+    : everCommitteeChair ? 'select committee chair'
     : 'backbencher';
   const adj = adjectives.slice(0, 2).join(', ');
   let phrase = adj ? `a ${adj} ${office}` : `a ${office}`;
@@ -4596,7 +4751,12 @@ export function buildLegacy(state: GameState): LegacySummary {
         level = Math.max(level, 2);
         if (GREAT_OFFICES.includes(office.id)) everGreatOffice = true;
         const score = (inGov ? 1000 : 0) + (GREAT_OFFICES.includes(office.id) ? 100 : 50);
-        if (score > cabinetScore) { cabinetScore = score; cabinetTitle = sideTitle; }
+        // the Leader of the House carries the formal Lord President title on the
+        // end screen (the shadow keeps the short title — there is no shadow LPC)
+        const legacyTitle = (office.id === 'leader_house' && inGov)
+          ? 'Leader of the House of Commons and Lord President of the Council'
+          : sideTitle;
+        if (score > cabinetScore) { cabinetScore = score; cabinetTitle = legacyTitle; }
       } else if (office.tier >= 1 && office.tier <= 3) {
         level = Math.max(level, 1);
         if (office.tier >= 3) everMinister = true; // a real ministerial post, not PPS/Whip
@@ -4606,8 +4766,10 @@ export function buildLegacy(state: GameState): LegacySummary {
     }
   }
   const everDeputyPM = !!state.player.flags._everDeputyPM;
+  const everCommitteeChair = !!state.player.flags._wasCommitteeChair;
   // the Speaker's Chair is a distinct top-tier honour; Deputy PM ranks just below
-  // a party leader. Both outrank a plain cabinet seat.
+  // a party leader. Both outrank a plain cabinet seat. A select-committee chair is
+  // a notable backbench honour — above a plain MP, below any ministerial office.
   const bestTitle =
     level === 4 ? 'Prime Minister'
     : everSpeaker ? 'Speaker of the House of Commons'
@@ -4616,6 +4778,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     : level === 2 ? `Cabinet — ${cabinetTitle}`
     : everChiefRole ? chiefTitle
     : level === 1 ? ministerTitle
+    : everCommitteeChair ? 'Select Committee Chair'
     : 'Backbench MP';
   // count only THIS character's own elections — a protégé must not inherit the
   // mentor's wins (state.elections spans the whole dynasty/world)
@@ -4638,7 +4801,7 @@ export function buildLegacy(state: GameState): LegacySummary {
   const electionsWonAsLeader = (state.player.flags._electionsWonAsLeader as number) ?? 0;
   const { rating, verdict } = careerVerdict(
     level, everSpeaker, everDeputyPM, everGreatOffice, everMinister, everChiefRole, chiefNoun,
-    state.player.stats, state.player.rebellionCount, yearsServed
+    state.player.stats, state.player.rebellionCount, yearsServed, everCommitteeChair
   );
   return {
     yearsServed,

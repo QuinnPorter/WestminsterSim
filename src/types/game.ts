@@ -164,6 +164,9 @@ export interface Player {
   officeId: OfficeId | null;
   /** day the player took their current office (null while a backbencher) */
   officeSinceDay: GameDay | null;
+  /** department of the select committee the player chairs (a backbench role held
+   *  alongside being an MP); null/undefined when they chair none */
+  committeeChair?: DepartmentId | null;
   /** rebellions in the current parliament */
   rebellionCount: number;
   /** story flags set by cards */
@@ -333,6 +336,7 @@ export type ForcedKind =
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'deputyRemoval' | 'speakerContest'
+  | 'committeeChairContest'
   | 'budget' | 'pmqs' | 'conference'
   | 'calendar';
 
