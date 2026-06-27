@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { GameState, OfficeId, PartyId } from '../types/game';
+import { DepartmentId, GameState, OfficeId, PartyId } from '../types/game';
 import type { RoleSide } from '../engine/career';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
@@ -8,6 +8,7 @@ import { PARTIES, playablePartiesForEra } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { CAUSES_BY_ID } from '../data/causes';
+import { committeeChairTitle } from '../data/committees';
 import { STAT_LABELS } from '../engine/effects';
 import {
   playerOfficeLabel, playerOfficeTitle, playerIsLeader, playerInGovernment, playerTier,
@@ -89,9 +90,31 @@ export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
   return spans;
 }
 
+export interface CommitteeSpan { dept: DepartmentId; start: number; end: number | null; }
+
+/** the concurrent select-committee chairmanship spans (a backbench overlay),
+ *  paired from the committeeTenure start/end history entries */
+export function buildCommitteeSpans(history: GameState['history']): CommitteeSpan[] {
+  const spans: CommitteeSpan[] = [];
+  let open: CommitteeSpan | null = null;
+  for (const entry of history) {
+    if (entry.kind !== 'committeeTenure') continue;
+    if (entry.action === 'start') {
+      if (open) spans.push(open);
+      open = { dept: entry.dept, start: entry.date, end: null };
+    } else if (entry.action === 'end' && open) {
+      open.end = entry.date;
+      spans.push(open);
+      open = null;
+    }
+  }
+  if (open) spans.push(open);
+  return spans;
+}
+
 export interface TimelineRow { title: string; start: number; end: number | null; }
 
-/** office spans + concurrent deputy-overlay spans, merged newest-first for the timeline */
+/** office spans + concurrent deputy-overlay and committee-chair spans, newest-first */
 export function timelineRows(game: GameState): TimelineRow[] {
   // once the career is over, an office still "open" ended on the final day — so the
   // timeline (and the shared rundown) reads as a closed date range, not "– present"
@@ -104,7 +127,10 @@ export function timelineRows(game: GameState): TimelineRow[] {
     title: d.label ?? (d.title === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister'),
     start: d.start, end: close(d.end),
   }));
-  return [...office, ...deputy].sort((a, b) => b.start - a.start);
+  const committee: TimelineRow[] = buildCommitteeSpans(game.history).map((c) => ({
+    title: committeeChairTitle(c.dept), start: c.start, end: close(c.end),
+  }));
+  return [...office, ...deputy, ...committee].sort((a, b) => b.start - a.start);
 }
 
 export function spanTitle(game: GameState, span: OfficeSpan): string {

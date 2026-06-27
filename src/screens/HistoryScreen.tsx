@@ -93,6 +93,10 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
     text = entry.won ? 'Won the party leadership' : 'Lost a leadership contest';
   }
 
+  // overlay-only entries (committeeTenure, deputyOverlay) carry no feed line of
+  // their own — they surface as their paired event headline / timeline span
+  if (!text) return null;
+
   return (
     <div style={{
       display: 'flex', gap: 9, padding: '6px 4px',

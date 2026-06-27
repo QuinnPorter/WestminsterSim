@@ -165,11 +165,17 @@ export function pickCommittee(state: GameState, rng: Rng): DepartmentId {
   return preferred.length > 0 && rng.chance(0.7) ? rng.pick(preferred) : rng.pick(depts);
 }
 
-/** take a committee chair (a backbench overlay — officeId stays null) */
+/** take a committee chair (a backbench overlay — officeId stays null). Opens a
+ *  concurrent tenure span in the career timeline; a re-election (same committee
+ *  already held) keeps the open span continuous rather than starting a new one. */
 function setCommitteeChair(state: GameState, dept: DepartmentId): void {
+  const fresh = state.player.committeeChair !== dept;
   state.player.committeeChair = dept;
   state.player.flags._committeeChair = true;
   state.player.flags._wasCommitteeChair = true;
+  if (fresh) {
+    state.history.push({ kind: 'committeeTenure', date: state.day, action: 'start', dept });
+  }
 }
 
 /** relinquish the chair (on taking office, losing the seat, or being voted out) */
@@ -178,6 +184,8 @@ function clearCommitteeChair(state: GameState, reason: 'tookOffice' | 'lostSeat'
   if (!dept) return;
   state.player.committeeChair = null;
   delete state.player.flags._committeeChair;
+  // close the concurrent tenure span in the career timeline
+  state.history.push({ kind: 'committeeTenure', date: state.day, action: 'end', dept });
   if (reason === 'tookOffice') {
     state.history.push({
       kind: 'event', date: state.day,
@@ -3864,7 +3872,8 @@ export function resolveForcedChoice(
       ]);
       const score = 0.35 * s.competence + 0.3 * s.profile + 0.25 * s.partyStanding + 0.1 * s.integrity
         + (incumbent ? 12 : 0) + (affinity.has(dept) ? 6 : 0) + rng.normal(0, 8);
-      if (score >= 70) {
+      // a backbencher's bid is ~10% easier to win (threshold lowered 70 → 63)
+      if (score >= 63) {
         setCommitteeChair(state, dept);
         if (incumbent) {
           // the prestige/expertise reward for another term in the chair

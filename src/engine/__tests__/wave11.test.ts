@@ -90,6 +90,30 @@ describe('wave 11 — losing the chair', () => {
   });
 });
 
+describe('wave 11 — committee chair shows in the career timeline', () => {
+  it('records a committeeTenure span (start on win, end on giving it up)', () => {
+    const game = makeGame();
+    game.player.stats = { ...game.player.stats, competence: 85, profile: 80, partyStanding: 75, integrity: 70, constituencyApproval: 60 };
+    // stand and win
+    let won = false;
+    for (let i = 0; i < 20 && !won; i++) {
+      const g = makeGame(500 + i);
+      g.player.stats = { ...game.player.stats };
+      runContest(g, new Rng(4000 + i));
+      if (g.player.committeeChair) {
+        const starts = g.history.filter((h) => h.kind === 'committeeTenure' && h.action === 'start');
+        expect(starts.length).toBe(1);
+        // give it up by taking office → an end span is recorded
+        giveOffice(g, new Rng(1), 'min_health', 'appointed');
+        const ends = g.history.filter((h) => h.kind === 'committeeTenure' && h.action === 'end');
+        expect(ends.length).toBe(1);
+        won = true;
+      }
+    }
+    expect(won).toBe(true);
+  });
+});
+
 describe('wave 11 — committee cards & token', () => {
   it('all committee cards validate within the full pool', () => {
     expect(validateCards(ALL_CARDS)).toEqual([]);
