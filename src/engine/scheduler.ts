@@ -196,7 +196,7 @@ const NPC_LEADER_SCANDAL = 0.0025;      // an NPC leader felled by scandal
 const NPC_RESHUFFLE_HAZARD = 0.04;      // an NPC-led front bench reshuffles itself
 const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
 const FIRST_RUNG_HAZARD = 0.20;         // extra path onto the ladder for tier-0 players
-const COMMITTEE_CHAIR_HAZARD = 0.066;   // a select-committee chair comes up for a backbencher (~10% more often)
+const COMMITTEE_CHAIR_HAZARD = 0.10;    // a select-committee chair comes up for a backbencher (~once per ~10 months while eligible)
 const MINISTER_RUNG_HAZARD = 0.15;      // accelerated path from PPS/whip to a ministry
 const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no NPC bench to churn)
 const DEPUTY_PM_HAZARD = 0.02;          // rare: the PM elevates a star SoS to deputy
@@ -617,7 +617,10 @@ export function nextStep(state: GameState, rng: Rng): void {
   if (
     canChairCommittee(state) && !state.player.committeeChair &&
     (state.player.stats.profile > 45 || state.player.stats.competence > 50) &&
-    (state.day - state.parliamentStart) > 200 &&
+    // the ~100-day settling-in wait applies only at the start of the game (the first
+    // parliament, before any general election); after an election a fresh chair can
+    // come up straight away
+    (Object.keys(state.elections).length > 0 || (state.day - state.parliamentStart) > 100) &&
     rng.chance(COMMITTEE_CHAIR_HAZARD)
   ) {
     state.forcedQueue.push({
