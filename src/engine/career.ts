@@ -421,11 +421,13 @@ export function eligibilityScore(state: GameState, targetOffice: OfficeId): numb
 
 export const OFFER_THRESHOLDS: Record<number, number> = { 1: 41, 2: 47, 3: 52, 4: 59 };
 
-/** the eligibility bar to be OFFERED a given office. The Chancellorship
- *  (sos_treasury) is a notch harder to reach than other cabinet posts. */
+/** the eligibility bar to be OFFERED a given office. The great offices of state
+ *  are a notch harder to reach than other cabinet posts — the Chancellorship
+ *  hardest of all, then the Foreign and Home Secretaries. */
 export function offerThreshold(officeId: OfficeId): number {
-  const base = OFFER_THRESHOLDS[OFFICES[officeId]?.tier ?? 4] ?? 60;
-  return officeId === 'sos_treasury' ? base * 1.2 : base;
+  if (officeId === 'sos_treasury') return 63;
+  if (officeId === 'sos_home' || officeId === 'sos_foreign') return 60;
+  return OFFER_THRESHOLDS[OFFICES[officeId]?.tier ?? 4] ?? 60;
 }
 
 /** the Treasury seniority sub-ladder (all tier 3 except the last two, tier 4) */
@@ -459,19 +461,6 @@ function deptOfficeId(
 /** the next rung the player would plausibly be offered */
 export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
   const target = computeNextOffice(state, rng);
-  // the Chancellorship is made rarer: a fifth of the time it doesn't land. A
-  // sitting Cabinet minister still gets a lateral move (never a no-op), so they
-  // are redirected to another department; a junior climber simply misses out.
-  if (target === 'sos_treasury' && rng.chance(0.2)) {
-    if (playerTier(state) === 4) {
-      const cur = state.player.officeId;
-      const alt = (Object.keys(DEPARTMENTS) as DepartmentId[])
-        .map((d) => `sos_${d}`)
-        .filter((o) => o !== 'sos_treasury' && o !== cur);
-      return alt.length > 0 ? rng.pick(alt) : target;
-    }
-    return null;
-  }
   // never offer the player a post they already hold — that reads as a no-op
   // "reshuffle" offering you your own job. Skip this cycle instead.
   return target === state.player.officeId ? null : target;
@@ -2694,6 +2683,7 @@ export function resolveForcedChoice(
       adjustRelationship(state, 'leader', -8);
       push('Leader', -8);
       gain('integrity', 3, 'Integrity');
+      gain('partyStanding', -1, 'Standing');
       return {
         text: 'You decline, claiming family reasons. The silence on the line lasts a beat too long. Some colleagues call it principled; the leader\'s office calls it something else.',
         deltas,

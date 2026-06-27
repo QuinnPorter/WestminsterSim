@@ -15,13 +15,16 @@ function makeInput(seed = 42, partyId: CreationInput['partyId'] = 'con'): Creati
 const makeGame = (seed = 42, partyId: CreationInput['partyId'] = 'con') =>
   createNewGame(makeInput(seed, partyId));
 
-describe('wave 12 — the Chancellorship is harder to reach', () => {
-  it('the offer threshold for Chancellor is ~20% above other cabinet posts', () => {
-    const base = OFFER_THRESHOLDS[4];
-    expect(offerThreshold('sos_treasury')).toBeCloseTo(base * 1.2, 5);
-    // a normal Secretary of State uses the plain tier-4 bar
+describe('wave 12 — the great offices are harder to reach', () => {
+  it('Chancellor is the highest bar, then Foreign/Home, above other cabinet posts', () => {
+    const base = OFFER_THRESHOLDS[4]; // 59 — the plain tier-4 bar
+    expect(offerThreshold('sos_treasury')).toBe(63);
+    expect(offerThreshold('sos_home')).toBe(60);
+    expect(offerThreshold('sos_foreign')).toBe(60);
+    // an ordinary Secretary of State still uses the plain tier-4 bar
     expect(offerThreshold('sos_health')).toBe(base);
-    expect(offerThreshold('sos_home')).toBe(base);
+    expect(offerThreshold('sos_treasury')).toBeGreaterThan(offerThreshold('sos_home'));
+    expect(offerThreshold('sos_home')).toBeGreaterThan(base);
   });
 });
 
