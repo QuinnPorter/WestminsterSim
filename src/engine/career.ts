@@ -2058,12 +2058,26 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           ? ` You would keep your post as ${deputyPrefix(state.government.deputyTitle)} alongside the new brief.`
           : ` Taking it means giving up your post as ${deputyPrefix(state.government.deputyTitle)}.`)
         : '';
+      // a sideways/demotion move can arrive as a forced "accept or resign" push half the
+      // time (a promotion or a first-rung offer is never forced — there's a free decline)
+      const forced = sideways && !!state.player.officeId && rng.chance(0.5);
+      const office = from === 'Number 10' ? 'Number 10' : "The Leader's office";
+      if (forced) {
+        return {
+          cardId: `forced_offer_${state.day}`,
+          kind: 'reshuffleOffer',
+          title: 'Reshuffled',
+          body: `${office} is blunt this time: you are being moved to ${title} — same rank, new brief — and it is not a request. Take it, or resign from ${playerInGovernment(state) ? 'the government' : 'the front bench'} altogether.` + deputyLine,
+          choices: [{ label: 'Accept the move' }, { label: 'Resign instead' }],
+          payload: { officeId, advance: rng.int(7, 14), keepDeputy, forced: true },
+        };
+      }
       return {
         cardId: `forced_offer_${state.day}`,
         kind: 'reshuffleOffer',
         title: sideways ? 'A sideways glance' : 'The call',
         body: (sideways
-          ? `${from === 'Number 10' ? 'Number 10' : 'The Leader\'s office'} rings with an unusual offer: same rank, new brief — ${title}. A fresh start, a fresh department to master, and a quiet test of your flexibility.`
+          ? `${office} rings with an unusual offer: same rank, new brief — ${title}. A fresh start, a fresh department to master, and a quiet test of your flexibility.`
           : `Your phone buzzes. It's ${from}. They want you as ${title}. The whips are waiting on your answer.`) + deputyLine,
         choices: [{ label: 'Accept the job' }, { label: 'Politely decline' }],
         payload: { officeId, advance: rng.int(7, 14), keepDeputy },
@@ -2677,6 +2691,22 @@ export function resolveForcedChoice(
         });
         return {
           text: `You say yes before they finish the sentence. By evening your name is on the door: ${title}. The red box (or at least the lanyard) arrives tomorrow.`,
+          deltas,
+        };
+      }
+      if (card.payload?.forced === true) {
+        // a forced move refused — you leave your post for the backbenches on your terms
+        stripOffice(state, rng, 'resigned');
+        adjustRelationship(state, 'leader', -6);
+        push('Leader', -6);
+        gain('integrity', 5, 'Integrity');
+        gain('partyStanding', -4, 'Standing');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} resigns rather than accept the move`,
+        });
+        return {
+          text: 'You will not be shuffled like a card. You tell them no, and hand back the job rather than take the one you were given. The back benches it is — head high, conscience clear, and the leader\'s office furious.',
           deltas,
         };
       }

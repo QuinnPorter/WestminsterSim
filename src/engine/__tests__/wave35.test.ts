@@ -209,3 +209,58 @@ describe('wave 36 — the Deputy PM is not auto-dropped at every election', () =
     expect(news.some((h) => /First Secretary|Deputy Prime Minister/.test(h.headline))).toBe(true);
   });
 });
+
+describe('reshuffle offer — half forced "accept or resign", half a gentle suggestion', () => {
+  function forcedCard(officeId: string): DrawnCard {
+    return {
+      cardId: 'x', kind: 'reshuffleOffer', title: 'Reshuffled', body: '',
+      choices: [{ label: 'Accept the move' }, { label: 'Resign instead' }],
+      payload: { officeId, forced: true },
+    };
+  }
+
+  it('forced + resign drops the player to the backbenches (integrity up)', () => {
+    const game = makeGame();
+    giveOffice(game, new Rng(1), 'sos_health', 'appointed');
+    expect(game.player.officeId).toBe('sos_health');
+    const integrityBefore = game.player.stats.integrity;
+    resolveForcedChoice(game, new Rng(2), forcedCard('sos_defence'), 1);
+    expect(game.player.officeId).toBeNull();
+    expect(game.player.stats.integrity).toBeGreaterThan(integrityBefore);
+  });
+
+  it('the gentle suggestion decline still keeps the post (no forced flag)', () => {
+    const game = makeGame();
+    giveOffice(game, new Rng(1), 'sos_health', 'appointed');
+    resolveForcedChoice(game, new Rng(2), offerCard('sos_defence'), 1);
+    expect(game.player.officeId).toBe('sos_health');
+  });
+
+  it('forced + accept still moves the player into the new brief', () => {
+    const game = makeGame();
+    giveOffice(game, new Rng(1), 'sos_health', 'appointed');
+    resolveForcedChoice(game, new Rng(2), forcedCard('sos_defence'), 0);
+    expect(game.player.officeId).toBe('sos_defence');
+  });
+
+  it('a sideways move to an office-holder is forced ~half the time; a promotion never is', () => {
+    let forced = 0;
+    for (let i = 0; i < 200; i++) {
+      const game = makeGame(i + 1);
+      giveOffice(game, new Rng(i), 'sos_health', 'appointed');
+      const card = materializeForced(game, new Rng(i * 13 + 1), {
+        kind: 'reshuffleOffer', payload: { officeId: 'sos_defence', sideways: true },
+      });
+      if (card.choices[1].label === 'Resign instead') forced++;
+    }
+    expect(forced).toBeGreaterThan(60);
+    expect(forced).toBeLessThan(140);
+    // a promotion (sideways:false) is never forced — keeps the free decline
+    const game = makeGame();
+    giveOffice(game, new Rng(1), 'min_health', 'appointed');
+    const promo = materializeForced(game, new Rng(5), {
+      kind: 'reshuffleOffer', payload: { officeId: 'sos_defence', sideways: false },
+    });
+    expect(promo.choices[1].label).toBe('Politely decline');
+  });
+});
