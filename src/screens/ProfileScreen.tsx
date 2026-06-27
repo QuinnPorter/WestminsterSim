@@ -63,10 +63,6 @@ export function buildOfficeSpans(history: GameState['history']): OfficeSpan[] {
   return spans.reverse(); // newest first
 }
 
-function officeSpans(game: GameState): OfficeSpan[] {
-  return buildOfficeSpans(game.history);
-}
-
 export interface DeputySpan { title: 'dpm' | 'firstSec'; label?: string; start: number; end: number | null; }
 
 /** the concurrent government-overlay spans (Deputy PM / First Secretary, or a junior
@@ -114,23 +110,30 @@ export function buildCommitteeSpans(history: GameState['history']): CommitteeSpa
 
 export interface TimelineRow { title: string; start: number; end: number | null; }
 
-/** office spans + concurrent deputy-overlay and committee-chair spans, newest-first */
-export function timelineRows(game: GameState): TimelineRow[] {
-  // once the career is over, an office still "open" ended on the final day — so the
-  // timeline (and the shared rundown) reads as a closed date range, not "– present"
-  const end = game.gameOver ? game.day : null;
+/** office spans + concurrent deputy-overlay and committee-chair spans, newest-first.
+ *  Works on any history slice (the live career, or a saved mentor's `career`), with
+ *  `end` closing any still-open span (the final/retirement day, or null for "present"). */
+export function timelineRowsFromHistory(
+  game: GameState, history: GameState['history'], end: number | null
+): TimelineRow[] {
   const close = (e: number | null) => (e === null ? end : e);
-  const office: TimelineRow[] = officeSpans(game).map((s) => ({
+  const office: TimelineRow[] = buildOfficeSpans(history).map((s) => ({
     title: spanTitle(game, s), start: s.start, end: close(s.end),
   }));
-  const deputy: TimelineRow[] = buildDeputySpans(game.history).map((d) => ({
+  const deputy: TimelineRow[] = buildDeputySpans(history).map((d) => ({
     title: d.label ?? (d.title === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister'),
     start: d.start, end: close(d.end),
   }));
-  const committee: TimelineRow[] = buildCommitteeSpans(game.history).map((c) => ({
+  const committee: TimelineRow[] = buildCommitteeSpans(history).map((c) => ({
     title: committeeChairTitle(c.dept), start: c.start, end: close(c.end),
   }));
   return [...office, ...deputy, ...committee].sort((a, b) => b.start - a.start);
+}
+
+/** the live career timeline. Once the career is over, an office still "open" ended
+ *  on the final day — so the timeline (and shared rundown) reads as a closed range. */
+export function timelineRows(game: GameState): TimelineRow[] {
+  return timelineRowsFromHistory(game, game.history, game.gameOver ? game.day : null);
 }
 
 export function spanTitle(game: GameState, span: OfficeSpan): string {

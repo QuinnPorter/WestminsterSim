@@ -421,6 +421,13 @@ export function eligibilityScore(state: GameState, targetOffice: OfficeId): numb
 
 export const OFFER_THRESHOLDS: Record<number, number> = { 1: 41, 2: 47, 3: 52, 4: 59 };
 
+/** the eligibility bar to be OFFERED a given office. The Chancellorship
+ *  (sos_treasury) is a notch harder to reach than other cabinet posts. */
+export function offerThreshold(officeId: OfficeId): number {
+  const base = OFFER_THRESHOLDS[OFFICES[officeId]?.tier ?? 4] ?? 60;
+  return officeId === 'sos_treasury' ? base * 1.2 : base;
+}
+
 /** the Treasury seniority sub-ladder (all tier 3 except the last two, tier 4) */
 const TREASURY_LADDER: OfficeId[] = [
   'exchequer_sec', 'financial_sec', 'min_treasury', 'chief_sec', 'sos_treasury',
@@ -452,6 +459,19 @@ function deptOfficeId(
 /** the next rung the player would plausibly be offered */
 export function nextOfficeFor(state: GameState, rng: Rng): OfficeId | null {
   const target = computeNextOffice(state, rng);
+  // the Chancellorship is made rarer: a fifth of the time it doesn't land. A
+  // sitting Cabinet minister still gets a lateral move (never a no-op), so they
+  // are redirected to another department; a junior climber simply misses out.
+  if (target === 'sos_treasury' && rng.chance(0.2)) {
+    if (playerTier(state) === 4) {
+      const cur = state.player.officeId;
+      const alt = (Object.keys(DEPARTMENTS) as DepartmentId[])
+        .map((d) => `sos_${d}`)
+        .filter((o) => o !== 'sos_treasury' && o !== cur);
+      return alt.length > 0 ? rng.pick(alt) : target;
+    }
+    return null;
+  }
   // never offer the player a post they already hold — that reads as a no-op
   // "reshuffle" offering you your own job. Skip this cycle instead.
   return target === state.player.officeId ? null : target;
@@ -841,9 +861,8 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
   const tenureYears = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
   const target = (tier === 4 && tenureYears < 2.5 && !emergency) ? null : nextOfficeFor(state, rng);
   if (target) {
-    const targetTier = OFFICES[target].tier;
     const score = eligibilityScore(state, target) + rng.normal(0, 6);
-    if (score >= (OFFER_THRESHOLDS[targetTier] ?? 60)) {
+    if (score >= offerThreshold(target)) {
       state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: target } });
       return;
     }
@@ -4141,7 +4160,10 @@ function partyWhipId(state: GameState, rng: Rng, party: PartyId): string {
 function snapshotMentor(state: GameState): Mentor {
   const career: HistoryEntry[] = state.history.filter((h) =>
     h.kind === 'roleChange' || h.kind === 'leadershipContest' ||
-    h.kind === 'enteredParliament' || h.kind === 'election');
+    h.kind === 'enteredParliament' || h.kind === 'election' ||
+    // concurrent-overlay roles a backbencher/minister can hold (select-committee
+    // chairmanships, Deputy PM / First Secretary) so the mentor timeline is complete
+    h.kind === 'committeeTenure' || h.kind === 'deputyOverlay');
   const pmTenures: PmTenure[] = (state.pmHistory ?? [])
     .filter((t) => t.characterId === 'player')
     .map((t) => ({ ...t }));

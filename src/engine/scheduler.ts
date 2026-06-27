@@ -6,7 +6,7 @@ import { cardEligible, drawCard, makeDrawnCard, resolveTokens } from './cardEngi
 import {
   applyElectionAftermath, materializeForced, playerIsPM, runReshuffle,
   openLeadershipVacancy, playerIsLeader, onFrontbenchTrack, onMinorPartyTrack,
-  playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS,
+  playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS, offerThreshold,
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, canChairCommittee, pickCommittee,
 } from './career';
@@ -637,7 +637,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     const target = nextOfficeFor(state, rng);
     if (target) {
       const score = eligibilityScore(state, target) + rng.normal(0, 6);
-      if (score >= (OFFER_THRESHOLDS[OFFICES[target].tier] ?? 60)) {
+      if (score >= offerThreshold(target)) {
         state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: target } });
         nextStep(state, rng);
         return;

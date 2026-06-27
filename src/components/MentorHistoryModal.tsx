@@ -3,7 +3,7 @@ import { GameState } from '../types/game';
 import { useUiStore } from '../store/uiStore';
 import { PARTIES } from '../data/parties';
 import { PartyBadge } from './PartyBadge';
-import { buildOfficeSpans, spanTitle } from '../screens/ProfileScreen';
+import { timelineRowsFromHistory } from '../screens/ProfileScreen';
 import { formatMonthYear } from '../engine/clock';
 import './PmHistoryModal.css';
 
@@ -30,7 +30,7 @@ export function MentorHistoryModal({ game }: { game: GameState }) {
         <h3 className="modal-title">Your Mentors</h3>
         <div className="pmh-list">
           {mentors.map((m) => {
-            const spans = buildOfficeSpans(m.career);
+            const rows = timelineRowsFromHistory(game, m.career, m.retiredDay);
             return (
               <div key={m.id} className="pmh-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
                 <div className="pmh-main">
@@ -39,9 +39,9 @@ export function MentorHistoryModal({ game }: { game: GameState }) {
                 <span className="pmh-range">
                   {PARTIES[m.partyId].shortName} · {m.legacy.highestOfficeTitle}
                 </span>
-                {spans.length > 0 && (
+                {rows.length > 0 && (
                   <div style={{ marginTop: 2 }}>
-                    {spans.map((span, i) => (
+                    {rows.map((row, i) => (
                       <div
                         key={i}
                         style={{
@@ -49,9 +49,9 @@ export function MentorHistoryModal({ game }: { game: GameState }) {
                           padding: '3px 0', fontSize: 'var(--fs-xs)',
                         }}
                       >
-                        <span style={{ fontWeight: 700 }}>{spanTitle(game, span)}</span>
+                        <span style={{ fontWeight: 700 }}>{row.title}</span>
                         <span style={{ color: 'var(--muted)', flexShrink: 0 }}>
-                          {formatMonthYear(span.start)} – {span.end ? formatMonthYear(span.end) : 'retirement'}
+                          {formatMonthYear(row.start)} – {row.end ? formatMonthYear(row.end) : 'retirement'}
                         </span>
                       </div>
                     ))}
