@@ -84,6 +84,18 @@ describe('withdraw from coalition', () => {
     expect(g.player.flags._govOverlayOpen).toBeFalsy();
   });
 
+  it('a non-leader in a coalition party cannot withdraw', () => {
+    const g = makeGame(6);
+    const rng = new Rng(61);
+    g.government.governingParty = g.player.partyId; // player's party governs
+    g.government.arrangement = 'coalition';
+    g.government.coalitionPartner = 'ld';
+    g.player.officeId = 'sos_health'; // a minister, not the party leader
+    withdrawFromCoalitionCore(g, rng);
+    expect(g.government.arrangement).toBe('coalition'); // unchanged — only the leader may withdraw
+    expect(g.government.coalitionPartner).toBe('ld');
+  });
+
   it('senior PM (dissolveCoalition) keeps the player as PM and ends the coalition', () => {
     const g = makeGame(5);
     const rng = new Rng(55);

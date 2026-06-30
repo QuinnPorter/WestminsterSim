@@ -6,7 +6,7 @@ import { partyPolling } from '../engine/polling';
 import { polledPartiesForEra } from '../data/parties';
 import { useUiStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
-import { playerIsPM } from '../engine/career';
+import { playerIsPM, playerIsLeader } from '../engine/career';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
@@ -35,7 +35,10 @@ export function ParliamentScreen({ game }: { game: GameState }) {
     || game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight');
   // the player can pull out of a coalition as either partner (junior leader or senior PM)
   const isJuniorPartner = game.player.partyId === gov.coalitionPartner;
+  // only a party leader (the PM of the senior party, or the junior partner's
+  // leader) can pull their party out of the coalition
   const inCoalition = gov.arrangement === 'coalition'
+    && playerIsLeader(game)
     && (isJuniorPartner || game.player.partyId === gov.governingParty);
 
   const ranked = polledPartiesForEra(game.startEra)

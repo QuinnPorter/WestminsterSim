@@ -1955,6 +1955,8 @@ export function dissolveCoalition(state: GameState, rng: Rng): void {
  *  minority. */
 export function withdrawFromCoalitionCore(state: GameState, rng: Rng): void {
   if (state.government.arrangement !== 'coalition') return;
+  // only a party leader can take their party out of the coalition
+  if (!playerIsLeader(state)) return;
   const isJunior = state.player.partyId === state.government.coalitionPartner;
   const isSenior = state.player.partyId === state.government.governingParty;
   if (!isJunior && !isSenior) return;
