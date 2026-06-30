@@ -19,6 +19,24 @@ import { applyPollingShock, gainStat } from './effects';
 import { titleCase } from './strings';
 import { Rng, clamp } from './rng';
 
+// ---------- text helpers ----------
+
+/** the right indefinite article for a word, chosen by SOUND not by leading letter.
+ *  Catches the cases a naive vowel-letter test gets wrong: silent-h words take
+ *  "an" ("an honest"), and vowel letters that are pronounced as a consonant glide
+ *  take "a" ("a university", "a unifying", "a one-off"). Returns just the article;
+ *  the caller concatenates the word. */
+export function aOrAn(word: string): 'a' | 'an' {
+  const w = word.trim().toLowerCase();
+  if (!w) return 'a';
+  // silent-h words sound vowel-initial -> "an"
+  if (/^(hon(est|our)|heir|hour)/.test(w)) return 'an';
+  // "u"/"eu" words that open with a "yoo" glide sound consonant-initial -> "a"
+  // (university, unifying, unique, useful, European, one-, once, ewe…)
+  if (/^(uni(?![nm])|use|usu|ubi|eu|ewe|once|one)/.test(w)) return 'a';
+  return /^[aeiou]/.test(w) ? 'an' : 'a';
+}
+
 // ---------- basic queries ----------
 
 export function playerTier(state: GameState): number {
@@ -45,6 +63,14 @@ export function playerIsPM(state: GameState): boolean {
   return playerIsLeader(state) && playerInGovernment(state);
 }
 
+/** the player leads either the governing party (PM) or the official opposition
+ *  (Leader of the Opposition) — i.e. one of the two front-bench parties. These are
+ *  the only two leaders who face each other across the despatch box at PMQs; a
+ *  third-party leader (Green/SNP/Reform/LD-not-in-govt) does not. */
+export function playerIsGovernmentOrOppositionLeader(state: GameState): boolean {
+  return playerIsLeader(state) && onFrontbenchTrack(state);
+}
+
 /** the player sits with a minor party — neither government nor official
  *  opposition — so they follow the lightweight spokesperson/critic track */
 export function onMinorPartyTrack(state: GameState): boolean {
@@ -55,6 +81,17 @@ export function onMinorPartyTrack(state: GameState): boolean {
  *  neither can be offered ministerial/shadow office or contest a leadership */
 export function canHoldOffice(state: GameState): boolean {
   return state.player.partyId !== 'ind' && !state.player.flags._isSpeaker;
+}
+
+/** has the player ever held the highest partisan rungs — Prime Minister or
+ *  party leader? Read from the role-change ledger (no extra persisted state).
+ *  A former PM or party leader has been the most partisan figure in the House;
+ *  the impartial Chair is never offered to them, so they are barred from the
+ *  Speaker contest even after returning to the backbenches. */
+export function wasEverPmOrLeader(state: GameState): boolean {
+  return state.history.some(
+    (h) => h.kind === 'roleChange' && (h.how === 'becamePM' || h.how === 'electedLeader')
+  );
 }
 
 /** the deputy-PM title prefix for a given variant ('dpm' | 'firstSec') */
@@ -795,6 +832,12 @@ export function setDeputyPmCore(state: GameState, _rng: Rng, characterId: string
 
 export function runReshuffle(state: GameState, rng: Rng, emergency = false): void {
   if (!onFrontbenchTrack(state) || playerIsLeader(state)) return;
+  // dedupe: if a player-facing reshuffle outcome (offer/dismissal) is already
+  // queued and unresolved, don't stack a second on top. Two reshuffle triggers
+  // can land within days of each other (e.g. a periodic reshuffle and an NPC
+  // leader takeover); without this guard each queues its own appointment and the
+  // first is silently overwritten — the same-month double-promotion glitch.
+  if (state.forcedQueue.some((e) => e.kind === 'reshuffleOffer' || e.kind === 'dismissal')) return;
 
   const tier = playerTier(state);
   const inGov = playerInGovernment(state);
@@ -847,8 +890,14 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
   // due a promotion / sideways move? A sitting Cabinet minister is left alone unless
   // they've served a good while (a fresh Secretary of State isn't shuffled out at every
   // reshuffle — that churns them too fast; the move-cadence handles longer-tenure moves).
+  // A just-appointed minister of ANY rank is also off-limits in a routine reshuffle:
+  // an MP handed a brief one fortnight and yanked to another the next reads as a glitch,
+  // not a career. This closes the "same-month double promotion" where two reshuffles fire
+  // days apart and the first appointment is overwritten before it can mean anything.
   const tenureYears = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
-  const target = (tier === 4 && tenureYears < 2.5 && !emergency) ? null : nextOfficeFor(state, rng);
+  const justAppointed = state.player.officeId != null && tenureYears < 0.75 && !emergency;
+  const target = ((tier === 4 && tenureYears < 2.5 && !emergency) || justAppointed)
+    ? null : nextOfficeFor(state, rng);
   if (target) {
     const score = eligibilityScore(state, target) + rng.normal(0, 6);
     if (score >= offerThreshold(target)) {
@@ -859,9 +908,11 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
 
   // not promotable — perhaps a sideways move to a fresh department.
   // Secretaries of State are moved around less often than junior ministers.
+  // A minister appointed only weeks ago is not moved again in the same breath
+  // (same just-appointed guard as the promotion branch above).
   const currentOffice = state.player.officeId ? OFFICES[state.player.officeId] : null;
   const sidewaysChance = currentOffice?.tier === 4 ? 0.15 : 0.3;
-  if (currentOffice?.department && rng.chance(sidewaysChance)) {
+  if (currentOffice?.department && !justAppointed && rng.chance(sidewaysChance)) {
     const prefix = currentOffice.tier === 4 ? 'sos' : 'min';
     const otherDepts = (Object.keys(DEPARTMENTS) as (keyof typeof DEPARTMENTS)[])
       .filter((d) => d !== currentOffice.department);
@@ -950,6 +1001,84 @@ export function leadershipBaseSupport(state: GameState): number {
       7 * pastLosses,
     5, 90
   );
+}
+
+/** The player's accumulated RECORD as a leadership contender, on a 0–100 scale.
+ *  This is the spine of B3: a contest's outcome should track who the player has
+ *  BECOME, not just their day's stats. Four pillars, weighted:
+ *    • party standing — the live measure of how the parliamentary party sees them;
+ *    • highest office reached (peak tier) — a sitting/former Chancellor or Home Sec
+ *      carries authority a never-promoted backbencher simply does not;
+ *    • years served — seniority and a known quantity;
+ *    • a public-appeal blend (profile/competence/approval) — the membership's pull.
+ *  Deputy-PM, a committee chair, rebellions and prior contest losses adjust it.
+ *  Pure, deterministic, no rng — safe for Squad D to call for display/branching. */
+export function leadershipRecordScore(state: GameState): number {
+  const s = state.player.stats;
+  const peak = Math.max(playerTier(state), (state.player.flags._peakTier as number) ?? 0);
+  // peak office, mapped to authority: backbench 0, PPS/whip ~tier1-2, Min of State 3,
+  // Cabinet/Shadow Cabinet 4, leader 5. Each rung is worth a few points of headroom.
+  const officeWeight = peak >= 5 ? 26 : peak >= 4 ? 20 : peak >= 3 ? 12 : peak >= 1 ? 5 : 0;
+  const yearsServed = Math.max(0, (state.day - state.player.enteredParliament) / 365);
+  const seniority = Math.min(10, yearsServed * 0.7); // a small seniority bonus; caps ~14 years
+  const publicAppeal = 0.5 * s.profile + 0.3 * s.competence + 0.2 * s.constituencyApproval;
+  const pastLosses = (state.player.flags._contestLosses as number) ?? 0;
+  // Calibrated to share a scale with fieldStrengthScore: a maxed tier-4 figure (all
+  // stats ~90) lands ~85, matching a maxed rival, so a heavyweight player is NOT a
+  // structural underdog against a heavyweight field — record decides the gap.
+  return clamp(
+    0.45 * s.partyStanding +
+      officeWeight +
+      seniority +
+      0.30 * publicAppeal +
+      (state.player.flags._isDeputyPM ? 8 : 0) +
+      (state.player.committeeChair || state.player.flags._wasCommitteeChair ? 3 : 0) -
+      3 * state.player.rebellionCount -
+      6 * pastLosses,
+    0, 100
+  );
+}
+
+/** The strongest rival in a contest field, scored on the SAME record scale as the
+ *  player (deterministic — no rng noise), so the player's record can be compared
+ *  head-to-head against the field they actually face. A bench thick with heavy-
+ *  hitting Secretaries of State is a far tougher field than a scratch backbench one. */
+export function fieldStrengthScore(state: GameState, fieldIds: string[]): number {
+  let best = 0;
+  for (const id of fieldIds) {
+    const c = state.characters[id];
+    if (!c) continue;
+    const tier = c.officeId ? OFFICES[c.officeId].tier : 0;
+    const officeWeight = tier >= 4 ? 20 : tier >= 3 ? 12 : tier >= 1 ? 5 : 0;
+    const traitBonus =
+      (c.traits.includes('ambitious') ? 4 : 0) +
+      (c.traits.includes('ruthless') ? 4 : 0) +
+      (c.traits.includes('charming') ? 3 : 0) -
+      (c.traits.includes('dull') ? 5 : 0);
+    // rivals have no live "standing" stat; competence stands in for the whole record
+    const score = clamp(0.7 * c.competence + officeWeight + traitBonus + 6, 0, 100);
+    if (score > best) best = score;
+  }
+  return best;
+}
+
+/** CLEAN, REUSABLE contest scorer for Squad D (display + branching).
+ *  Returns the player's record score, the toughest rival's score, and the player's
+ *  implied probability of WINNING the whole contest given that field. The odds are a
+ *  smooth logistic in the record GAP (each ~9-point edge ≈ a 2:1 swing), so a strong
+ *  record converts and a weak one struggles — correlated, not random; incremental,
+ *  not swingy. `fieldIds` are the rival candidate ids (the player's own id, if present,
+ *  is ignored). Pass an empty field for a "bare" read of the player's standing. */
+export function leadershipContestScore(
+  state: GameState, fieldIds: string[] = []
+): { playerScore: number; fieldScore: number; winChance: number } {
+  const playerScore = leadershipRecordScore(state);
+  const rivals = fieldIds.filter((id) => id !== 'player');
+  // a contested field always has SOME baseline strength even if ids are thin
+  const fieldScore = rivals.length ? Math.max(40, fieldStrengthScore(state, rivals)) : 45;
+  const gap = playerScore - fieldScore;
+  const winChance = clamp(1 / (1 + Math.exp(-gap / 9)), 0.02, 0.97);
+  return { playerScore, fieldScore, winChance };
 }
 
 /** Distribute a party's seats across leadership candidates in proportion to their raw
@@ -1154,9 +1283,145 @@ function ordinal(n: number): string {
   return ORDINALS[n] ?? `${n}th`;
 }
 
+// ---------- contest texture: varied, momentum-aware, non-repeating copy ----------
+//
+// A leadership contest used to read as a fixed timer: the same prompt and the same
+// outcome sentence four ballots running. These helpers make every round and every
+// outcome read differently — the copy tracks the player's MOMENTUM (are they climbing
+// or sliding in the MP tally?), their PLACE in the field, and the SHAPE of the run
+// (a first bid, a comeback after past losses, or a near-coronation). Selection is
+// seeded off `rng` so a four-ballot contest never repeats a line, but the same save
+// replays identically.
+
+/** the player's standing in the field this round, used to colour the prompt */
+type ContestPosition = 'leading' | 'chasing' | 'midfield' | 'trailing';
+
+function contestPosition(rank: number, total: number): ContestPosition {
+  if (rank === 1) return 'leading';
+  if (rank === 2) return 'chasing';
+  if (rank >= total) return 'trailing';
+  return 'midfield';
+}
+
+/** is this a maiden bid, or a comeback after one or more prior defeats? */
+function contestArc(state: GameState): 'first' | 'comeback' {
+  return ((state.player.flags._contestLosses as number) ?? 0) > 0 ? 'comeback' : 'first';
+}
+
+/** pick a distinct line from a pool keyed on the round number, so consecutive rounds
+ *  never collide even when the player keeps choosing the same option. A per-contest
+ *  `salt` (derived from state.day, NOT from the contest rng) rotates the starting point
+ *  so two contests on different days read differently — crucially WITHOUT consuming any
+ *  rng draws, so the seeded outcome stream the balance tests rely on is untouched. */
+function roundPick(pool: string[], round: number, salt: number): string {
+  if (pool.length === 0) return '';
+  const base = (round - 1 + salt) % pool.length;
+  return pool[base];
+}
+
+/** a stable per-contest salt for text rotation, derived from the game day (no rng) */
+function contestSalt(state: GameState): number {
+  return Math.abs(Math.floor(state.day)) % 7;
+}
+
+/** the round-opening line: distinct per ballot, coloured by where the player sits.
+ *  Round 1 sets the scene; later rounds open on the previous eliminations (elimLine)
+ *  plus a fresh, momentum-aware beat so no two ballots read the same. */
+function ballotOpener(
+  round: number, pos: ContestPosition, climbing: boolean, elimLine: string, salt: number
+): string {
+  if (round === 1) {
+    return roundPick([
+      'Nomination papers are in and the first ballot of MPs is called. ',
+      'The field is set. The parliamentary party casts its first ballot. ',
+      'The phoney war is over; the first round of MPs goes to the vote. ',
+    ], round, salt);
+  }
+  // later rounds: report the eliminations, then a momentum beat
+  const momentum = climbing
+    ? roundPick([
+        'Your numbers are firming up; the corridor whispers are turning your way. ',
+        'You have momentum — a clutch of waverers came over since the last count. ',
+        'The room can feel you climbing, and the undecideds are starting to move. ',
+        'Your campaign smells blood: the trend line is finally yours. ',
+      ], round, salt)
+    : pos === 'leading'
+      ? roundPick([
+          'You still lead, but the chasing pack is consolidating against you. ',
+          'Front-runner status is a target, and the others are beginning to aim. ',
+          'You top the ballot again — the question is whether the rest now gang up. ',
+        ], round, salt)
+      : roundPick([
+          'Your support is plateauing while rivals harden theirs. ',
+          'The momentum has stalled; you need a moment to break back through. ',
+          'A flat round — you are holding, not gaining, and the clock is the enemy. ',
+          'The undecideds are drifting elsewhere; you have to arrest the slide. ',
+        ], round, salt);
+  return `${elimLine}${momentum}`;
+}
+
+/** the three round options reframed each ballot so the choices themselves don't
+ *  read as a copy-paste menu. Returns [workMPs, courtMembers, attack-frontrunner]. */
+function ballotChoiceLabels(round: number, frontrunner: string, salt: number): string[] {
+  const work = roundPick([
+    'Work the parliamentary party',
+    'Lock down your MP backers one by one',
+    'Twist arms in the tea room',
+    'Shore up your bloc before the next round',
+  ], round, salt);
+  const court = roundPick([
+    'Court the members and the media',
+    'Take the fight to the membership',
+    'Win the airwaves and the activists',
+    'Go over the MPs’ heads to the grassroots',
+  ], round, salt);
+  const attack = roundPick([
+    `Go after ${frontrunner}`,
+    `Turn your fire on ${frontrunner}`,
+    `Pick a public fight with ${frontrunner}`,
+    `Expose the weaknesses in ${frontrunner}’s pitch`,
+  ], round, salt);
+  return [work, court, attack];
+}
+
+/** distinct "work the MPs" outcome lines (choice 0), so backing-the-PLP four ballots
+ *  running no longer prints the identical sentence each time */
+function workOutcomeText(round: number, climbing: boolean, salt: number): string {
+  const pool = climbing
+    ? [
+        'You work the corridors late, and this time the doors open: two undecideds and a wavering whip come across.',
+        'Quiet conversations, a promised committee here, a soothed ego there — and your whip count ticks up.',
+        'You spend the day in the division lobby trading favours, and the tally moves your way.',
+        'Your operation grinds out the unglamorous yes-votes; the numbers firm beneath you.',
+      ]
+    : [
+        'You work the corridors; the wavering MPs feel courted, even if few commit today.',
+        'A long day of one-to-ones. Polite nods, no firm pledges — the bloc holds but does not grow.',
+        'You make the rounds again. Some are flattered, some are non-committal, and the count barely shifts.',
+        'You press the flesh in the tea room, but the undecideds keep their counsel for another round.',
+      ];
+  return roundPick(pool, round, salt);
+}
+
+/** distinct "court the members/media" outcome lines (choice 1) */
+function courtOutcomeText(round: number, strong: boolean, salt: number): string {
+  const pool = strong
+    ? [
+        'A commanding media round and a packed hustings — the membership is yours and the MPs notice.',
+        'You set the agenda all week; the grassroots roar and a few sceptical colleagues reconsider.',
+        'The clip of your speech goes everywhere. The party out in the country is suddenly behind you.',
+      ]
+    : [
+        'The membership warms to you, but some MPs sniff populism and stiffen against the outsider.',
+        'You play to the hall and the cameras; it cheers the base and unsettles the parliamentary party.',
+        'A good week with the activists, a wary one with the whips, who distrust a campaign run over their heads.',
+      ];
+  return roundPick(pool, round, salt);
+}
+
 /** a leadership vacancy has opened in `party` */
 export function openLeadershipVacancy(state: GameState, rng: Rng, party: PartyId): void {
-  if (party === state.player.partyId && playerCanStandForLeader(state)) {
+  if (party === state.player.partyId && playerCanStandForLeader(state) && playerCredibleForLeadership(state, rng)) {
     state.forcedQueue.push({
       kind: 'leadershipStand',
       payload: { candidateIds: pickContestCandidates(state, rng, party) },
@@ -1164,6 +1429,31 @@ export function openLeadershipVacancy(state: GameState, rng: Rng, party: PartyId
   } else {
     resolveNpcLeadership(state, rng, party);
   }
+}
+
+/** Should the leadership vacancy actually reach the player as a standable contest?
+ *  Anyone CAN stand (playerCanStandForLeader), but a committed backbencher who has
+ *  never held frontbench office — and especially one who has REFUSED jobs when offered
+ *  — is not a credible contender, and the parliamentary party would not let such a
+ *  candidacy onto the ballot. We gate the OFFER here (whether the contest is even
+ *  presented), leaving the contest SCORING itself untouched:
+ *    • anyone who has held cabinet/shadow-cabinet rank (peak tier >= 3), is currently
+ *      on the front bench, leads/led a committee, or is a recognised minor-party figure
+ *      always gets the chance to stand;
+ *    • a pure backbencher who has never climbed gets a slim shot that SHRINKS with every
+ *      job they turned down — a serial decliner almost never makes the ballot, so the
+ *      "decline everything and still become Leader" path is closed. */
+function playerCredibleForLeadership(state: GameState, rng: Rng): boolean {
+  const peak = (state.player.flags._peakTier as number) ?? 0;
+  const everSeniorBench = peak >= 3
+    || playerTier(state) >= 1
+    || !!state.player.committeeChair || !!state.player.flags._wasCommitteeChair;
+  // a minor-party figure has a far thinner field; the player is a natural contender
+  if (everSeniorBench || onMinorPartyTrack(state)) return true;
+  // a never-served backbencher: a slim base chance, eroded fast by each refused job
+  const declined = (state.player.flags._declinedOffers as number) ?? 0;
+  const chance = Math.max(0.04, 0.3 - 0.12 * declined);
+  return rng.chance(chance);
 }
 
 /** an NPC wins the contest; updates PM/LO and the player's leader relationship.
@@ -1629,11 +1919,16 @@ export function applyElectionAftermath(
   // every parliament opens with the election of a Speaker. Offer it to an eligible
   // player: a sitting backbencher (or the incumbent Speaker recontesting). Solid
   // integrity is the price of entry — unqualified backbenchers aren't pestered.
+  // A former Prime Minister or party leader is barred: the most partisan figures
+  // in the House never take the impartial Chair, even back on the benches. (This
+  // closes the Speaker→former-PM/leader pairing that surfaced as wasSpeaker:true
+  // on a PM career — the player had won the Chair years AFTER serving as PM.)
   const isSpeaker = !!state.player.flags._isSpeaker;
   const eligibleForChair =
     state.player.hasSeat &&
     (isSpeaker || state.player.officeId === null) &&
-    (isSpeaker || state.player.stats.integrity > 55);
+    (isSpeaker || state.player.stats.integrity > 55) &&
+    (isSpeaker || !wasEverPmOrLeader(state));
   if (eligibleForChair) {
     state.forcedQueue.push({ kind: 'speakerContest' });
   }
@@ -2192,10 +2487,16 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
 
       if (finalRound) {
         const finalistName = characterName(state, ev.payload?.finalistId as string);
+        const arc = contestArc(state);
+        // a comeback final reads differently from a maiden one — the player carries
+        // the scar tissue of a prior defeat into the hall
+        const finalSetup = arc === 'comeback'
+          ? `${elimLine}You have been here before, and lost. Now it is you and ${finalistName} again — except this time the parliamentary party put you through, and the membership has the final word.`
+          : `${elimLine}It is down to you and ${finalistName}, and now the whole party membership decides — this is won in the country, not the tea room.`;
         return {
           cardId: `forced_ballot_final_${state.day}`, kind: 'leadershipBallot',
           title: `Members' ballot — you vs ${finalistName}`,
-          body: `${elimLine}It is down to you and ${finalistName}, and now the whole party membership decides — this is won in the country, not the tea room. The hustings tour is done; the ballots are in the post. Your closing pitch to the members?`,
+          body: `${finalSetup} The hustings tour is done; the ballots are in the post. Your closing pitch to the members?`,
           choices: [
             { label: 'A barnstorming, emotional rally' },
             { label: 'Sober, detailed, prime-ministerial' },
@@ -2207,17 +2508,27 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
 
       const myRank = ranked.findIndex((r) => r.id === 'player') + 1;
       const frontrunner = ranked.find((r) => r.id !== 'player')?.name ?? 'the frontrunner';
-      const opener = round === 1
-        ? 'The field is set and the first ballot of MPs is called. '
-        : elimLine;
+      const pos = contestPosition(myRank, ranked.length);
+      // momentum: is the player's MP tally up on last round? (seeded into the payload)
+      const prevTally = (ev.payload?.prevPlayerTally as number | undefined);
+      const climbing = prevTally !== undefined && (tallies.player ?? 0) > prevTally + 0.5;
+      const salt = contestSalt(state);
+      const opener = ballotOpener(round, pos, climbing, elimLine, salt);
+      const labels = ballotChoiceLabels(round, frontrunner, salt);
+      // place line varies with where the player actually sits — not always "Nth of M"
+      const placeLine = pos === 'leading'
+        ? `You top the ballot of ${ranked.length}`
+        : pos === 'chasing'
+          ? `You are second of ${ranked.length}, snapping at ${frontrunner}`
+          : `You sit ${ordinal(myRank)} of ${ranked.length}; ${frontrunner} leads`;
       return {
         cardId: `forced_ballot${round}_${state.day}`, kind: 'leadershipBallot',
         title: `Ballot ${round}`,
-        body: `${opener}MPs declare — ${readout}. You sit ${ordinal(myRank)} of ${ranked.length}; ${frontrunner} leads. What is your move this round?`,
+        body: `${opener}MPs declare — ${readout}. ${placeLine}. What is your move this round?`,
         choices: [
-          { label: 'Work the parliamentary party' },
-          { label: 'Court the members and the media' },
-          { label: `Go after ${frontrunner}` },
+          { label: labels[0] },
+          { label: labels[1] },
+          { label: labels[2] },
         ],
         payload: pass,
       };
@@ -2272,11 +2583,16 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         .map((p) => state.characters[p.characterId])
         .filter((c): c is Character => Boolean(c));
       const weakest = [...members].sort((a, b) => a.competence - b.competence)[0];
+      // the ambitious colleague loitering in the corridor is the strongest of the
+      // pack (the one with designs on your job); fall back gracefully if the
+      // cabinet is empty so the body never ships a raw token to the player.
+      const rivalName =
+        [...members].sort((a, b) => b.competence - a.competence)[0]?.name ?? 'a hungry-looking junior minister';
       return {
         cardId: `forced_pmreshuffle_${state.day}`,
         kind: 'pmReshuffle',
         title: 'Reshuffle day',
-        body: `The corridor outside your office contains, at various distances, hope, dread, and {rival} pretending to read their phone. The ${playerInGovernment(state) ? 'cabinet' : 'shadow cabinet'} is yours to remake — whose career do you make today, and whose do you end?`,
+        body: `The corridor outside your office contains, at various distances, hope, dread, and ${rivalName} pretending to read their phone. The ${playerInGovernment(state) ? 'cabinet' : 'shadow cabinet'} is yours to remake — whose career do you make today, and whose do you end?`,
         choices: [
           { label: 'Promote your loyalists' },
           { label: 'Big tent — bring in your critics' },
@@ -2621,13 +2937,22 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     }
     case 'speakerContest': {
       const incumbent = !!state.player.flags._isSpeaker;
+      // name a rival or two so it reads as a contested field, not a solo coronation.
+      const rivalName = characterName(state, getRelationship(state, 'rival')?.characterId);
+      const fieldLine = incumbent
+        ? (rivalName
+          ? `${rivalName} is letting it be known they fancy the Chair themselves, and a sitting Speaker has never been turned out lightly — but it has happened.`
+          : 'A sitting Speaker has never been turned out lightly — but a contested re-election is never a formality.')
+        : (rivalName
+          ? `The field is not empty: ${rivalName} is among those being talked up, and a clutch of grey-haired grandees will weigh every name against the dignity of the office.`
+          : 'A clutch of grey-haired grandees will weigh every name against the dignity of the office, and more than one colleague is being talked up for it.');
       return {
         cardId: `forced_speaker_${state.day}`,
         kind: 'speakerContest',
         title: incumbent ? 'Re-electing the Speaker' : 'The election of the Speaker',
         body: incumbent
-          ? 'A new parliament has assembled, and the House must decide whether to keep you in the Chair. The convention favours a sitting Speaker, but you still need the House to carry you. Do you put yourself forward again?'
-          : 'Before any other business, the House must elect its Speaker — the impartial referee of the Commons, who gives up party allegiance for the authority of the Chair. To win you would need the respect of all sides: a record of scrupulous integrity and a serious public profile. Do you let your name go forward?',
+          ? `A new parliament has assembled, and the House must decide whether to keep you in the Chair. The convention favours a sitting Speaker, but the secret ballot is the secret ballot — every side can settle a score in it. ${fieldLine} Do you put yourself forward again?`
+          : `Before any other business, the House must elect its Speaker — the impartial referee of the Commons, who gives up party allegiance for the authority of the Chair. To carry the secret ballot you need what no whip can deliver: the respect of all sides, a record of scrupulous impartiality, the seniority that earns a hearing, and a profile the whole House already knows. ${fieldLine} Do you let your name go forward?`,
         choices: [
           { label: incumbent ? 'Seek re-election to the Chair' : 'Stand for Speaker' },
           { label: 'Stay on the benches' },
@@ -2651,6 +2976,24 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           { label: 'Stay on the benches' },
         ],
         payload: { dept, incumbent, advance: rng.int(7, 14) },
+      };
+    }
+    case 'passedOver': {
+      // a reshuffle the player was in the frame for — and missed. No job changes
+      // hands; the jeopardy is reputational. A backbencher hoping for a first rung, or
+      // a minister who fancied the move up, watches a rival's name read out instead.
+      const hoping = state.player.officeId ? 'the promotion you were quietly promised' : 'the call onto the front bench';
+      const rivalName = characterName(state, getRelationship(state, 'rival')?.characterId) || 'a younger colleague';
+      return {
+        cardId: `forced_passedover_${state.day}`,
+        kind: 'passedOver',
+        title: 'Passed over',
+        body: `Reshuffle day, and the lobby has the list before you do. ${rivalName} is moving up; you are not. ${hoping[0].toUpperCase()}${hoping.slice(1)} has gone to someone else. The leader's office didn't even call.`,
+        choices: [
+          { label: 'Take it on the chin' },
+          { label: 'Let your frustration show' },
+        ],
+        payload: { advance: rng.int(7, 14) },
       };
     }
     case 'calendar':
@@ -2692,7 +3035,12 @@ export function resolveForcedChoice(
           headline: `${state.player.name} appointed ${title}`,
         });
         return {
-          text: `You say yes before they finish the sentence. By evening your name is on the door: ${title}. The red box (or at least the lanyard) arrives tomorrow.`,
+          text: rng.pick([
+            `You say yes before they finish the sentence. By evening your name is on the door: ${title}. The red box (or at least the lanyard) arrives tomorrow.`,
+            `You accept with the calm of someone who expected the call, even though you didn't. The civil service welcome pack lands within the hour: you are ${title} now, and the in-tray is already full.`,
+            `A handshake, a photographer, and a private office that introduces itself by its first names. ${title} — the title fits, or will once you grow into it.`,
+            `You take the job. The previous occupant's chair is still warm; the briefing folder for ${title} is thicker than your first manifesto. Welcome to the department.`,
+          ]),
           deltas,
         };
       }
@@ -2716,18 +3064,37 @@ export function resolveForcedChoice(
       push('Leader', -8);
       gain('integrity', 3, 'Integrity');
       gain('partyStanding', -1, 'Standing');
+      // a serial decliner takes himself out of frontline contention. Each refusal of
+      // a job hardens the leadership's view that this MP is "not a player"; the count
+      // is read in openLeadershipVacancy so a committed backbencher who has never held
+      // office can't coast into the party leadership on calendar-card stats alone.
+      state.player.flags._declinedOffers = ((state.player.flags._declinedOffers as number) ?? 0) + 1;
       return {
-        text: 'You decline, claiming family reasons. The silence on the line lasts a beat too long. Some colleagues call it principled; the leader\'s office calls it something else.',
+        text: rng.pick([
+          'You decline, claiming family reasons. The silence on the line lasts a beat too long. Some colleagues call it principled; the leader\'s office calls it something else.',
+          'You say no, politely, and suggest a name that isn\'t yours. The whips note it down. A favour declined is a debt remembered — and not in your favour.',
+          'You thank them, and pass. "Not the right fit," you say, which both of you know means "not on those terms." The line clicks dead a fraction too quickly.',
+          'You turn it down with the practised regret of someone who has rehearsed turning things down. The leader\'s aide says they "quite understand," which is the building\'s way of saying they don\'t.',
+        ]),
         deltas,
       };
     }
 
     case 'dismissal': {
       stripOffice(state, rng, 'dismissed');
+      // a sacking STICKS: the player serves a spell in the cold before the front bench
+      // calls again. A graceful exit earns a shorter exile; a public sulk a longer one
+      // (the leadership doesn't rush to recall an MP who briefed against them). Read by
+      // the offer hazards in scheduler.ts, which suppress new offers until it lapses, so
+      // a dismissal isn't quietly reversed at the very next reshuffle.
+      const everSacked = ((state.player.flags._timesSacked as number) ?? 0) + 1;
+      state.player.flags._timesSacked = everSacked;
       if (choiceIndex === 0) {
         adjustRelationship(state, 'leader', 6);
         push('Leader', 6);
         gain('partyStanding', 3, 'Standing');
+        // graceful: ~1–2 years in the cold, longer the more often you've been sacked
+        state.player.flags._sackExileUntil = state.day + rng.int(330, 540) + 120 * (everSacked - 1);
         return {
           text: 'You thank them for the opportunity and wish your successor well. The graceful exit is noted in the right places. There is always another reshuffle.',
           deltas,
@@ -2737,8 +3104,33 @@ export function resolveForcedChoice(
       push('Leader', -12);
       gain('profile', 7, 'Profile');
       gain('partyStanding', -4, 'Standing');
+      // briefing against the leadership buys you a longer exile — they are in no hurry
+      state.player.flags._sackExileUntil = state.day + rng.int(540, 820) + 120 * (everSacked - 1);
       return {
         text: 'Your "friends" brief every lobby journalist in the building by lunchtime. The story runs for three days. The leadership will remember — but so will the public.',
+        deltas,
+      };
+    }
+
+    case 'passedOver': {
+      // no office changes hands — being overlooked is a standing/morale hit, and it
+      // marks the player so the next offer hazard waits a beat (a short cooldown).
+      state.player.flags._passedOverUntil = state.day + rng.int(180, 320);
+      if (choiceIndex === 0) {
+        gain('partyStanding', -3, 'Standing');
+        adjustRelationship(state, 'leader', -3);
+        push('Leader', -3);
+        return {
+          text: 'You smile for the cameras, congratulate the lucky ones, and say all the right things about being focused on your constituents. Nobody believes the last part, least of all you.',
+          deltas,
+        };
+      }
+      gain('profile', 4, 'Profile');
+      gain('partyStanding', -6, 'Standing');
+      adjustRelationship(state, 'leader', -9);
+      push('Leader', -9);
+      return {
+        text: 'You let a sympathetic hack know exactly how the talent is being wasted. It makes a paragraph, and an enemy. The leader\'s office now has your name on a different sort of list.',
         deltas,
       };
     }
@@ -2915,12 +3307,13 @@ export function resolveForcedChoice(
           payload: { tallies, round: 1, fieldSize: candidateIds.length, justEliminated: [] },
         });
         gain('profile', 6, 'Profile');
-        return {
-          text: usingFavour && favourName
-            ? `${favourName} makes the calls they promised, and a bloc of waverers swings behind you before you have even declared. You launch from a position of strength.`
-            : 'You declare outside Parliament with your allies arranged behind you like a protective wall. The longest fortnight in politics begins.',
-          deltas,
-        };
+        const arc = contestArc(state);
+        const launchText = usingFavour && favourName
+          ? `${favourName} makes the calls they promised, and a bloc of waverers swings behind you before you have even declared. You launch from a position of strength.`
+          : arc === 'comeback'
+            ? 'You declare again — older, harder, and with the scar of the last contest worn openly. "I have learned," you tell the cameras, and the party leans in to see if you have. The longest fortnight in politics begins.'
+            : 'You declare outside Parliament with your allies arranged behind you like a protective wall. The longest fortnight in politics begins.';
+        return { text: launchText, deltas };
       }
       // not standing — but you won't sit on your hands: get behind a candidate,
       // round by round, and the new leader will remember which side you took
@@ -2936,6 +3329,8 @@ export function resolveForcedChoice(
       const round = (card.payload?.round as number) ?? 1;
       const finalRound = !!card.payload?.finalRound;
       const fieldSize = (card.payload?.fieldSize as number) ?? 3;
+      // text-rotation salt — deterministic, NOT from rng, so outcome odds are untouched
+      const salt = contestSalt(state);
 
       const recordLoss = () => {
         state.history.push({
@@ -2957,13 +3352,29 @@ export function resolveForcedChoice(
         // grassroots appeal: profile leads, then competence/approval/integrity — NOT party standing
         const memberAppeal =
           0.34 * s.profile + 0.22 * s.competence + 0.18 * s.constituencyApproval + 0.12 * s.integrity + 8;
-        const playerFinal = 0.7 * memberAppeal + 0.3 * (tallies.player ?? 50) + change + rng.normal(0, 6);
+        // B3: the player's RECORD (accumulated standing, peak office reached, years
+        // served) is a real weight on the membership's verdict, not just the day's
+        // appeal. A sitting/former Chancellor with deep standing carries authority into
+        // the hall; an untested backbencher who fluked their way here does not. The
+        // record gap vs the finalist's standing tips the result toward who earned it,
+        // while memberAppeal keeps the contest a genuine popularity test (the noise term
+        // stays, so a strong record converts MORE without making it a foregone result).
+        const finalist2 = card.payload?.finalistId as string | undefined;
+        const recordGap = leadershipRecordScore(state) - (finalist2 ? fieldStrengthScore(state, [finalist2]) : 45);
+        const playerFinal =
+          0.7 * memberAppeal + 0.3 * (tallies.player ?? 50) + 0.30 * recordGap + change + rng.normal(0, 6);
         const finalistComp = finalist ? finalist.competence : 60;
         const finalistAppeal = 0.6 * finalistComp + (finalist ? rivalStrengthOf(finalist, rng) - 0.6 * finalistComp : 0) + 18;
         // a bigger field leaves a more fractured membership and a stronger
         // "anyone-but-the-frontrunner" coalition behind the runner-up
         const finalistFinal =
           0.7 * finalistAppeal + 0.3 * (tallies[finalist?.id ?? ''] ?? 45) + (fieldSize - 3) * 2.5 + rng.normal(0, 7);
+
+        // the arc (maiden bid vs comeback) and the MARGIN colour the outcome text,
+        // and B3's record gap decides whether this was a deserved win or an upset
+        const arc = contestArc(state);
+        const margin = playerFinal - finalistFinal;
+        const recordWin = recordGap >= 6;   // the player's record (B3) outranked the finalist
 
         // a small (~5%) edge tips the closest contests the player's way
         if (playerFinal * 1.08 >= finalistFinal && playerFinal >= LEADERSHIP_WIN_THRESHOLD) {
@@ -2980,37 +3391,67 @@ export function resolveForcedChoice(
             : leaderRole === 'lo'
               ? 'You are the leader of the party — and Leader of the Opposition.'
               : `You are the leader of the ${PARTIES[state.player.partyId].name}.`;
-          return {
-            text: `The returning officer reads the membership's verdict${finalist ? ` — and ${finalist.name}'s face tells the room before the words do` : ''}. You have won. ${closer}`,
-            deltas,
-          };
+          const finalistFace = finalist ? `${finalist.name}` : 'your opponent';
+          // distinct win copy by margin + arc + record — never the same closer twice
+          const verdict =
+            arc === 'comeback'
+              ? `Redemption. After everything, the membership hands it to you, and ${finalistFace} manages a thin, defeated smile.`
+              : margin > 14
+                ? `It is a landslide. The membership's verdict is not even close — ${finalistFace} concedes before the second box is opened.`
+                : recordWin
+                  ? `The returning officer reads the result and it goes your way: a record like yours was always going to tell in the country. ${finalistFace} nods, knowing it.`
+                  : `The returning officer reads the membership's verdict — and ${finalistFace}'s face tells the room before the words do. You have won, by a whisker, against the odds.`;
+          return { text: `${verdict} ${closer}`, deltas };
         }
         recordLoss();
         resolveNpcLeadership(state, rng, state.player.partyId, finalist?.id);
         gain('profile', 8, 'Profile');
         gain('partyStanding', -6, 'Standing');
         const winnerNm = characterName(state, getRelationship(state, 'leader')?.characterId);
-        return {
-          text: `So close. The members give it to ${winnerNm} on the final ballot. Your concession speech is, everyone agrees, leadership material — which stings.`,
-          deltas,
-        };
+        // distinct loss copy: a narrow heartbreaker reads differently from a thumping,
+        // and a comeback that falls short stings worse than a maiden run
+        const lossText =
+          margin > -8
+            ? `So close. The members give it to ${winnerNm} on the final ballot, and the margin will haunt you. Your concession speech is, everyone agrees, leadership material — which stings.`
+            : arc === 'comeback'
+              ? `Twice now. The membership chooses ${winnerNm} and the door to the leadership quietly closes. You smile for the cameras and feel the future narrowing.`
+              : `The members were never really yours. ${winnerNm} wins comfortably, and the post-mortem is unsparing: a strong campaign, a weak hand. You take the lesson and the bruise.`;
+        return { text: lossText, deltas };
       }
 
       // ---- an elimination ballot (MPs voting) ----
+      // snapshot the player's pre-move tally so the NEXT round can read momentum
+      const prevPlayerTally = tallies.player ?? 50;
+      const frontNameBefore = characterName(
+        state,
+        Object.entries(tallies).filter(([id]) => id !== 'player').sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+      );
       let change = 0; let flavour = '';
-      if (choiceIndex === 0) { change = 3 + rng.int(0, 6); flavour = 'You work the corridors; wavering MPs feel courted.'; }
-      else if (choiceIndex === 1) { change = rng.int(-3, 12); flavour = change > 3 ? 'A commanding media and membership week.' : 'The membership warms to you; some MPs sniff populism.'; }
-      else {
+      if (choiceIndex === 0) {
+        change = 3 + rng.int(0, 6);
+        flavour = workOutcomeText(round, change >= 6, salt);
+      } else if (choiceIndex === 1) {
+        change = rng.int(-3, 12);
+        flavour = courtOutcomeText(round, change > 3, salt);
+      } else {
         // go after the frontrunner: risky — dent them, or it rebounds on you
         const frontId = Object.entries(tallies).filter(([id]) => id !== 'player')
           .sort((a, b) => b[1] - a[1])[0]?.[0];
         if (rng.chance(0.55)) {
           change = 5 + rng.int(0, 6);
           if (frontId) tallies[frontId] -= 4 + rng.int(0, 5);
-          flavour = 'You land blows on the frontrunner and climb at their expense.';
+          flavour = roundPick([
+            `You land clean blows on ${frontNameBefore} at the hustings, and climb at their expense.`,
+            `A sharp exchange leaves ${frontNameBefore} flustered; a slice of their support drifts to you.`,
+            `You expose the hole in ${frontNameBefore}'s prospectus, and the room marks you up for it.`,
+          ], round, salt);
         } else {
           change = -4 - rng.int(0, 5);
-          flavour = 'The attack looks desperate; it rebounds on you.';
+          flavour = roundPick([
+            `The attack on ${frontNameBefore} looks desperate; it rebounds on you.`,
+            `Going negative backfires — colleagues recoil, and ${frontNameBefore} plays the wounded statesman.`,
+            `Your jab at ${frontNameBefore} misses, and you spend the day apologising instead of campaigning.`,
+          ], round, salt);
         }
       }
       tallies.player = (tallies.player ?? 50) + change;
@@ -3019,8 +3460,19 @@ export function resolveForcedChoice(
       for (const id of Object.keys(tallies)) if (id !== 'player') tallies[id] += rng.normal(0, 4);
 
       // eliminate the lowest (more at once for a big field); the player is held to a
-      // slightly higher bar (PRE_FINAL_HANDICAP) so they fall before the last two more often
-      const effTally = (id: string) => (tallies[id] ?? 0) - (id === 'player' ? PRE_FINAL_HANDICAP : 0);
+      // slightly higher bar (PRE_FINAL_HANDICAP) so they fall before the last two more
+      // often. B3: that bar now SCALES with the player's record — a heavyweight (deep
+      // standing, a great office reached, years served) gets a survival cushion and
+      // reaches the final reliably, while an untested backbencher is shed early. The
+      // record edge vs the field (~±8 of effective tally at the extremes) is what makes
+      // a sitting Chancellor stop going 0-for and a fluke run stop happening.
+      const rivalIds = Object.keys(tallies).filter((id) => id !== 'player');
+      const recordEdge = clamp(
+        (leadershipRecordScore(state) - (rivalIds.length ? Math.max(40, fieldStrengthScore(state, rivalIds)) : 45)) * 0.28,
+        -9, 9
+      );
+      const effTally = (id: string) =>
+        (tallies[id] ?? 0) - (id === 'player' ? PRE_FINAL_HANDICAP - recordEdge : 0);
       const order = Object.keys(tallies).sort((a, b) => effTally(a) - effTally(b));
       const drop = Math.min(dropCountFor(order.length), order.length - 2);
       const eliminated = order.slice(0, drop);
@@ -3032,10 +3484,10 @@ export function resolveForcedChoice(
           .filter((id) => id !== 'player' && !eliminated.includes(id) && state.characters[id]?.active);
         startBacking(state, rng, state.player.partyId, survivors);
         gain('profile', 2, 'Profile');
-        return {
-          text: `${flavour} It is not enough — you are knocked out at ballot ${round}, your support draining to stronger names. But the contest goes on, and your endorsement is suddenly worth having. Whom do you get behind?`,
-          deltas,
-        };
+        const outText = round === 1
+          ? `${flavour} But the first ballot is brutal: you never built the base, and your name is off the list before the contest has properly begun. Your endorsement, though, is suddenly worth having. Whom do you get behind?`
+          : `${flavour} It is not enough — you are knocked out at the ${ordinal(round)} ballot, your support draining to the stronger names. But the contest goes on, and a kingmaker can shape who wins. Whom do you get behind?`;
+        return { text: outText, deltas };
       }
 
       // swing each eliminated rival's backers (mostly to the frontrunner, partly to you)
@@ -3054,27 +3506,51 @@ export function resolveForcedChoice(
         });
       }
 
+      // momentum read for the tail line + the next round's prompt
+      const climbedThisRound = (tallies.player ?? 0) > prevPlayerTally + 0.5;
+
       // advance: another elimination ballot, the members' final, or a walkover
       const remaining = Object.keys(tallies);
       if (remaining.length > 2) {
         state.forcedQueue.unshift({
           kind: 'leadershipBallot',
-          payload: { tallies, round: round + 1, fieldSize, justEliminated },
+          payload: { tallies, round: round + 1, fieldSize, justEliminated, prevPlayerTally },
         });
-        return { text: `${flavour} The field narrows.`, deltas };
+        const narrow = climbedThisRound
+          ? roundPick([
+              'The field narrows, and you are climbing through it.',
+              'Another name falls and your share grows — the momentum is yours.',
+              'The pack thins; you move up as the weak are weeded out.',
+            ], round, salt)
+          : roundPick([
+              'The field narrows.',
+              'Another contender drops away and the survivors regroup.',
+              'The herd thins; the serious candidates square up for the next round.',
+            ], round, salt);
+        return { text: `${flavour} ${narrow}`, deltas };
       }
       const finalistId = remaining.find((id) => id !== 'player');
       if (finalistId) {
         state.forcedQueue.unshift({
           kind: 'leadershipBallot',
-          payload: { tallies, round: round + 1, finalRound: true, finalistId, fieldSize, justEliminated },
+          payload: { tallies, round: round + 1, finalRound: true, finalistId, fieldSize, justEliminated, prevPlayerTally },
         });
-        return { text: `${flavour} You are through to the membership ballot.`, deltas };
+        const through = roundPick([
+          'You are through to the membership ballot.',
+          'It is down to the last two — and now the members decide.',
+          'The MPs have done their part; you make the final, and the country votes.',
+        ], round, salt);
+        return { text: `${flavour} ${through}`, deltas };
       }
       // every rival fell — an unopposed coronation
       makePlayerLeader(state, rng);
       gain('profile', 12, 'Profile');
-      return { text: `${flavour} Your last rival withdraws — you are elected unopposed.`, deltas };
+      const coronation = roundPick([
+        'Your last rival withdraws — you are elected unopposed.',
+        'The final challenger reads the arithmetic and stands aside. You are crowned without a vote.',
+        'No one else will run against these numbers. The crown is yours, uncontested.',
+      ], round, salt);
+      return { text: `${flavour} ${coronation}`, deltas };
     }
 
     case 'leadershipBacking': {
@@ -3085,6 +3561,7 @@ export function resolveForcedChoice(
       const backable = (card.payload?.candidateIds as string[]) ?? survivors;
       const round = (card.payload?.round as number) ?? 1;
       const chosen = backable[choiceIndex];
+      const salt = contestSalt(state);   // deterministic text rotation, no rng draw
 
       // tally: a buff to the backed candidate, a SMALLER debuff to the rest, so
       // backing is recoverable (switch and the new pick's buffs offset old debuffs)
@@ -3117,10 +3594,21 @@ export function resolveForcedChoice(
           kind: 'leadershipBacking',
           payload: { party, survivors: remaining, strengths, backing, round: round + 1 },
         });
-        return {
-          text: `You get behind ${chosenName}. The weakest hopeful drops away as the votes are counted, and the contest moves to another ballot.`,
-          deltas,
-        };
+        // whether the player's pick is the one out in front colours the line, and the
+        // round number rotates the phrasing so backing two ballots running differs
+        const pickLeading = chosen ? remaining.reduce((a, b) => (eff(a) >= eff(b) ? a : b)) === chosen : false;
+        const backText = pickLeading
+          ? roundPick([
+              `You throw your weight behind ${chosenName}, and the bandwagon grows — your candidate tops the count as the weakest hopeful is eliminated.`,
+              `${chosenName} has the momentum, and your backing adds to it. Another name falls and the field narrows in your favour.`,
+              `You back ${chosenName}, the front-runner, and the smart money agrees: the laggard drops out and the contest tightens to the serious names.`,
+            ], round, salt)
+          : roundPick([
+              `You get behind ${chosenName}, the underdog. A weaker name falls away, but your pick still has ground to make up.`,
+              `You back ${chosenName} against the run of play; one hopeful is eliminated and the contest grinds to the next ballot.`,
+              `Backing ${chosenName} is a gamble — they trail the leader — but the field thins as the no-hopers are weeded out.`,
+            ], round, salt);
+        return { text: backText, deltas };
       }
 
       // the final two go to the membership (or a single survivor walks it)
@@ -3151,13 +3639,18 @@ export function resolveForcedChoice(
 
       const winnerName = characterName(state, winnerId);
       const backedWinner = (backing[winnerId] ?? 0) > 0;
+      // a strongly-backed winner is warmer than a late convert; a backed loser leaves
+      // more to repair than a neutral one — the copy reflects how loyal the player was
+      const loyalty = backing[winnerId] ?? 0;
       gain('partyStanding', backedWinner ? 3 : -1, 'Standing');
-      return {
-        text: backedWinner
-          ? `${winnerName} takes the crown — and remembers, warmly, that you were on the right side. A friend at the top is worth a great deal.`
-          : `${winnerName} takes the crown. You backed the other horse, and the new leader knows it. There are fences to mend.`,
-        deltas,
-      };
+      const resultText = backedWinner
+        ? (loyalty >= BACK_GAIN * 2
+            ? `${winnerName} takes the crown — and does not forget that you were there from the first ballot, when it mattered. A debt like that is banked for the next reshuffle.`
+            : `${winnerName} takes the crown, and remembers, warmly, that you came across in time. A friend at the top is worth a great deal.`)
+        : (loyalty < -BACK_GAIN
+            ? `${winnerName} takes the crown — and knows exactly how hard you campaigned for the other side. The new leader's office will be a cold place for you for a while.`
+            : `${winnerName} takes the crown. You hedged, and the new leader noticed. Not an enemy, but not yet a friend — there are fences to mend.`);
+      return { text: resultText, deltas };
     }
 
     case 'pmReshuffle': {
@@ -3239,7 +3732,18 @@ export function resolveForcedChoice(
     case 'pmPressure': {
       const severe = card.payload?.severe === true;
       const s = state.player.stats;
-      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.integrity;
+      // B3 (polling collapse): a PM's authority is only partly their personal standing —
+      // the moment the party is staring at a wipeout in the polls, MPs fearing for their
+      // seats turn, however well-regarded the leader. A national share below ~34% eats into
+      // survival strength, and the drag accelerates into a true collapse (below ~26) so MPs
+      // facing the dole queue will defenestrate even a personally popular PM. This makes a
+      // polling collapse genuinely fatal rather than something a strong PM serenely rides
+      // out — without it, well-regarded player-PMs survived every revolt and never fell.
+      const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+      const pollDrag = pollsPct < 34
+        ? -((34 - pollsPct) * 1.1 + Math.max(0, 26 - pollsPct) * 1.6)
+        : 0;
+      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.integrity + pollDrag;
       let text = '';
       if (choiceIndex === 0) {
         // face them down — high variance, the brave/foolish move
@@ -3484,7 +3988,13 @@ export function resolveForcedChoice(
     case 'confidenceVote': {
       const broken = card.payload?.broken === true;
       const s = state.player.stats;
-      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.competence;
+      // B3 (polling collapse): wavering MPs do the arithmetic of their own majorities. A
+      // government sliding toward a wipeout loses the whipped loyalty it needs to hold a
+      // confidence motion, so a collapsed share drags survival strength down — a fall is
+      // reachable, not just theoretical.
+      const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+      const pollDrag = pollsPct < 32 ? -Math.min(12, (32 - pollsPct) * 0.7) : 0;
+      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.competence + pollDrag;
       const arr = state.government.arrangement;
       if (arr === 'coalition') strength += 6;
       else if (arr === 'supplyConfidence') strength += 2;
@@ -3534,7 +4044,15 @@ export function resolveForcedChoice(
     case 'partyCoup': {
       const broken = card.payload?.broken === true;
       const s = state.player.stats;
-      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.competence;
+      // B3 (polling collapse): a heave gathers force when the polls say the leader is an
+      // electoral liability. A collapsed national share drags survival strength down — and
+      // the drag accelerates into a true wipeout (below ~26) — so a genuinely failing
+      // leader can actually be ousted rather than clinging on regardless of the polls.
+      const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+      const pollDrag = pollsPct < 34
+        ? -((34 - pollsPct) * 1.1 + Math.max(0, 26 - pollsPct) * 1.6)
+        : 0;
+      let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.competence + pollDrag;
       let text = '';
       if (choiceIndex === 0) {
         strength += rng.chance(0.5) ? 12 : -8;
@@ -3828,17 +4346,52 @@ export function resolveForcedChoice(
         if (wasSpeaker) {
           loseSpeakership(state, rng, 'resigned');
           return {
-            text: 'You let your name fall away and return to the green benches as an ordinary Member. The House thanks you for your service from the Chair.',
+            text: rng.pick([
+              'You let your name fall away and return to the green benches as an ordinary Member. The House thanks you for your service from the Chair — there is a brief, genuine round of "hear, hear".',
+              'You decide one Speaker should not outstay the welcome, and stand down before the ballot is even called. The tributes are warm; the relief, on certain benches, is warmer still.',
+              'You announce you will not seek the Chair again, and walk out of it with your reputation for fairness intact. Better to leave a step too early than a step too late.',
+            ]),
             deltas,
           };
         }
         gain('profile', 2, 'Profile');
-        return { text: 'You decide the Chair is not for you, at least not now, and stay among your colleagues on the benches.', deltas };
+        return {
+          text: rng.pick([
+            'You decide the Chair is not for you, at least not now, and stay among your colleagues on the benches. Giving up the party whip for the gavel is a one-way door, and you are not ready to walk through it.',
+            'You let the moment pass. The impartial Chair means surrendering the cut and thrust you came into politics for — and you find, when it comes to it, that you would miss the fight.',
+          ]),
+          deltas,
+        };
       }
+      // The Speakership is a secret cross-party ballot, not a whipped party vote.
+      // What carries it is what no whip controls: scrupulous impartiality (integrity),
+      // a profile the whole House already knows, the competence to run the place, the
+      // respect of colleagues on every side (warmth), and the seniority that earns a
+      // hearing. A first-term partisan with a thin record genuinely struggles; a
+      // respected grandee with cross-party goodwill converts. Incumbency carries the
+      // strong convention that a sitting Speaker is re-elected unopposed.
       const s = state.player.stats;
-      const score = 0.4 * s.integrity + 0.3 * s.profile + 0.3 * s.competence
-        + (wasSpeaker ? 15 : 0) + rng.normal(0, 8);
-      if (score >= 78) {
+      const years = Math.max(0, (state.day - state.player.enteredParliament) / 365);
+      const seniority = Math.min(14, years); // caps the seniority contribution
+      const warmth = averageColleagueWarmth(state); // ~ -100..100, cross-party goodwill
+      const crossParty = clamp(warmth * 0.18, -12, 16);
+      const rebellionDrag = Math.min(12, state.player.rebellionCount * 3); // a serial rebel is no referee
+      const score =
+        0.34 * s.integrity +       // impartiality is the price of entry
+        0.24 * s.profile +         // the House must already know your name
+        0.18 * s.competence +      // you have to be able to run the place
+        crossParty +               // the respect of all sides
+        seniority +                // grandees, not newcomers, take the Chair
+        (wasSpeaker ? 18 : 0) +    // the convention strongly favours a sitting Speaker
+        - rebellionDrag +
+        rng.normal(0, 7);
+      // Threshold tuned (sim in scratchpad): a respected senior grandee (high
+      // integrity/profile, cross-party warmth, long service) converts ~90%+; a merely
+      // strong backbencher wins only ~30% per attempt, so the Chair is fought for over
+      // several parliaments, not handed over on a timer; a partisan newcomer essentially
+      // never wins. A sitting Speaker (+18) is re-elected almost always — the convention
+      // — but not unconditionally.
+      if (score >= 74) {
         // vacate any party office and take the Chair
         if (state.player.officeId && state.player.officeId !== 'speaker') {
           removePlayerFromFrontbench(state, rng);
@@ -3861,25 +4414,51 @@ export function resolveForcedChoice(
             ? `${state.player.name} re-elected Speaker of the House of Commons`
             : `${state.player.name} elected Speaker of the House of Commons`,
         });
+        // a near-unanimous result reads differently from a squeaker
+        const decisive = score >= 92;
         return {
           text: wasSpeaker
-            ? '"The Right Honourable Member will now resume the Chair." The House carries you again, and the gavel is yours for another parliament.'
-            : 'The division is called, the names are read, and the result is yours. You are dragged — by tradition, reluctantly — to the Chair. From this moment you are above party: the Speaker of the House of Commons.',
+            ? (decisive
+              ? '"The Right Honourable Member will now resume the Chair." Not a single voice is raised against you. The convention holds, the goodwill holds, and the gavel is yours for another parliament.'
+              : 'It is closer than a sitting Speaker would like — a rival forces a division, and a few old scores are settled in the lobby — but the House carries you again, and the Chair is yours for another parliament.')
+            : (decisive
+              ? 'It is barely a contest in the end: name after name is read for you, across every bench. You are dragged — by tradition, reluctantly — to the Chair. From this moment you are above party: the Speaker of the House of Commons.'
+              : 'The division is close, the field genuine, but when the names are read the result is yours by a working margin. You are dragged — by tradition, reluctantly — to the Chair. From this moment you are above party: the Speaker of the House of Commons.'),
           deltas,
         };
       }
-      // lost the contest
+      // lost the contest — distinguish a narrow miss from a candidacy that never caught fire
+      const narrow = score >= 70; // within striking distance of the threshold
       if (wasSpeaker) {
-        // an incumbent who fails to be re-elected loses the Chair
+        // an incumbent who fails to be re-elected loses the Chair (a rare fate)
         loseSpeakership(state, rng, 'leftOffice');
         return {
-          text: 'The House looks elsewhere this time. You step down from the Chair and return to the benches — an unusual fate for a sitting Speaker.',
+          text: narrow
+            ? rng.pick([
+              'The convention bends but does not hold: a rival peels away just enough of the House, and on a knife-edge division the Chair changes hands. You step down — an unusual fate for a sitting Speaker, and a stinging one.',
+              'A coalition of the aggrieved — a few you ruled against, a few who never forgave a ruling — denies you the numbers by a whisker. You vacate the Chair and return to the benches, the rarest of Speakers: one the House turned out.',
+            ])
+            : rng.pick([
+              'The grievances have piled up across too many parliaments, and the secret ballot lets every one of them be paid back at once. The House looks elsewhere; you step down from the Chair and return to the benches.',
+              'Impartiality made you enemies on all sides, and on this day all sides remembered. You lose the Chair and take an ordinary seat — a quiet, comprehensive verdict.',
+            ]),
           deltas,
         };
       }
-      gain('profile', 3, 'Profile');
+      gain('profile', narrow ? 3 : 2, 'Profile');
       return {
-        text: 'The House chooses another. Your candidacy was respectfully heard, but the Chair goes elsewhere. You remain on the backbenches.',
+        text: narrow
+          ? rng.pick([
+            'It goes to a division and you are agonisingly close — but a grandee with a deeper well of cross-party goodwill edges it on the final ballot. You return to the benches a serious contender for next time.',
+            'You run the Chair right to the wire; in the end a handful of votes on the other benches go elsewhere, and a handful is all it takes. Respectfully heard, narrowly beaten — and noted.',
+            'The House weighs you and a rival and, by the narrowest margin, prefers the rival. You shake their hand on the floor and let it be known, quietly, that you will be back.',
+          ])
+          : rng.pick([
+            'You are too partisan a figure, too thin in the seniority, to carry a cross-party ballot — and the House knows it. The Chair goes comfortably to an elder statesman, and you return to the benches none the worse for trying.',
+            'A backbencher with your record was never going to win the respect of all sides at once. Your name is read out to polite, scattered support, and the grey-haired grandee everyone expected takes the Chair.',
+            'The House wants a referee it already trusts, and that is not yet you. You poll a respectable handful and return to the green benches, the experience banked for a more senior day.',
+            'Standing for Speaker on a thin record was always a long shot, and so it proves: the votes simply are not there. The grandees prevail, as the grandees usually do, and you go back to the benches.',
+          ]),
         deltas,
       };
     }
@@ -3911,10 +4490,16 @@ export function resolveForcedChoice(
         ...causeDepartments(state.player.causes ?? []),
         ...(BACKGROUNDS[state.player.background]?.deptAffinity ?? []),
       ]);
+      // a chair is elected by the whole House: competence and profile carry it, party
+      // standing helps marshal votes, expertise in the brief (affinity) earns respect,
+      // and a few years' seniority makes a more credible candidate than a newcomer.
+      const yearsServed = Math.max(0, (state.day - state.player.enteredParliament) / 365);
+      const seniority = Math.min(8, yearsServed * 0.6); // modest, caps ~13 years
       const score = 0.35 * s.competence + 0.3 * s.profile + 0.25 * s.partyStanding + 0.1 * s.integrity
-        + (incumbent ? 12 : 0) + (affinity.has(dept) ? 6 : 0) + rng.normal(0, 8);
+        + (incumbent ? 12 : 0) + (affinity.has(dept) ? 6 : 0) + seniority + rng.normal(0, 8);
       // a backbencher's bid is ~10% easier to win (threshold lowered 70 → 63)
       if (score >= 63) {
+        const decisive = score >= 78; // a commanding mandate vs a squeaker
         setCommitteeChair(state, dept);
         if (incumbent) {
           // the prestige/expertise reward for another term in the chair
@@ -3924,7 +4509,18 @@ export function resolveForcedChoice(
             kind: 'event', date: state.day,
             headline: `${state.player.name} re-elected Chair of the ${name} Select Committee`,
           });
-          return { text: `The committee corridor keeps you: you are re-elected to the chair of the ${name} Select Committee.`, deltas };
+          return {
+            text: decisive
+              ? rng.pick([
+                `The corridor keeps you without a fight: no serious rival even troubles the ballot, and you are re-elected to the chair of the ${name} Select Committee for another parliament.`,
+                `A record of fair, forensic scrutiny pays its dividend — you are returned to the chair of the ${name} Select Committee comfortably, with members from every side glad to keep you.`,
+              ])
+              : rng.pick([
+                `The committee corridor keeps you, if only just: a challenger runs you closer than last time, but you hold the chair of the ${name} Select Committee.`,
+                `It is a contest this time, not a coronation — but when the ballot closes you have the numbers, and the gavel of the ${name} Select Committee stays in your hand.`,
+              ]),
+            deltas,
+          };
         }
         gain('profile', 5, 'Profile');
         gain('competence', 3, 'Competence');
@@ -3934,7 +4530,15 @@ export function resolveForcedChoice(
           headline: `${state.player.name} elected Chair of the ${name} Select Committee`,
         });
         return {
-          text: `The ballot of the whole House goes your way. You are the new Chair of the ${name} Select Committee — a backbench platform with real teeth.`,
+          text: decisive
+            ? rng.pick([
+              `It is barely a contest: your name carries the House on the first ballot. You are the new Chair of the ${name} Select Committee — a backbench platform with real teeth.`,
+              `Members from all sides line up behind you, and the rival fields melt away. You take the chair of the ${name} Select Committee with a mandate to match.`,
+            ])
+            : rng.pick([
+              `The ballot of the whole House goes your way — narrowly, after a real fight. You are the new Chair of the ${name} Select Committee, a backbench platform with real teeth.`,
+              `You edge it on a knife-edge ballot, a better-connected rival pushed aside by a handful of votes. The chair of the ${name} Select Committee is yours.`,
+            ]),
           deltas,
         };
       }
@@ -3945,10 +4549,25 @@ export function resolveForcedChoice(
           kind: 'event', date: state.day,
           headline: `${state.player.name} loses the chair of the ${name} Select Committee`,
         });
-        return { text: `Your colleagues turn to a fresh face this time. You lose the chair and return to the ordinary backbenches.`, deltas };
+        return {
+          text: rng.pick([
+            `Your colleagues turn to a fresh face this time. You lose the chair and return to the ordinary backbenches.`,
+            `The room decides it has heard enough from you for one parliament. The gavel passes to someone newer, and you take your old seat in the body of the committee.`,
+            `Your tenure ends not with a scandal but with a shrug: the House wants a change, and you are the change it makes. Back to the green benches.`,
+          ]),
+          deltas,
+        };
       }
       gain('profile', 2, 'Profile');
-      return { text: `The chairmanship goes to a better-connected colleague. Your candidacy was noted, if not rewarded.`, deltas };
+      return {
+        text: rng.pick([
+          `The chairmanship goes to a better-connected colleague. Your candidacy was noted, if not rewarded.`,
+          `The gavel goes to someone with more friends in more corridors. You ran a decent campaign; decent, this time, was not enough.`,
+          `A rival with a fuller contacts book takes the chair. You shake their hand for the cameras and file the grievance away for next time.`,
+          `The whips' preferred name carries the room, and it is not yours. You return to the back benches a fraction more known, and a fraction more determined.`,
+        ]),
+        deltas,
+      };
     }
 
     default:
@@ -4753,7 +5372,10 @@ function careerVerdict(
     : everCommitteeChair ? 'select committee chair'
     : 'backbencher';
   const adj = adjectives.slice(0, 2).join(', ');
-  let phrase = adj ? `a ${adj} ${office}` : `a ${office}`;
+  // article agrees by SOUND with whatever word actually leads the phrase — the
+  // first adjective ("an unscrupulous…") or, with no adjective, the office noun.
+  const lead = adj || office;
+  let phrase = adj ? `${aOrAn(lead)} ${adj} ${office}` : `${aOrAn(office)} ${office}`;
   if (nouns.length) phrase += ` and ${nouns[0]}`;
   return { rating, verdict: `${titleCase(phrase)}.` };
 }
@@ -4789,7 +5411,13 @@ export function buildLegacy(state: GameState): LegacySummary {
       const inGov = entry.roleSide
         ? entry.roleSide === 'gov'
         : governingPartyAt(state, entry.date) === state.player.partyId;
-      const sideTitle = inGov ? office.title : office.shadowTitle;
+      // a minor-party seat (SNP/Green/etc., neither government nor the official
+      // opposition) carries the role its party actually has — "… Spokesperson
+      // for …", "Leader of the …" — not the generic frontbench title.
+      const minorPartyName = entry.roleSide === 'minor'
+        ? PARTIES[entry.partyId ?? state.player.partyId].name
+        : undefined;
+      const sideTitle = officeTitleFor(entry.officeId, { inGovernment: inGov, minorPartyName });
       if (office.tier === 4 && (office.id === 'chief_sec' || office.id === 'chiefWhip')) {
         // a senior post, but not a full cabinet seat — its own rung below cabinet
         level = Math.max(level, 1);

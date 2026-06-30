@@ -109,6 +109,9 @@ function buildSeatShares(
 export interface SeatMapResult {
   seatMap: SyntheticSeat[];
   playerSeatId: string;
+  /** the region the player's seat actually sits in — equals the chosen region
+   *  unless a regional party (SNP/PC/…) was redirected to its real home nation */
+  playerRegion: RegionId;
 }
 
 /** Build the full 650-seat synthetic map. The player's seat is carved out in
@@ -145,8 +148,25 @@ export function generateSeatMap(
     }
   }
 
+  // A regional party only stands where it actually fights elections: the SNP in
+  // Scotland, Plaid Cymru in Wales, the NI parties in Northern Ireland. If the
+  // player picked an incompatible home region (e.g. an SNP candidate notionally
+  // from Yorkshire), redirect their seat to a region the party realistically
+  // contests, so we never produce an "SNP MP for Sheffield" / "Plaid MP for
+  // Sheffield" mismatch. Britain-wide parties keep their chosen region untouched.
+  const partyRegions = PARTIES[playerParty]?.contestsRegions ?? [];
+  let effectiveRegion = playerRegion;
+  if (partyRegions.length > 0 && !partyRegions.includes(playerRegion)) {
+    // prefer a region where the party actually holds seats (most plausible home),
+    // else any region it contests; pick deterministically via the seeded rng.
+    const heldRegions = partyRegions.filter((r) =>
+      seatMap.some((s) => s.region === r && s.winner === playerParty));
+    const pickFrom = heldRegions.length > 0 ? heldRegions : partyRegions;
+    effectiveRegion = rng.pick(pickFrom);
+  }
+
   // pick the player's seat
-  const inRegion = seatMap.filter((s) => s.region === playerRegion && s.winner !== 'spk');
+  const inRegion = seatMap.filter((s) => s.region === effectiveRegion && s.winner !== 'spk');
   let playerSeat = rng.pick(
     inRegion.filter((s) => s.winner === playerParty).length > 0
       ? inRegion.filter((s) => s.winner === playerParty)
@@ -167,7 +187,7 @@ export function generateSeatMap(
   }
   playerSeat.isPlayerSeat = true;
 
-  return { seatMap, playerSeatId: playerSeat.id };
+  return { seatMap, playerSeatId: playerSeat.id, playerRegion: effectiveRegion };
 }
 
 export function countSeats(seatMap: SyntheticSeat[]): Partial<Record<PartyId, number>> {

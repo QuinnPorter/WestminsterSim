@@ -63,9 +63,13 @@ export function createNewGame(input: CreationInput): GameState {
   const data = PARLIAMENTS[input.era];
   const startDay = isoToDay(data.firstSitting);
 
-  const { seatMap, playerSeatId } = generateSeatMap(
+  const { seatMap, playerSeatId, playerRegion } = generateSeatMap(
     rng, data.matrix, input.partyId, input.region, input.era
   );
+  // a regional party (SNP/PC/…) may have been redirected to its real home nation;
+  // adopt that region for the player and their cast so the home patch, the regional
+  // cabinet office, and the constituency name all stay coherent with the party.
+  input = { ...input, region: playerRegion };
   const seats = countSeats(seatMap);
 
   // ---- generate the political cast ----

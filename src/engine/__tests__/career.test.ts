@@ -141,7 +141,14 @@ describe('crossing the floor', () => {
 });
 
 describe('rebalance targets (difficulty & coalitions)', () => {
-  const RUNS = 120;
+  // 240 (was 120): forcedOut — a leader being toppled — is a genuinely rare
+  // event (~1 per 120 careers at these seeds), so the `forcedOut > 0` assertion
+  // rode on a single sample and flipped to 0 under any RNG-stream perturbation
+  // (e.g. adding one-off content cards, which shifts the per-career draw order).
+  // The modelled reality is unchanged — leaders ARE still forced out (3 per 480
+  // runs) — so we widen the sample rather than weaken the assertion, keeping the
+  // intent intact while making it robust to content additions.
+  const RUNS = 240;
   const YEARS = 25;
   const results: SimSummary[] = [];
   for (let i = 0; i < RUNS; i++) {

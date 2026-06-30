@@ -467,4 +467,52 @@ export const CONSTITUENCY_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'con_local_paper_dies',
+    title: 'The last edition',
+    body: 'The {constituency} Gazette, 142 years old, prints its final edition on Friday. The owners blame "structural headwinds"; the town blames the owners. The reporter who covered your selection meeting is being made redundant, and she would quite like a quote.',
+    tags: ['constituency', 'media'],
+    weight: 9, cooldownDays: 700,
+    choices: [
+      {
+        label: 'Raise it in the House — a debate on local news',
+        effects: { stats: { profile: 3, constituencyApproval: 3 } },
+        outcomeText: 'You secure a half-empty adjournment debate at 6pm on a Thursday and speak well to nobody in particular. It changes no policy and saves no jobs, but the clipping runs on the Gazette\'s last front page, and that, you decide, is the point.',
+      },
+      {
+        label: 'Convene the owners and a local buyer quietly',
+        effects: { stats: { competence: 3, constituencyApproval: 2 } },
+        outcomeText: 'No speech, just three difficult phone calls and a community-trust buyer who already runs two titles in the next county. The masthead survives, thinner and online-first. Fewer people thank you than would have for a good speech.',
+      },
+      {
+        label: 'Let the market do what the market does',
+        effects: { stats: { integrity: -1, constituencyApproval: -3 } },
+        outcomeText: 'You issue a statement about "the difficult realities facing regional media" and move on. The town notices that the man who wanted their votes had nothing to spend on their newspaper.',
+      },
+    ],
+  },
+  {
+    id: 'con_mast_revolt',
+    title: 'Not in my back garden',
+    body: 'A telecoms firm wants to put a 5G mast on the edge of the village green. Half of {constituency} wants the signal; the other half — louder, older, with a WhatsApp group and a petition — wants the view. Both halves vote.',
+    tags: ['constituency', 'policy'],
+    weight: 8, cooldownDays: 500,
+    choices: [
+      {
+        label: 'Side with the signal',
+        effects: { stats: { competence: 2, constituencyApproval: -1 } },
+        outcomeText: 'You point out, gently, that the people emailing to complain are doing so over the very network the mast would improve. The teenagers and the farm-shop card reader are quietly grateful. The petition group puts you on a leaflet, and not flatteringly.',
+      },
+      {
+        label: 'Side with the green',
+        effects: { stats: { constituencyApproval: 3, integrity: -1 } },
+        outcomeText: 'You stand with the petitioners and the planning objection succeeds. The mast moves two fields over and nobody is happy, which in planning terms counts as a triumph. The signal stays terrible, and so, conveniently, does the blame — it belongs to the firm now, not you.',
+      },
+      {
+        label: 'Insist on a proper consultation',
+        effects: { stats: { integrity: 1 } },
+        outcomeText: 'You call for everyone to be heard, which everyone already has been, repeatedly, at volume. The process buys six months and resolves nothing, but no one can say you took a side. That was, of course, the side you took.',
+      },
+    ],
+  },
 ];

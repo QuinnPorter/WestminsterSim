@@ -20,6 +20,7 @@ import { MINISTRY_FOCUS_CARDS } from './ministryFocus';
 import { SCIENCE_TECH_CARDS } from './scienceTech';
 import { LEADER_HOUSE_CARDS } from './leaderHouse';
 import { COMMITTEE_CARDS } from './committee';
+import { EXTRA_ONE_OFF_CARDS } from './extraOneOffs';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling */
 export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
@@ -46,6 +47,7 @@ export const ALL_CARDS: DecisionCard[] = [
   ...SCIENCE_TECH_CARDS,
   ...LEADER_HOUSE_CARDS,
   ...COMMITTEE_CARDS,
+  ...EXTRA_ONE_OFF_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {

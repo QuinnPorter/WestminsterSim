@@ -337,7 +337,7 @@ export type ForcedKind =
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'deputyRemoval' | 'speakerContest'
-  | 'committeeChairContest'
+  | 'committeeChairContest' | 'passedOver'
   | 'budget' | 'pmqs' | 'conference'
   | 'calendar';
 

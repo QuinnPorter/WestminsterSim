@@ -10,8 +10,13 @@ import { lastElectionShares } from './polling';
 import { Rng } from './rng';
 
 const PER_SEAT_NOISE = 0.015;
-/** election-day campaign wobble (sd) — the only gap between polling and result */
-const CAMPAIGN_NOISE = 0.012;
+/** election-day campaign wobble (sd) — the only gap between polling and result.
+ *  Raised 0.012 → 0.016: real elections routinely diverge from the final polls by a
+ *  couple of points (a "polling miss"), and the old value made the result almost a
+ *  deterministic read-off of the polls. A slightly larger campaign wobble gives bad
+ *  (and good) national nights real tail probability, so flawless win streaks and
+ *  unlosable governments become rarer without shifting the central outcome. */
+const CAMPAIGN_NOISE = 0.016;
 /** the right-populist slot — only one of these polls per era and they never co-occur.
  *  Their vote is spread thin (unlike the concentrated LD/Green vote), so under FPTP
  *  it should convert to seats a little WORSE than a mainstream party at the same
@@ -56,15 +61,19 @@ export function electionNationalShares(
     out[p] = v;
     total += v;
   }
-  // incumbent fatigue: a first-term government gets a meaningful boost at its FIRST
-  // re-election (a one-term government usually earns a second term), then a growing
-  // anti-incumbency penalty from the SECOND re-election on (the public tires of a
-  // long-governing party). ~-3% per term, capped at -15%. Only the first-term boost
-  // was raised (~+1.8pts) — the penalty schedule for later terms is unchanged.
+  // incumbent fatigue: a first-term government gets a boost at its FIRST re-election
+  // (a one-term government usually — but no longer almost-always — earns a second
+  // term), then a growing anti-incumbency penalty from the SECOND re-election on (the
+  // public tires of a long-governing party).
+  // Tuned for swingier elections: the first-term boost is trimmed +1.8 → +1.2pt so a
+  // first re-election is winnable, not a coronation; and the per-term penalty is
+  // steepened -3 → -3.5pt (cap -16%) so a third/fourth-term government faces a real
+  // headwind and CAN lose. This keeps career.test.ts's monotone-fatigue guard green
+  // (terms-4 share still sits well below terms-1) while widening the downside.
   const gov = state.government.governingParty;
   const terms = state.government.termsInPower ?? 1;
-  const fatigue = terms <= 1 ? 0.018
-    : -Math.min(0.15, (terms - 1) * 0.03);
+  const fatigue = terms <= 1 ? 0.012
+    : -Math.min(0.16, (terms - 1) * 0.035);
   if (out[gov] !== undefined && fatigue !== 0) {
     total += -(out[gov] ?? 0);
     out[gov] = Math.max(0.003, (out[gov] ?? 0) + fatigue);
@@ -261,7 +270,22 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
   const personalVote = ((approval - 50) / 50) * 0.06;
   // defectors face the voters without the comfort of incumbency — and a penalty
   const defected = state.player.flags.defected === 1;
-  const incumbency = state.player.hasSeat && !defected ? 0.02 : 0;
+  // personal incumbency advantage. Trimmed 0.02 → 0.012: the real UK personal-vote
+  // bonus is ~1–1.5pts, not a flat two, and the old cushion was offsetting roughly
+  // half of a typical bad-night national swing — so even marginal seats almost never
+  // fell. A smaller cushion leaves marginals genuinely exposed when the national mood
+  // turns, while a safe seat's underlying margin still carries the day.
+  const baseIncumbency = state.player.hasSeat && !defected ? 0.012 : 0;
+  // "time for a change" fatigue: a long-serving incumbent accrues a modest
+  // anti-incumbency headwind (the public eventually tires of a fixture). ~-0.35pt per
+  // year in the seat beyond the first ~4 years, capped at -2.6pt — enough to make a
+  // serial flawless 9/9 streak rarer and to tip a long-held MARGINAL on a bad night,
+  // but still too small to threaten a genuinely safe (>15pt) seat.
+  const yearsInSeat = Math.max(0, (state.day - state.player.enteredParliament) / 365);
+  const tenureFatigue = state.player.hasSeat && !defected
+    ? -Math.min(0.026, Math.max(0, (yearsInSeat - 4)) * 0.0035)
+    : 0;
+  const incumbency = baseIncumbency + tenureFatigue;
   const defectionPenalty = defected ? -0.03 : 0;
 
   const seats: Partial<Record<PartyId, number>> = {};

@@ -126,14 +126,21 @@ describe('wave 7: Speaker eligibility', () => {
 });
 
 describe('wave 7: the Speaker contest', () => {
+  // The Chair is now a cross-party secret ballot that turns on EARNED standing, not raw
+  // stats alone: scrupulous impartiality, a known profile, plus the seniority and
+  // cross-party respect a grandee accumulates over years. `yearsServed` back-dates entry
+  // to give the candidate that seniority; a credible Speaker candidate is, by definition,
+  // not a day-one newcomer. This models the intended reality that a strong candidate has
+  // to fight for the Chair over time rather than walking in on stats.
   function standRate(
     stats: { integrity: number; profile: number; competence: number },
-    incumbent = false, runs = 60
+    incumbent = false, runs = 60, yearsServed = 12
   ): number {
     let wins = 0;
     for (let i = 0; i < runs; i++) {
       const game = makeGame(1000 + i);
       game.player.stats = { ...game.player.stats, ...stats };
+      game.player.enteredParliament = game.day - Math.round(yearsServed * 365);
       if (incumbent) game.player.flags._isSpeaker = true;
       const rng = new Rng(3000 + i);
       const card = materializeForced(game, rng, { kind: 'speakerContest' });
@@ -144,12 +151,21 @@ describe('wave 7: the Speaker contest', () => {
   }
 
   it('a low-calibre backbencher almost never wins the Chair', () => {
+    // even a long-serving but low-calibre, partisan member fails the cross-party test
     const rate = standRate({ integrity: 40, profile: 40, competence: 40 });
     expect(rate).toBeLessThan(0.1);
   });
 
-  it('a high-integrity, high-profile member wins it some of the time', () => {
-    const rate = standRate({ integrity: 85, profile: 80, competence: 75 });
+  it('a green newcomer, however able, does not yet have the standing', () => {
+    // strong stats but ZERO seniority and no cross-party goodwill: the House wants a
+    // referee it already trusts, so the brand-new member genuinely struggles.
+    const rate = standRate({ integrity: 85, profile: 80, competence: 75 }, false, 60, 0);
+    expect(rate).toBeLessThan(0.15);
+  });
+
+  it('a senior, high-integrity, high-profile member wins it some of the time', () => {
+    // the same calibre member, now with years of service behind them, is a real contender
+    const rate = standRate({ integrity: 85, profile: 80, competence: 75 }, false, 60, 12);
     expect(rate).toBeGreaterThan(0.2);
   });
 

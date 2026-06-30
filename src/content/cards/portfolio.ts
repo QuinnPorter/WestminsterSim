@@ -454,4 +454,49 @@ export const PORTFOLIO_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'pf_generic_red_box_late',
+    title: 'The midnight box',
+    body: 'It is 11:40pm and the red box still has an inch of paper in it. The submission on top of your {department} brief needs a decision by 8am: officials want a yes, the politics wants a no, and the evidence, infuriatingly, wants more time you do not have.',
+    tags: ['westminster', 'policy'],
+    weight: 10, cooldownDays: 350,
+    requires: { inGovernment: true, minTier: 3 },
+    choices: [
+      {
+        label: 'Take the official advice and sign',
+        effects: { stats: { competence: 3, partyStanding: -1 } },
+        outcomeText: 'You initial it and trust the people who do this for a living. By morning the machine is moving, smoothly and in a direction your special adviser will spend a week explaining to the press. Government, it turns out, is mostly signing things you half-understand at midnight and defending them at noon.',
+      },
+      {
+        label: 'Write "discuss" and buy a day',
+        effects: { stats: { competence: 1, integrity: 2 } },
+        outcomeText: 'You scrawl the most powerful word in Whitehall — "discuss" — and close the box. The decision waits; so does everyone downstream of it. You will read it properly tomorrow, which is either diligence or cowardice, depending entirely on how it turns out.',
+      },
+      {
+        label: 'Overrule the submission',
+        effects: { stats: { profile: 2, competence: -1 }, relationships: [{ kind: 'rival', delta: -2 }] },
+        outcomeText: 'You write "No — minister" in the margin and underline it. The private office reads it twice. Ministers who overrule their officials are either bold or about to learn why the officials wrote what they wrote; the building places its bets accordingly.',
+      },
+    ],
+  },
+  {
+    id: 'pf_generic_perm_sec',
+    title: 'A word from the Permanent Secretary',
+    body: 'Your Permanent Secretary requests "a few minutes" — never a few minutes — to flag, with exquisite politeness, that your flagship {department} policy is "presenting some delivery challenges." Translated: it is going wrong, and they want it in writing that they told you.',
+    tags: ['westminster', 'serious'],
+    weight: 9, cooldownDays: 450,
+    requires: { inGovernment: true, minTier: 4 },
+    choices: [
+      {
+        label: 'Grip it — demand a recovery plan in a week',
+        effects: { stats: { competence: 4, partyStanding: -1 } },
+        outcomeText: 'You ask for the truth on one side of A4 by Friday, and a fix on the other. The department, used to ministers who prefer not to know, recalibrates. It is more work and fewer comfortable meetings, and it is the only version where the policy survives contact with reality.',
+      },
+      {
+        label: 'Trust them to sort it and stay above it',
+        effects: { stats: { partyStanding: 1, competence: -1 } },
+        outcomeText: 'You thank them for their candour and leave the delivery to the people paid to deliver. It may well be fine. If it is not, the minute of this meeting will be very clear about who knew what, and when, and it will not be flattering to you.',
+      },
+    ],
+  },
 ];
