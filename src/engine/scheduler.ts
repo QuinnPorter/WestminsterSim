@@ -1,4 +1,4 @@
-import { DrawnCard, GameState, PartyId, StatDelta } from '../types/game';
+import { DepartmentId, DrawnCard, GameState, PartyId, StatDelta } from '../types/game';
 import { ALL_CARDS, FALLBACK_POOL } from '../content/cards';
 import { SCANDAL_ARC_BEATS } from '../content/cards/crisis';
 import { PARTIES } from '../data/parties';
@@ -386,7 +386,7 @@ const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no N
 const DEPUTY_PM_HAZARD = 0.02;          // rare: the PM elevates a star SoS to deputy
 const DEPUTY_REMOVAL_FALLOUT = 0.05;    // a soured PM cuts their deputy loose
 const DEPUTY_REMOVAL_REFRESH = 0.006;   // or, rarely, just refreshes the top team
-const EXIT_OFFER_HAZARD = 0.03;         // rare: a dignified way out for an MP aged 65+ (at most once per parliament)
+const EXIT_OFFER_HAZARD = 0.04;         // rare: a dignified way out for an MP aged 65+ (at most once per parliament)
 
 // ---------- the brain ----------
 
@@ -428,31 +428,74 @@ function offersSuppressed(state: GameState): boolean {
   return inSackExile(state) || recentlyPassedOver(state);
 }
 
-/** The "chosen exit" a 65+ MP might be offered, if their record qualifies them for
- *  one — or null if none fit. Peerage is checked first (the grandest), then the others.
- *  Reqs are drawn from the plan's locked design decisions. */
-function eligibleExitRole(
-  state: GameState
-): 'peerage' | 'international' | 'executive' | 'university' | null {
+export type ExitRole = 'peerage' | 'international' | 'executive' | 'university';
+
+/** Has the player ever held a post in one of the given departments, across the
+ *  whole career? Checks the current office plus every past roleChange in history —
+ *  a 65+ MP is often a backbencher by the time an exit is offered, so "ever held"
+ *  (not "holds now") is the right basis for the brief. OFFICES[id].department is
+ *  undefined for non-departmental posts (PPS/whip/leader); the includes checks
+ *  filter those out safely. */
+function everHeldDepartment(state: GameState, depts: DepartmentId[]): boolean {
+  const cur = state.player.officeId ? OFFICES[state.player.officeId].department : undefined;
+  if (cur && depts.includes(cur)) return true;
+  return state.history.some((h) =>
+    h.kind === 'roleChange' && h.officeId != null &&
+    depts.includes(OFFICES[h.officeId].department as DepartmentId));
+}
+
+/** Every "chosen exit" a 65+ MP's record qualifies them for, each with a weight —
+ *  the caller does a weighted pick, so this is no longer first-match priority. A
+ *  role is only included if its floor holds (weight 0 roles are omitted).
+ *
+ *  Design: the peerage stays the single most common outcome in aggregate via a
+ *  fixed base of 10 with no way to boost it — an honourable long-server drifts to
+ *  the ermine. Brief (department ever held) and background are what raise the
+ *  executive / international weights, so a Treasury/Business or Foreign/Defence
+ *  career can overtake the peerage and be pulled onto a matched role instead. But
+ *  executive and international each carry a base 3 for ANY 15-year server, so every
+ *  qualifying career can still, rarely, land one — the offer is open to all. */
+export function weightedExitRoles(state: GameState): { role: ExitRole; weight: number }[] {
   const p = state.player;
   const s = p.stats;
   const years = Math.round((state.day - p.enteredParliament) / 365);
-  const longService = years >= 15;
-  const peakTier = (p.flags._peakTier as number) ?? 0;
-  const exCabinet = peakTier >= 4;   // ever held a full cabinet seat
-  const exMinister = peakTier >= 3;  // ever held a Minister-of-State+ post
-  const highProfile = s.profile > 60;
   const bg = p.background;
+  const peakTier = (p.flags._peakTier as number) ?? 0;
+  const exMinister = peakTier >= 3;  // ever held a Minister-of-State+ post
+  const exCabinet = peakTier >= 4;   // ever held a full cabinet seat
 
-  // peerage — the ermine: a long, well-regarded, honourable innings
-  if (years >= 20 && s.partyStanding > 50 && s.integrity > 50) return 'peerage';
-  // international governance/defence — the world stage
-  if (bg === 'foreignService' || (highProfile && exCabinet && longService)) return 'international';
-  // an executive role — cashing out, at a cost to one's reputation
-  if (bg === 'business' || bg === 'lawyer' || (highProfile && exMinister && longService)) return 'executive';
-  // university chancellor — a dignified retreat for a principled long-server
-  if (s.integrity > 65 && longService) return 'university';
-  return null;
+  const roles: { role: ExitRole; weight: number }[] = [];
+
+  // peerage — the ermine: a long, well-regarded, honourable innings. Fixed base,
+  // no bonuses: this is the modal outcome a matched brief has to beat.
+  if (years >= 20 && s.partyStanding > 50 && s.integrity > 50) {
+    roles.push({ role: 'peerage', weight: 10 });
+  }
+  // an executive role — cashing out. Base 3 for any long-server; a business/law
+  // background or a Treasury/Business brief raises it sharply, ex-minister nudges.
+  if (years >= 15) {
+    const weight = 3
+      + (bg === 'business' || bg === 'lawyer' ? 6 : 0)
+      + (everHeldDepartment(state, ['treasury', 'business']) ? 6 : 0)
+      + (exMinister ? 2 : 0);
+    roles.push({ role: 'executive', weight });
+  }
+  // international governance/defence — the world stage. Base 3 for any long-server;
+  // a foreign-service/military background or a Foreign/Defence brief raises it.
+  if (years >= 15) {
+    const weight = 3
+      + (bg === 'foreignService' || bg === 'military' ? 6 : 0)
+      + (everHeldDepartment(state, ['foreign', 'defence']) ? 6 : 0)
+      + (exCabinet ? 2 : 0);
+    roles.push({ role: 'international', weight });
+  }
+  // university chancellor — a dignified retreat for a principled long-server.
+  if (years >= 15 && s.integrity > 65) {
+    const weight = 5 + (bg === 'academic' || bg === 'teacher' ? 3 : 0);
+    roles.push({ role: 'university', weight });
+  }
+
+  return roles;
 }
 
 export function nextStep(state: GameState, rng: Rng): void {
@@ -603,8 +646,9 @@ export function nextStep(state: GameState, rng: Rng): void {
     const stamp = state.player.flags._exitOfferParliament as number | undefined;
     const offeredThisParliament = stamp === state.parliamentStart;
     if (state.player.age >= 65 && !offeredThisParliament && !state.player.flags._pendingExit) {
-      const role = eligibleExitRole(state);
-      if (role && rng.chance(EXIT_OFFER_HAZARD)) {
+      const roles = weightedExitRoles(state);
+      if (roles.length && rng.chance(EXIT_OFFER_HAZARD)) {
+        const role = rng.pickWeighted(roles, (r) => r.weight).role;
         // stamp the current parliament so at most one offer is made per parliament
         // (the stamp is cleared at each general election in applyElectionAftermath)
         state.player.flags._exitOfferParliament = state.parliamentStart;
