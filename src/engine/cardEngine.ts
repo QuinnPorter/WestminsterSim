@@ -96,6 +96,12 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
   if (req.minorParty !== undefined && onMinorPartyTrack(state) !== req.minorParty) return false;
   if (req.era && !req.era.includes(state.startEra)) return false;
   if (req.causeIn && !req.causeIn.some((c) => state.player.causes?.includes(c))) return false;
+  if (req.causesAll && !req.causesAll.every((c) => state.player.causes?.includes(c))) return false;
+  if (req.hasFavour &&
+      !state.player.favours?.some((f) => req.hasFavour!.includes(f.kind))) return false;
+  if (req.region && !req.region.includes(state.player.region)) return false;
+  if (req.minAge !== undefined && state.player.age < req.minAge) return false;
+  if (req.background && !req.background.includes(state.player.background)) return false;
   if (req.partyIn && !req.partyIn.includes(state.player.partyId)) return false;
   if (req.department) {
     const dept = state.player.officeId ? OFFICES[state.player.officeId].department : undefined;

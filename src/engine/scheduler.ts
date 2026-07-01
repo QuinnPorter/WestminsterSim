@@ -386,6 +386,7 @@ const MINOR_CRITIC_HAZARD = 0.14;       // minor-party spokesperson offers (no N
 const DEPUTY_PM_HAZARD = 0.02;          // rare: the PM elevates a star SoS to deputy
 const DEPUTY_REMOVAL_FALLOUT = 0.05;    // a soured PM cuts their deputy loose
 const DEPUTY_REMOVAL_REFRESH = 0.006;   // or, rarely, just refreshes the top team
+const EXIT_OFFER_HAZARD = 0.03;         // rare: a dignified way out for an MP aged 65+ (at most once per parliament)
 
 // ---------- the brain ----------
 
@@ -425,6 +426,33 @@ function recentlyPassedOver(state: GameState): boolean {
  *  post-sacking exile or in the brief sulk after being passed over. */
 function offersSuppressed(state: GameState): boolean {
   return inSackExile(state) || recentlyPassedOver(state);
+}
+
+/** The "chosen exit" a 65+ MP might be offered, if their record qualifies them for
+ *  one — or null if none fit. Peerage is checked first (the grandest), then the others.
+ *  Reqs are drawn from the plan's locked design decisions. */
+function eligibleExitRole(
+  state: GameState
+): 'peerage' | 'international' | 'executive' | 'university' | null {
+  const p = state.player;
+  const s = p.stats;
+  const years = Math.round((state.day - p.enteredParliament) / 365);
+  const longService = years >= 15;
+  const peakTier = (p.flags._peakTier as number) ?? 0;
+  const exCabinet = peakTier >= 4;   // ever held a full cabinet seat
+  const exMinister = peakTier >= 3;  // ever held a Minister-of-State+ post
+  const highProfile = s.profile > 60;
+  const bg = p.background;
+
+  // peerage — the ermine: a long, well-regarded, honourable innings
+  if (years >= 20 && s.partyStanding > 50 && s.integrity > 50) return 'peerage';
+  // international governance/defence — the world stage
+  if (bg === 'foreignService' || (highProfile && exCabinet && longService)) return 'international';
+  // an executive role — cashing out, at a cost to one's reputation
+  if (bg === 'business' || bg === 'lawyer' || (highProfile && exMinister && longService)) return 'executive';
+  // university chancellor — a dignified retreat for a principled long-server
+  if (s.integrity > 65 && longService) return 'university';
+  return null;
 }
 
 export function nextStep(state: GameState, rng: Rng): void {
@@ -564,6 +592,27 @@ export function nextStep(state: GameState, rng: Rng): void {
   if (!state.player.hasSeat) {
     state.currentCard = materializeForced(state, rng, { kind: 'wilderness' });
     return;
+  }
+
+  // the chosen exit: an MP aged 65+ whose record qualifies them for a dignified
+  // departure (peerage / international role / executive role / university chancellor)
+  // is, rarely, offered one — at most once per parliament. Accepting opens the confirm
+  // modal (store); declining returns to play and the offer may return next parliament.
+  // A forced event (not a normal card), so it reaches sitting leaders and PMs too.
+  {
+    const stamp = state.player.flags._exitOfferParliament as number | undefined;
+    const offeredThisParliament = stamp === state.parliamentStart;
+    if (state.player.age >= 65 && !offeredThisParliament && !state.player.flags._pendingExit) {
+      const role = eligibleExitRole(state);
+      if (role && rng.chance(EXIT_OFFER_HAZARD)) {
+        // stamp the current parliament so at most one offer is made per parliament
+        // (the stamp is cleared at each general election in applyElectionAftermath)
+        state.player.flags._exitOfferParliament = state.parliamentStart;
+        state.forcedQueue.push({ kind: 'exitOffer', payload: { role } });
+        nextStep(state, rng);
+        return;
+      }
+    }
   }
 
   // a pledged departure date has arrived — honour it (or break it and pay)

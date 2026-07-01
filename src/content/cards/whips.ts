@@ -69,6 +69,7 @@ export const WHIP_CARDS: DecisionCard[] = [
           stats: { integrity: 5, profile: 4, constituencyApproval: 3, partyStanding: -5 },
           relationships: [{ kind: 'chiefWhip', delta: -8 }, { kind: 'leader', delta: -4 }],
           trigger: 'rebel',
+          bumpHeldCauses: true,
         },
         outcomeText: 'You stand up for the thing you actually believe, and the rebellion makes the news because it is principled rather than tactical. The grassroots love it. The leadership does not.',
       },

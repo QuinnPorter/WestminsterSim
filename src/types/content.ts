@@ -1,5 +1,6 @@
 import {
-  CauseId, DepartmentId, Era, OfficeId, OfficeTier, PartyId, PlayerStats, RelationshipKind,
+  BackgroundId, CauseId, DepartmentId, Era, OfficeId, OfficeTier, PartyId, PlayerStats,
+  RegionId, RelationshipKind,
 } from './game';
 
 export type CardTag =
@@ -31,6 +32,16 @@ export interface Requirement {
   firstParliament?: boolean;
   /** only fire when the player champions at least one of these causes */
   causeIn?: CauseId[];
+  /** only fire when the player holds a banked favour of one of these kinds (any-of) */
+  hasFavour?: RelationshipKind[];
+  /** only fire when the player's seat is in one of these regions */
+  region?: RegionId[];
+  /** only fire when the player is at least this old (years) */
+  minAge?: number;
+  /** only fire when the player has one of these career backgrounds */
+  background?: BackgroundId[];
+  /** only fire when the player champions ALL of these causes (for collisions) */
+  causesAll?: CauseId[];
 }
 
 export type CardTrigger =
@@ -50,6 +61,13 @@ export interface EffectSpec {
   trigger?: CardTrigger;
   /** bank a favour owed by the current holder of this relationship */
   grantFavour?: { kind: RelationshipKind; note?: string };
+  /** spend (consume) one banked favour of this kind */
+  spendFavour?: { kind: RelationshipKind };
+  /** bump the hidden "champion of X" tally for this cause */
+  bumpCause?: CauseId;
+  /** bump the hidden "champion of X" tally for EVERY cause the player holds — for
+   *  recurring "stood up for your cause" beats (no-op if the player has no causes) */
+  bumpHeldCauses?: boolean;
 }
 
 export interface WeightedOutcome {

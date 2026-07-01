@@ -1,5 +1,5 @@
 import {
-  CabinetPost, Character, DepartmentId, DrawnCard, ElectionResult, ForcedEvent, GameState, HistoryEntry,
+  CabinetPost, CauseId, Character, DepartmentId, DrawnCard, ElectionResult, ForcedEvent, GameState, HistoryEntry,
   LegacySummary, Mentor, OfficeId, PartyId, Player, PlayerStats, PmTenure, RegionId, Relationship,
   RelationshipKind, StatDelta,
 } from '../types/game';
@@ -1824,6 +1824,8 @@ export function applyElectionAftermath(
   state.player.rebellionCount = 0;
   // a defection has now been tested at the ballot box
   delete state.player.flags.defected;
+  // a new parliament re-opens the once-per-parliament "chosen exit" offer
+  delete state.player.flags._exitOfferParliament;
   // start a fresh polling tracker for the new parliament
   state.pollHistory = [{ day: state.day, shares: { ...state.polling.shares } }];
 
@@ -2359,14 +2361,29 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       // time (a promotion or a first-rung offer is never forced — there's a free decline)
       const forced = sideways && !!state.player.officeId && rng.chance(0.5);
       const office = from === 'Number 10' ? 'Number 10' : "The Leader's office";
+      // a friend in the leadership can spare you the standing cost of a lateral move —
+      // they let it be known this was your idea, not a demotion (a chiefWhip/leader debt)
+      const reshuffleFavour = (state.player.favours ?? []).find(
+        (f) => f.kind === 'chiefWhip' || f.kind === 'leader'
+      );
       if (forced) {
+        const forcedChoices = [{ label: 'Accept the move' }];
+        if (reshuffleFavour) {
+          forcedChoices.push({
+            label: `Call in ${characterName(state, reshuffleFavour.characterId)}'s favour — keep your post`,
+          });
+        }
+        forcedChoices.push({ label: 'Resign instead' });
         return {
           cardId: `forced_offer_${state.day}`,
           kind: 'reshuffleOffer',
           title: 'Reshuffled',
           body: `${office} is blunt this time: you are being moved to ${title} — same rank, new brief — and it is not a request. Take it, or resign from ${playerInGovernment(state) ? 'the government' : 'the front bench'} altogether.` + deputyLine,
-          choices: [{ label: 'Accept the move' }, { label: 'Resign instead' }],
-          payload: { officeId, advance: rng.int(7, 14), keepDeputy, forced: true },
+          choices: forcedChoices,
+          payload: {
+            officeId, advance: rng.int(7, 14), keepDeputy, forced: true,
+            ...(reshuffleFavour ? { favourKind: reshuffleFavour.kind } : {}),
+          },
         };
       }
       return {
@@ -2380,15 +2397,31 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         payload: { officeId, advance: rng.int(7, 14), keepDeputy },
       };
     }
-    case 'dismissal':
+    case 'dismissal': {
+      // a debt owed by the leader or chief whip can buy a stay of execution — one
+      // quiet word and your name comes off the list, this once
+      const dismissalFavour = (state.player.favours ?? []).find(
+        (f) => f.kind === 'leader' || f.kind === 'chiefWhip'
+      );
+      const dismissalChoices = [{ label: 'Go quietly and loyally' }];
+      if (dismissalFavour) {
+        dismissalChoices.push({
+          label: `Call in ${characterName(state, dismissalFavour.characterId)}'s favour — keep the post`,
+        });
+      }
+      dismissalChoices.push({ label: 'Make your displeasure known' });
       return {
         cardId: `forced_dismissal_${state.day}`,
         kind: 'dismissal',
         title: 'The reshuffle',
         body: `The call comes early. "Thank you for your service," the voice says, "but the ${playerInGovernment(state) ? 'Prime Minister' : 'Leader'} is making changes." You are out.`,
-        choices: [{ label: 'Go quietly and loyally' }, { label: 'Make your displeasure known' }],
-        payload: { advance: rng.int(7, 14) },
+        choices: dismissalChoices,
+        payload: {
+          advance: rng.int(7, 14),
+          ...(dismissalFavour ? { favourKind: dismissalFavour.kind } : {}),
+        },
       };
+    }
     case 'resignPrompt': {
       const reason = ev.payload?.reason as string;
       if (reason === 'electionDefeat') {
@@ -2984,16 +3017,65 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       // a minister who fancied the move up, watches a rival's name read out instead.
       const hoping = state.player.officeId ? 'the promotion you were quietly promised' : 'the call onto the front bench';
       const rivalName = characterName(state, getRelationship(state, 'rival')?.characterId) || 'a younger colleague';
+      // a debt owed by the leader or chief whip can flip the snub before the ink dries —
+      // one call, and the list is amended in your favour
+      const passedOverFavour = (state.player.favours ?? []).find(
+        (f) => f.kind === 'leader' || f.kind === 'chiefWhip'
+      );
+      const passedOverChoices = [{ label: 'Take it on the chin' }];
+      if (passedOverFavour) {
+        passedOverChoices.push({
+          label: `Call in ${characterName(state, passedOverFavour.characterId)}'s favour — get the job`,
+        });
+      }
+      passedOverChoices.push({ label: 'Let your frustration show' });
       return {
         cardId: `forced_passedover_${state.day}`,
         kind: 'passedOver',
         title: 'Passed over',
         body: `Reshuffle day, and the lobby has the list before you do. ${rivalName} is moving up; you are not. ${hoping[0].toUpperCase()}${hoping.slice(1)} has gone to someone else. The leader's office didn't even call.`,
-        choices: [
-          { label: 'Take it on the chin' },
-          { label: 'Let your frustration show' },
-        ],
-        payload: { advance: rng.int(7, 14) },
+        choices: passedOverChoices,
+        payload: {
+          advance: rng.int(7, 14),
+          ...(passedOverFavour ? { favourKind: passedOverFavour.kind } : {}),
+        },
+      };
+    }
+    case 'exitOffer': {
+      const role = ev.payload?.role as 'peerage' | 'international' | 'executive' | 'university';
+      // each role gets its own framing, its own trade-off, and its own accept label.
+      // Accepting sets flags._pendingExit; the store fires the confirm modal, and only
+      // a confirmed exit ends the game. Declining returns to play (no _pendingExit set).
+      const exit: Record<typeof role, { title: string; body: string; accept: string }> = {
+        peerage: {
+          title: 'The ermine',
+          body: 'A discreet lunch, a discreet offer. The party would like to send you to the other place — a peerage, a red bench, and a title to carry the rest of your days. It is the establishment\'s thank-you to those who served long and gave no scandal: an elevation, and an ending. The Commons would go on without you.',
+          accept: 'Take the peerage',
+        },
+        international: {
+          title: 'The world stage',
+          body: 'The approach comes through familiar channels: an international role, the kind that trades a green bench for a delegation and a motorcade. Governance, defence, the slow diplomacy of rooms most voters never see. It is a serious job for a serious late career — but you would leave the House to do it. A constituency is a hard thing to hand back.',
+          accept: 'Leave for the world stage',
+        },
+        executive: {
+          title: 'The boardroom',
+          body: 'A headhunter, a good bottle, and a number with a lot of noughts. There is an executive role waiting for someone with your contacts book and your understanding of how Whitehall really works. The money is real; so is the quiet knowledge that the register of members\' interests, and a certain kind of colleague, will remember exactly what you cashed in.',
+          accept: 'Cash out',
+        },
+        university: {
+          title: 'A dignified retreat',
+          body: 'A university comes calling: would you be its Chancellor? Robes and Latin, degree ceremonies and a seat at High Table — a role that asks for gravitas and gives back dignity. It is the honourable off-ramp of the principled long-server: no red box, no whip, no more late-night votes. Just a green campus, and the slow applause of an institution that respects you.',
+          accept: 'Retire to academia',
+        },
+      };
+      const e = exit[role];
+      return {
+        cardId: `forced_exit_${state.day}`,
+        kind: 'exitOffer',
+        title: e.title,
+        body: e.body,
+        choices: [{ label: e.accept }, { label: 'Stay in the Commons' }],
+        payload: { role, advance: rng.int(7, 14) },
       };
     }
     case 'calendar':
@@ -3016,6 +3098,18 @@ export function resolveForcedChoice(
   const gain = (key: keyof GameState['player']['stats'], delta: number, label: string) => {
     const applied = gainStat(state, key, delta);
     if (applied !== 0) push(label, applied);
+  };
+  // spend a banked favour of the card's payload.favourKind: find it, splice it, and
+  // return the debtor's name for bespoke outcome text (mirrors the leadershipStand spend)
+  const spendPayloadFavour = (): string => {
+    const kind = card.payload?.favourKind as RelationshipKind | undefined;
+    if (!kind) return '';
+    const favours = state.player.favours ?? [];
+    const fi = favours.findIndex((f) => f.kind === kind);
+    if (fi < 0) return '';
+    const name = characterName(state, favours[fi].characterId);
+    favours.splice(fi, 1);
+    return name;
   };
 
   switch (card.kind) {
@@ -3041,6 +3135,24 @@ export function resolveForcedChoice(
             `A handshake, a photographer, and a private office that introduces itself by its first names. ${title} — the title fits, or will once you grow into it.`,
             `You take the job. The previous occupant's chair is still warm; the briefing folder for ${title} is thicker than your first manifesto. Welcome to the department.`,
           ]),
+          deltas,
+        };
+      }
+      // favour branch (forced variant only): index 1 when a favourKind was banked —
+      // a friend in the leadership makes the move disappear and you keep your brief
+      if (card.payload?.forced === true && card.payload?.favourKind && choiceIndex === 1) {
+        const debtor = spendPayloadFavour();
+        adjustRelationship(state, 'leader', -2);
+        push('Leader', -2);
+        const debtorLine = debtor
+          ? `${debtor} has a quiet word in the right ear, and the plan is dropped as quietly as it arrived.`
+          : 'A quiet word in the right ear, and the plan is dropped as quietly as it arrived.';
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} stays put after the reshuffle`,
+        });
+        return {
+          text: `${debtorLine} You keep your post, you keep your standing, and the leader's office pretends the whole thing never happened. Debts like that are spent only once.`,
           deltas,
         };
       }
@@ -3081,6 +3193,25 @@ export function resolveForcedChoice(
     }
 
     case 'dismissal': {
+      // favour branch: index 1 when a favourKind was banked — a stay of execution.
+      // The debt is called in before the axe falls, so the office is never stripped.
+      if (card.payload?.favourKind && choiceIndex === 1) {
+        const debtor = spendPayloadFavour();
+        adjustRelationship(state, 'leader', -3);
+        push('Leader', -3);
+        gain('partyStanding', -2, 'Standing');
+        const debtorLine = debtor
+          ? `${debtor} calls in the debt you are owed, and your name comes off the list before it reaches the press office.`
+          : 'The debt you are owed is called in, and your name comes off the list before it reaches the press office.';
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} survives the reshuffle`,
+        });
+        return {
+          text: `${debtorLine} You keep the post — for now. The leader resents being overruled and will not forget it, and a favour spent is a favour gone. You are living on borrowed time, but you are still living.`,
+          deltas,
+        };
+      }
       stripOffice(state, rng, 'dismissed');
       // a sacking STICKS: the player serves a spell in the cold before the front bench
       // calls again. A graceful exit earns a shorter exile; a public sulk a longer one
@@ -3113,6 +3244,40 @@ export function resolveForcedChoice(
     }
 
     case 'passedOver': {
+      // favour branch: index 1 when a favourKind was banked — flip the snub. A friend
+      // in the leadership has the list amended, and the job you were promised is yours.
+      if (card.payload?.favourKind && choiceIndex === 1) {
+        const debtor = spendPayloadFavour();
+        const target = nextOfficeFor(state, rng);
+        const debtorLine = debtor
+          ? `${debtor} calls the leader's office before the list is finalised, and the name that goes down is yours.`
+          : 'A word to the leader\'s office before the list is finalised, and the name that goes down is yours.';
+        if (target) {
+          const promoted = OFFICES[target].tier > playerTier(state);
+          giveOffice(state, rng, target, promoted ? 'promoted' : 'appointed', false);
+          gain('profile', 5, 'Profile');
+          const title = officeTitleFor(target, {
+            inGovernment: playerInGovernmentBloc(state),
+            minorPartyName: minorPartyNameOf(state),
+          });
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} appointed ${title}`,
+          });
+          return {
+            text: `${debtorLine} You are ${title} after all — the snub erased before it could sting. A debt like that buys one favour, and you have just spent it well.`,
+            deltas,
+          };
+        }
+        // no suitable post going spare — the favour at least erases the standing cost
+        gain('partyStanding', 3, 'Standing');
+        adjustRelationship(state, 'leader', 4);
+        push('Leader', 4);
+        return {
+          text: `${debtorLine} There is no post going spare today, but the slight is quietly undone: the leader's office makes a point of keeping you close, and your name is first on the next list.`,
+          deltas,
+        };
+      }
       // no office changes hands — being overlooked is a standing/morale hit, and it
       // marks the player so the next offer hazard waits a beat (a short cooldown).
       state.player.flags._passedOverUntil = state.day + rng.int(180, 320);
@@ -3133,6 +3298,36 @@ export function resolveForcedChoice(
         text: 'You let a sympathetic hack know exactly how the talent is being wasted. It makes a paragraph, and an enemy. The leader\'s office now has your name on a different sort of list.',
         deltas,
       };
+    }
+
+    case 'exitOffer': {
+      const role = card.payload?.role as 'peerage' | 'international' | 'executive' | 'university';
+      if (choiceIndex === 0) {
+        // accept: flag the pending exit so the store can fire the confirm modal.
+        // The game does NOT end here — only a confirmed exit does (retireToRole).
+        // Cancelling the modal deletes _pendingExit and returns to play.
+        state.player.flags._pendingExit = role;
+        if (role === 'executive') {
+          // cashing out carries an integrity cost — banked now so it stands even if
+          // the player later hesitates over the confirm (it reads as the decision made)
+          gain('integrity', -8, 'Integrity');
+        }
+        const confirmText: Record<typeof role, string> = {
+          peerage: 'You let it be known that you would be honoured to accept. The paperwork for the other place begins; all that remains is to make it final.',
+          international: 'You tell them you are interested, and the machinery of an international appointment stirs into motion. All that remains is to make it final.',
+          executive: 'You take the meeting, and then the offer. The contract is drawn up in language your former colleagues would recognise as a goodbye. All that remains is to make it final.',
+          university: 'You accept the invitation with quiet pleasure. The university begins to prepare your installation. All that remains is to make it final.',
+        };
+        return { text: confirmText[role], deltas };
+      }
+      // decline: return to play. No _pendingExit set; the offer may return next parliament.
+      const declineText: Record<typeof role, string> = {
+        peerage: 'You thank them, and decline. The red benches can wait; there is work here yet, and you are not done with the green ones.',
+        international: 'You turn it down. The world stage is a fine thing, but your stage is here — for a while longer, at least.',
+        executive: 'You pass on the boardroom and the noughts. The contacts book will keep, and so, for now, will your seat.',
+        university: 'You decline the robes, with real regret. Not yet. There is unfinished business on the green benches, and you mean to finish it.',
+      };
+      return { text: declineText[role], deltas };
     }
 
     case 'resignPrompt': {
@@ -5318,7 +5513,66 @@ export function reconstructPmHistory(state: GameState): PmTenure[] {
 }
 
 /** one-word rating + a one-line characterisation of the whole career */
+/** natural "a champion of …" phrasing per cause — the display labels ("The
+ *  Economy") don't read cleanly appended to "a champion of", so we keep a short
+ *  lowercase form here. */
+const CHAMPION_PHRASE: Record<CauseId, string> = {
+  economy: 'the economy',
+  inequality: 'the fight against inequality',
+  publicServices: 'the public services',
+  environment: 'the environment',
+  immigration: 'border control',
+  defence: 'the national defence',
+  foreignAffairs: "Britain's place in the world",
+  housing: 'the housebuilders',
+  lawAndOrder: 'law and order',
+  education: 'education',
+};
+
+/** the strongest cause the player consistently championed, if any reached the
+ *  aligned-pick threshold. Reads the hidden per-cause tallies (flags._champ_*),
+ *  which accrue from the recurring "stood up for your cause" beats (bumpHeldCauses)
+ *  plus the once-per-career delivery/collision cards (bumpCause). Ties break by the
+ *  CauseId ordering — deterministic, never shown as a number. */
+export const CHAMPION_THRESHOLD = 4;
+function strongestChampionCause(state: GameState): CauseId | undefined {
+  const causeIds: CauseId[] = [
+    'economy', 'inequality', 'publicServices', 'environment', 'immigration',
+    'defence', 'foreignAffairs', 'housing', 'lawAndOrder', 'education',
+  ];
+  let best: CauseId | undefined;
+  let bestTally = 0;
+  for (const cause of causeIds) {
+    const tally = (state.player.flags['_champ_' + cause] as number) ?? 0;
+    if (tally > bestTally) { bestTally = tally; best = cause; }
+  }
+  return bestTally >= CHAMPION_THRESHOLD ? best : undefined;
+}
+
+/** bespoke tail clause when the career ended via an accepted "chosen exit"
+ *  (peerage / international / executive / university). Integrity-tinted for the
+ *  executive cash-out. Returns '' when the career did not end via an exit. */
+function exitVerdictClause(state: GameState): string {
+  const role = state.player.flags._acceptedExit as
+    | 'peerage' | 'international' | 'executive' | 'university' | undefined;
+  switch (role) {
+    case 'peerage':
+      return ' who took the ermine';
+    case 'international':
+      return ' who left for the world stage';
+    case 'executive':
+      return state.player.stats.integrity <= 45
+        ? ' who cashed out'
+        : ' who cashed out at the end';
+    case 'university':
+      return ' who retired to academia';
+    default:
+      return '';
+  }
+}
+
 function careerVerdict(
+  state: GameState,
   level: number, everSpeaker: boolean, everDeputyPM: boolean,
   everGreatOffice: boolean, everMinister: boolean, everChiefRole: boolean, chiefNoun: string,
   stats: PlayerStats, rebellions: number, years: number, everCommitteeChair = false
@@ -5375,9 +5629,24 @@ function careerVerdict(
   // article agrees by SOUND with whatever word actually leads the phrase — the
   // first adjective ("an unscrupulous…") or, with no adjective, the office noun.
   const lead = adj || office;
+  // a career spent consistently championing one cause appends its own clause —
+  // it never changes the rating word, only the flavour of the verdict.
+  const champ = strongestChampionCause(state);
+  if (champ) nouns.push(`a champion of ${CHAMPION_PHRASE[champ]}`);
+
   let phrase = adj ? `${aOrAn(lead)} ${adj} ${office}` : `${aOrAn(office)} ${office}`;
-  if (nouns.length) phrase += ` and ${nouns[0]}`;
-  return { rating, verdict: `${titleCase(phrase)}.` };
+  // join the trailing noun-clauses cleanly: "… and a household name", or
+  // "… , a household name and a champion of the environment".
+  if (nouns.length === 1) phrase += ` and ${nouns[0]}`;
+  else if (nouns.length > 1) {
+    phrase += `, ${nouns.slice(0, -1).join(', ')} and ${nouns[nouns.length - 1]}`;
+  }
+  let verdict = titleCase(phrase);
+  // a chosen exit adds a trailing relative clause, set off by a comma and kept in
+  // its own (non-title) casing so "who took the ermine" reads as prose, not a label.
+  const exitClause = exitVerdictClause(state);
+  if (exitClause) verdict += `,${exitClause}`;
+  return { rating, verdict: `${verdict}.` };
 }
 
 export function buildLegacy(state: GameState): LegacySummary {
@@ -5481,6 +5750,7 @@ export function buildLegacy(state: GameState): LegacySummary {
   const leadershipContestsWon = state.history.filter((h) => h.kind === 'leadershipContest' && h.won).length;
   const electionsWonAsLeader = (state.player.flags._electionsWonAsLeader as number) ?? 0;
   const { rating, verdict } = careerVerdict(
+    state,
     level, everSpeaker, everDeputyPM, everGreatOffice, everMinister, everChiefRole, chiefNoun,
     state.player.stats, state.player.rebellionCount, yearsServed, everCommitteeChair
   );

@@ -20,7 +20,7 @@ export const SOS_CARDS: DecisionCard[] = [
       },
       {
         label: 'Concede gracefully, bank the favour',
-        effects: { relationships: [{ kind: 'leader', delta: 4 }], stats: { competence: -1 } },
+        effects: { relationships: [{ kind: 'leader', delta: 4 }], stats: { competence: -1 }, grantFavour: { kind: 'leader' } },
         outcomeText: 'You take the cut "in the spirit of collective endeavour". The PM\'s glance says the favour is logged. Your department\'s glance, when you return, says something else entirely.',
       },
     ],

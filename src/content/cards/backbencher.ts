@@ -133,7 +133,7 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
       },
       {
         label: 'Rebel',
-        effects: { stats: { integrity: 4, profile: 3, constituencyApproval: 3 }, relationships: [{ kind: 'chiefWhip', delta: -8 }, { kind: 'leader', delta: -5 }], trigger: 'rebel' },
+        effects: { stats: { integrity: 4, profile: 3, constituencyApproval: 3 }, relationships: [{ kind: 'chiefWhip', delta: -8 }, { kind: 'leader', delta: -5 }], trigger: 'rebel', bumpHeldCauses: true },
         outcomeText: 'You walk through the other lobby to raised eyebrows. The local paper calls you brave. The whips\' office calls you, full stop.',
       },
       {
@@ -434,7 +434,7 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
     choices: [
       {
         label: 'Vote for the constituency',
-        effects: { stats: { constituencyApproval: 5, integrity: 3, partyStanding: -4 }, relationships: [{ kind: 'chiefWhip', delta: -5 }], trigger: 'rebel' },
+        effects: { stats: { constituencyApproval: 5, integrity: 3, partyStanding: -4 }, relationships: [{ kind: 'chiefWhip', delta: -5 }], trigger: 'rebel', bumpHeldCauses: true },
         outcomeText: 'You tell the whips you cannot look the workers in the eye and vote the other way. They\'ve heard it before, but the local paper\'s headline — "OUR MP STANDS UP" — is not nothing.',
       },
       {

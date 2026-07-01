@@ -16,6 +16,10 @@ import {
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
 import { Rng } from '../engine/rng';
+import { useUiStore } from './uiStore';
+
+/** the four "chosen exit" roles a 65+ MP can be offered (see the exit-offer framework) */
+export type ExitRole = 'peerage' | 'international' | 'executive' | 'university';
 
 /** a named manual save (distinct from the auto-saved live `game`) */
 export interface SaveSlot {
@@ -53,6 +57,8 @@ interface GameStore {
   /** update the player's chosen causes (the agenda) mid-career */
   setCauses: (causes: CauseId[]) => void;
   retire: () => void;
+  /** confirm an accepted "chosen exit" — ends the game with a bespoke exit legacy */
+  retireToRole: (role: ExitRole) => void;
   abandonGame: () => void;
   /** save the current career into a new named slot (caller ensures < 3 slots) */
   saveToSlot: (name: string) => void;
@@ -206,6 +212,54 @@ function mutateGame(
   set({ game });
 }
 
+/** exit-role confirm copy: a full-sentence message (period), and a period-free
+ *  title/label — one entry per accepted "chosen exit" role. */
+const EXIT_CONFIRM: Record<ExitRole, { title: string; message: string; label: string }> = {
+  peerage: {
+    title: 'Leave the Commons for the Lords?',
+    message: 'Accepting the peerage ends your career in the Commons for good and sends you to the red benches.',
+    label: 'Take the peerage',
+  },
+  international: {
+    title: 'Leave the Commons for the world stage?',
+    message: 'Accepting the international role means resigning your seat and leaving the House behind for good.',
+    label: 'Leave for the role',
+  },
+  executive: {
+    title: 'Leave the Commons for the boardroom?',
+    message: 'Taking the executive role means standing down as an MP and closing out your political career for good.',
+    label: 'Cash out',
+  },
+  university: {
+    title: 'Leave the Commons for academia?',
+    message: 'Becoming Chancellor means retiring from the Commons for good and trading the green benches for the quad.',
+    label: 'Retire to academia',
+  },
+};
+
+/** After an exit offer is accepted, `flags._pendingExit` is set. Fire the existing
+ *  confirm modal over the outcome: confirming ends the game via `retireToRole`;
+ *  cancelling simply closes the modal and returns to play (the flag is cleared here
+ *  so the "decision" doesn't linger — the offer can still return next parliament). */
+function maybeFireExitConfirm(
+  get: () => GameStore,
+  set: (partial: Partial<GameStore>) => void
+): void {
+  const game = get().game;
+  const role = game?.player.flags._pendingExit as ExitRole | undefined;
+  if (!role || !EXIT_CONFIRM[role]) return;
+  // clear the pending flag up front: cancelling the modal then just leaves the player
+  // in play (offer can return next parliament); confirming calls retireToRole below.
+  mutateGame(get, set, (g) => { delete g.player.flags._pendingExit; });
+  const copy = EXIT_CONFIRM[role];
+  useUiStore.getState().requestConfirm({
+    title: copy.title,
+    message: copy.message,
+    confirmLabel: copy.label,
+    onConfirm: () => get().retireToRole(role),
+  });
+}
+
 export const useGameStore = create<GameStore>()(
   persist(
     (set, get) => ({
@@ -229,8 +283,13 @@ export const useGameStore = create<GameStore>()(
           nextStep(game, rng);
         }),
 
-      resolveChoice: (choiceIndex) =>
-        mutateGame(get, set, (game, rng) => resolveChoiceCore(game, rng, choiceIndex)),
+      resolveChoice: (choiceIndex) => {
+        mutateGame(get, set, (game, rng) => resolveChoiceCore(game, rng, choiceIndex));
+        // if resolving an accepted exit offer flagged a pending exit, offer the
+        // confirm modal now (over the outcome text). Confirming ends the game;
+        // cancelling clears the flag and returns to play (offer can return later).
+        maybeFireExitConfirm(get, set);
+      },
 
       continueAfterOutcome: () =>
         mutateGame(get, set, (game, rng) => continueCore(game, rng)),
@@ -278,6 +337,17 @@ export const useGameStore = create<GameStore>()(
       retire: () =>
         mutateGame(get, set, (game) => {
           if (game.gameOver) return;
+          game.gameOver = { reason: 'retired', legacy: buildLegacy(game) };
+          game.currentCard = null;
+        }),
+
+      retireToRole: (role) =>
+        mutateGame(get, set, (game) => {
+          if (game.gameOver) return;
+          // record the accepted exit so the verdict/legacy can be bespoke (read by A4),
+          // then clear the pending flag and end the career.
+          game.player.flags._acceptedExit = role;
+          delete game.player.flags._pendingExit;
           game.gameOver = { reason: 'retired', legacy: buildLegacy(game) };
           game.currentCard = null;
         }),

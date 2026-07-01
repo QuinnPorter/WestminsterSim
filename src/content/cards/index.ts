@@ -21,6 +21,12 @@ import { SCIENCE_TECH_CARDS } from './scienceTech';
 import { LEADER_HOUSE_CARDS } from './leaderHouse';
 import { COMMITTEE_CARDS } from './committee';
 import { EXTRA_ONE_OFF_CARDS } from './extraOneOffs';
+import { FAVOUR_SPEND_CARDS } from './favourSpend';
+import { CAUSE_DELIVERY_CARDS } from './causeDelivery';
+import { CAUSE_COLLISION_CARDS } from './causeCollision';
+import { REGION_CARDS } from './regionCards';
+import { DEVOLVED_SCENERY_CARDS } from './devolvedScenery';
+import { EVENTS_EXTRA_CARDS } from './eventsExtra';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling */
 export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
@@ -48,6 +54,12 @@ export const ALL_CARDS: DecisionCard[] = [
   ...LEADER_HOUSE_CARDS,
   ...COMMITTEE_CARDS,
   ...EXTRA_ONE_OFF_CARDS,
+  ...FAVOUR_SPEND_CARDS,
+  ...CAUSE_DELIVERY_CARDS,
+  ...CAUSE_COLLISION_CARDS,
+  ...REGION_CARDS,
+  ...DEVOLVED_SCENERY_CARDS,
+  ...EVENTS_EXTRA_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {

@@ -169,8 +169,9 @@ export interface Player {
   committeeChair?: DepartmentId | null;
   /** rebellions in the current parliament */
   rebellionCount: number;
-  /** story flags set by cards */
-  flags: Record<string, boolean | number>;
+  /** story flags set by cards. String values are used by a few flags that stash a
+   *  chosen identity (e.g. the accepted "chosen exit" role) rather than a count/toggle. */
+  flags: Record<string, boolean | number | string>;
   seatId: string;
   /** false → lost seat, in the wilderness */
   hasSeat: boolean;
@@ -338,6 +339,7 @@ export type ForcedKind =
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'deputyRemoval' | 'speakerContest'
   | 'committeeChairContest' | 'passedOver'
+  | 'exitOffer'
   | 'budget' | 'pmqs' | 'conference'
   | 'calendar';
 

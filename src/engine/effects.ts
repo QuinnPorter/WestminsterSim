@@ -101,6 +101,30 @@ export function applyEffects(state: GameState, spec: EffectSpec): StatDelta[] {
     }
   }
 
+  if (spec.spendFavour) {
+    const favours = state.player.favours;
+    if (favours) {
+      const idx = favours.findIndex((f) => f.kind === spec.spendFavour!.kind);
+      if (idx !== -1) favours.splice(idx, 1);
+    }
+  }
+
+  if (spec.bumpCause) {
+    const key = '_champ_' + spec.bumpCause;
+    state.player.flags[key] = ((state.player.flags[key] as number) || 0) + 1;
+  }
+
+  // a recurring "stood up for your cause" beat bumps the hidden champion tally for
+  // every cause the player actually holds (a no-op for a player with no causes), so
+  // the "champion of X" verdict accrues through repeated aligned choices over a
+  // career rather than only the once-per-career delivery/collision cards
+  if (spec.bumpHeldCauses) {
+    for (const cause of state.player.causes ?? []) {
+      const key = '_champ_' + cause;
+      state.player.flags[key] = ((state.player.flags[key] as number) || 0) + 1;
+    }
+  }
+
   if (spec.trigger === 'rebel') {
     state.player.rebellionCount += 1;
   }
