@@ -3282,9 +3282,8 @@ export function resolveForcedChoice(
       // marks the player so the next offer hazard waits a beat (a short cooldown).
       state.player.flags._passedOverUntil = state.day + rng.int(180, 320);
       if (choiceIndex === 0) {
-        gain('partyStanding', -3, 'Standing');
-        adjustRelationship(state, 'leader', -3);
-        push('Leader', -3);
+        gain('partyStanding', 0.5, 'Standing');
+        gain('profile', -0.5, 'Profile');
         return {
           text: 'You smile for the cameras, congratulate the lucky ones, and say all the right things about being focused on your constituents. Nobody believes the last part, least of all you.',
           deltas,
@@ -5557,7 +5556,7 @@ function exitVerdictClause(state: GameState): string {
     | 'peerage' | 'international' | 'executive' | 'university' | undefined;
   switch (role) {
     case 'peerage':
-      return ' who took the ermine';
+      return ' who now sits on the red benches';
     case 'international':
       return ' who left for the world stage';
     case 'executive':
@@ -5643,7 +5642,7 @@ function careerVerdict(
   }
   let verdict = titleCase(phrase);
   // a chosen exit adds a trailing relative clause, set off by a comma and kept in
-  // its own (non-title) casing so "who took the ermine" reads as prose, not a label.
+  // its own (non-title) casing so "who now sits on the red benches" reads as prose, not a label.
   const exitClause = exitVerdictClause(state);
   if (exitClause) verdict += `,${exitClause}`;
   return { rating, verdict: `${verdict}.` };
