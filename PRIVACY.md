@@ -2,7 +2,7 @@
 
 **Effective date:** 18 June 2026
 
-WestminsterSim ("the app") is a single‑player political simulation game developed by Quinn Porter.
+WestminsterSim ("the app") is a single‑player political simulation game developed by Meridian Analytica LTD.
 This is the whole policy, and the short version is the whole story: **the app collects no data.**
 
 ## No data collected
@@ -43,4 +43,4 @@ If this policy ever changes, the updated version will be posted here with a new 
 
 ## Contact
 
-Questions about this policy: **quinn.porter@outlook.com**
+Questions about this policy: **meridiananalytica@gmail.com**
