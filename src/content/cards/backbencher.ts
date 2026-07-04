@@ -397,9 +397,18 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
         label: 'Save it for a rainy day',
         effects: {
           relationships: [{ kind: 'chiefWhip', delta: 4 }],
-          grantFavour: { kind: 'chiefWhip', note: 'The Chief Whip owes you a favour.' },
         },
-        outcomeText: 'You thank them and bank it. An unspent favour with the Chief Whip is worth more in the having than the using — and they respect a colleague who understands that.',
+        outcomeText: [
+          {
+            weight: 9,
+            text: 'You thank them and bank it. An unspent favour with the Chief Whip is worth more in the having than the using — and they respect a colleague who understands that.',
+            extra: { grantFavour: { kind: 'chiefWhip', note: 'The Chief Whip owes you a favour.' } },
+          },
+          {
+            weight: 1,
+            text: 'You thank them and make a mental note. The warmth is real, but a favour never named is a favour never owed — and the whips\' office keeps a very particular ledger.',
+          },
+        ],
       },
     ],
   },
@@ -503,9 +512,18 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
         effects: {
           stats: { profile: 2 },
           relationships: [{ kind: 'ally', delta: 6 }],
-          grantFavour: { kind: 'ally', note: 'You covered a debate when it counted.' },
         },
-        outcomeText: 'You take the slot at short notice and make a decent fist of it. {ally} is quietly, genuinely grateful — the kind of debt that gets repaid when it matters most.',
+        outcomeText: [
+          {
+            weight: 9,
+            text: 'You take the slot at short notice and make a decent fist of it. {ally} is quietly, genuinely grateful — the kind of debt that gets repaid when it matters most.',
+            extra: { grantFavour: { kind: 'ally', note: 'You covered a debate when it counted.' } },
+          },
+          {
+            weight: 1,
+            text: 'You take the slot at short notice and make a decent fist of it. {ally} is warm about it for a week, and then the tide of business closes over the moment — gratitude, but never quite a debt.',
+          },
+        ],
       },
       {
         label: 'Sorry — too much on',
@@ -528,9 +546,18 @@ export const BACKBENCHER_CARDS: DecisionCard[] = [
         effects: {
           stats: { profile: 2, integrity: 1 },
           relationships: [{ kind: 'mentor', delta: 6 }],
-          grantFavour: { kind: 'mentor', note: 'You stood up for them when it was easier not to.' },
         },
-        outcomeText: 'You give the warm, unguarded quote that turns the story. {mentor} does not forget who spoke up when the wind was against them.',
+        outcomeText: [
+          {
+            weight: 9,
+            text: 'You give the warm, unguarded quote that turns the story. {mentor} does not forget who spoke up when the wind was against them.',
+            extra: { grantFavour: { kind: 'mentor', note: 'You stood up for them when it was easier not to.' } },
+          },
+          {
+            weight: 1,
+            text: 'You give the warm, unguarded quote that turns the story. {mentor} is touched, and says so — though between the thanks and the next crisis, the debt never quite hardens into anything you could call in.',
+          },
+        ],
       },
       {
         label: 'Stay diplomatically silent',

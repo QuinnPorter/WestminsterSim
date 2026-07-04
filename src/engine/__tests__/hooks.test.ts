@@ -47,28 +47,32 @@ describe('effect hooks', () => {
     expect(champKeys).toEqual([]);
   });
 
-  it('spendFavour removes exactly one banked favour of the given kind', () => {
+  it('spendFavour removes exactly one banked favour (the first) regardless of kind', () => {
     const g = makeGame();
     g.player.favours = [
       { kind: 'journalist', characterId: 'c1', note: '' },
       { kind: 'journalist', characterId: 'c2', note: '' },
       { kind: 'leader', characterId: 'c3', note: '' },
     ];
-    applyEffects(g, { spendFavour: { kind: 'journalist' } });
-    expect(g.player.favours.filter((f) => f.kind === 'journalist')).toHaveLength(1);
-    expect(g.player.favours.filter((f) => f.kind === 'leader')).toHaveLength(1);
-    // spending a kind you don't hold is a safe no-op
-    applyEffects(g, { spendFavour: { kind: 'mentor' } });
+    applyEffects(g, { spendFavour: true });
     expect(g.player.favours).toHaveLength(2);
+    expect(g.player.favours[0].characterId).toBe('c2');
+    applyEffects(g, { spendFavour: true });
+    applyEffects(g, { spendFavour: true });
+    expect(g.player.favours).toHaveLength(0);
+    // spending with nothing banked is a safe no-op
+    applyEffects(g, { spendFavour: true });
+    expect(g.player.favours).toHaveLength(0);
   });
 });
 
 describe('eligibility gates', () => {
-  it('hasFavour requires a banked favour of a listed kind (any-of)', () => {
+  it('hasFavour requires at least one banked favour of any kind', () => {
     const g = makeGame();
-    const card = cardWith({ hasFavour: ['journalist'] });
+    const card = cardWith({ hasFavour: true });
     expect(cardEligible(g, card)).toBe(false);
-    g.player.favours = [{ kind: 'journalist', characterId: 'c1', note: '' }];
+    // any kind qualifies — favours are one currency
+    g.player.favours = [{ kind: 'mentor', characterId: 'c1', note: '' }];
     expect(cardEligible(g, card)).toBe(true);
   });
 

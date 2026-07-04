@@ -2361,11 +2361,9 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       // time (a promotion or a first-rung offer is never forced — there's a free decline)
       const forced = sideways && !!state.player.officeId && rng.chance(0.5);
       const office = from === 'Number 10' ? 'Number 10' : "The Leader's office";
-      // a friend in the leadership can spare you the standing cost of a lateral move —
-      // they let it be known this was your idea, not a demotion (a chiefWhip/leader debt)
-      const reshuffleFavour = (state.player.favours ?? []).find(
-        (f) => f.kind === 'chiefWhip' || f.kind === 'leader'
-      );
+      // a friend who owes you can spare you the standing cost of a lateral move —
+      // any banked favour counts (favours are one currency; kind records who owes you)
+      const reshuffleFavour = (state.player.favours ?? [])[0];
       if (forced) {
         const forcedChoices = [{ label: 'Accept the move' }];
         if (reshuffleFavour) {
@@ -2398,11 +2396,9 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       };
     }
     case 'dismissal': {
-      // a debt owed by the leader or chief whip can buy a stay of execution — one
-      // quiet word and your name comes off the list, this once
-      const dismissalFavour = (state.player.favours ?? []).find(
-        (f) => f.kind === 'leader' || f.kind === 'chiefWhip'
-      );
+      // any banked favour can buy a stay of execution — one quiet word and your name
+      // comes off the list, this once (favours are one currency; kind records who owes you)
+      const dismissalFavour = (state.player.favours ?? [])[0];
       const dismissalChoices = [{ label: 'Go quietly and loyally' }];
       if (dismissalFavour) {
         dismissalChoices.push({
@@ -2480,10 +2476,9 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         : names.length === 1
           ? `${names[0]} has already declared`
           : 'Several heavyweights are circling';
-      // if a senior friend owes you, you can cash that in to shore up your launch
-      const favour = (state.player.favours ?? []).find(
-        (f) => f.kind === 'ally' || f.kind === 'mentor' || f.kind === 'chiefWhip'
-      );
+      // if anyone owes you, you can cash that in to shore up your launch — any banked
+      // favour counts (favours are one currency; kind records who owes you)
+      const favour = (state.player.favours ?? [])[0];
       const choices = [{ label: 'Stand for leader' }];
       if (favour) {
         choices.push({
@@ -3017,11 +3012,9 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       // a minister who fancied the move up, watches a rival's name read out instead.
       const hoping = state.player.officeId ? 'the promotion you were quietly promised' : 'the call onto the front bench';
       const rivalName = characterName(state, getRelationship(state, 'rival')?.characterId) || 'a younger colleague';
-      // a debt owed by the leader or chief whip can flip the snub before the ink dries —
-      // one call, and the list is amended in your favour
-      const passedOverFavour = (state.player.favours ?? []).find(
-        (f) => f.kind === 'leader' || f.kind === 'chiefWhip'
-      );
+      // any banked favour can flip the snub before the ink dries — one call, and the
+      // list is amended in your favour (favours are one currency; kind records who owes you)
+      const passedOverFavour = (state.player.favours ?? [])[0];
       const passedOverChoices = [{ label: 'Take it on the chin' }];
       if (passedOverFavour) {
         passedOverChoices.push({
@@ -3099,14 +3092,17 @@ export function resolveForcedChoice(
     const applied = gainStat(state, key, delta);
     if (applied !== 0) push(label, applied);
   };
-  // spend a banked favour of the card's payload.favourKind: find it, splice it, and
-  // return the debtor's name for bespoke outcome text (mirrors the leadershipStand spend)
+  // spend one banked favour and return the debtor's name for bespoke outcome text.
+  // Prefer the favour of the stamped payload.favourKind (keeps the named debtor
+  // consistent with the choice label), but any banked favour counts — favours are one
+  // currency — so fall back to the first one rather than let the spend silently fail.
   const spendPayloadFavour = (): string => {
     const kind = card.payload?.favourKind as RelationshipKind | undefined;
     if (!kind) return '';
     const favours = state.player.favours ?? [];
-    const fi = favours.findIndex((f) => f.kind === kind);
-    if (fi < 0) return '';
+    if (favours.length === 0) return '';
+    const byKind = favours.findIndex((f) => f.kind === kind);
+    const fi = byKind >= 0 ? byKind : 0;
     const name = characterName(state, favours[fi].characterId);
     favours.splice(fi, 1);
     return name;
@@ -3470,11 +3466,15 @@ export function resolveForcedChoice(
         const usingFavour = choiceIndex === 1 && !!card.payload?.favourKind;
         let favourName = '';
         if (usingFavour) {
+          // prefer the stamped kind (keeps the named debtor consistent), but any
+          // banked favour pays — the spend must never silently fail while one is held
           const kind = card.payload!.favourKind as RelationshipKind;
-          const fi = (state.player.favours ?? []).findIndex((f) => f.kind === kind);
+          const favours = state.player.favours ?? [];
+          let fi = favours.findIndex((f) => f.kind === kind);
+          if (fi < 0 && favours.length > 0) fi = 0;
           if (fi >= 0) {
-            favourName = characterName(state, state.player.favours[fi].characterId);
-            state.player.favours.splice(fi, 1);
+            favourName = characterName(state, favours[fi].characterId);
+            favours.splice(fi, 1);
           }
           playerTally += 12;
           push('Support', 12);

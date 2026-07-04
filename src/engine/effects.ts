@@ -102,11 +102,10 @@ export function applyEffects(state: GameState, spec: EffectSpec): StatDelta[] {
   }
 
   if (spec.spendFavour) {
+    // any banked favour counts — favours are one currency; kind records who owes you.
+    // Consume the first one; safe no-op when none are banked.
     const favours = state.player.favours;
-    if (favours) {
-      const idx = favours.findIndex((f) => f.kind === spec.spendFavour!.kind);
-      if (idx !== -1) favours.splice(idx, 1);
-    }
+    if (favours && favours.length > 0) favours.splice(0, 1);
   }
 
   if (spec.bumpCause) {

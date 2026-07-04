@@ -32,8 +32,9 @@ export interface Requirement {
   firstParliament?: boolean;
   /** only fire when the player champions at least one of these causes */
   causeIn?: CauseId[];
-  /** only fire when the player holds a banked favour of one of these kinds (any-of) */
-  hasFavour?: RelationshipKind[];
+  /** only fire when the player holds at least one banked favour (favours are one
+   *  currency; kind only records who owes you) */
+  hasFavour?: boolean;
   /** only fire when the player's seat is in one of these regions */
   region?: RegionId[];
   /** only fire when the player is at least this old (years) */
@@ -61,8 +62,8 @@ export interface EffectSpec {
   trigger?: CardTrigger;
   /** bank a favour owed by the current holder of this relationship */
   grantFavour?: { kind: RelationshipKind; note?: string };
-  /** spend (consume) one banked favour of this kind */
-  spendFavour?: { kind: RelationshipKind };
+  /** spend (consume) one banked favour — any kind qualifies (favours are one currency) */
+  spendFavour?: boolean;
   /** bump the hidden "champion of X" tally for this cause */
   bumpCause?: CauseId;
   /** bump the hidden "champion of X" tally for EVERY cause the player holds — for
