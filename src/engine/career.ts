@@ -5574,14 +5574,15 @@ function careerVerdict(
   state: GameState,
   level: number, everSpeaker: boolean, everDeputyPM: boolean,
   everGreatOffice: boolean, everMinister: boolean, everChiefRole: boolean, chiefNoun: string,
-  stats: PlayerStats, rebellions: number, years: number, everCommitteeChair = false
+  stats: PlayerStats, rebellions: number, years: number, everCommitteeChair = false,
+  yearsAsPM = 0
 ): { rating: string; verdict: string } {
   // only an actual Minister of State (tier 3+) earns the "Minister" rating; a
   // PPS / parliamentary aide / Whip falls through to the backbencher ratings
   const realMinister = level === 1 && everMinister;
   let rating: string;
   if (level === 4) {
-    rating = stats.integrity >= 68 && years >= 12 ? 'Colossus' : 'Statesman';
+    rating = stats.integrity >= 68 && years >= 12 && yearsAsPM >= 7 ? 'Colossus' : 'Statesman';
   } else if (everSpeaker) {
     rating = 'Speaker';
   } else if (level === 3) {
@@ -5751,7 +5752,7 @@ export function buildLegacy(state: GameState): LegacySummary {
   const { rating, verdict } = careerVerdict(
     state,
     level, everSpeaker, everDeputyPM, everGreatOffice, everMinister, everChiefRole, chiefNoun,
-    state.player.stats, state.player.rebellionCount, yearsServed, everCommitteeChair
+    state.player.stats, state.player.rebellionCount, yearsServed, everCommitteeChair, yearsAsPM
   );
   return {
     yearsServed,
