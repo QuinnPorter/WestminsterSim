@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { Capacitor } from '@capacitor/core';
+import { Analytics } from '@vercel/analytics/react';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/global.css';
@@ -17,6 +19,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
+      {/* web-only: Vercel Analytics for the website build; never runs in the
+          native iOS/Android app, so the app collects nothing */}
+      {!Capacitor.isNativePlatform() && <Analytics />}
     </ErrorBoundary>
   </React.StrictMode>
 );
