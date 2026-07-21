@@ -106,8 +106,18 @@ export function migrateGameState(game: GameState): GameState {
   if (game.player.favours === undefined) {
     game.player.favours = [];
   }
+  if (game.player.promises === undefined) {
+    game.player.promises = [];
+  }
   if (game.player.committeeChair === undefined) {
     game.player.committeeChair = null;
+  }
+  if (game.pendingContests === undefined) {
+    game.pendingContests = [];
+  }
+  if (game.government.loInheritedPolls === undefined) {
+    // best guess for older saves: the opposition's current polling
+    game.government.loInheritedPolls = (game.polling.shares[game.government.oppositionParty] ?? 0) * 100;
   }
   if (!game.pmHistory) {
     game.pmHistory = reconstructPmHistory(game);

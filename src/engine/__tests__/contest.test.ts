@@ -116,14 +116,26 @@ describe('leadership contest structure', () => {
       game.player.officeId = 'sos_home';
       game.player.stats = { profile: 80, partyStanding: 80, competence: 70, constituencyApproval: 60, integrity: 60 };
       openLeadershipVacancy(game, rng, 'con');
-      const stand = game.forcedQueue.find((e) => e.kind === 'leadershipStand');
-      expect(stand).toBeDefined();
-      const ids = stand!.payload?.candidateIds as string[];
-      expect(ids.length).toBeGreaterThanOrEqual(3);
-      expect(ids.length).toBeLessThanOrEqual(6);
+      // the contest opens with a stand (standard/two-horse) or a nomination (coronation);
+      // either way the underlying field from pickContestCandidates is a named 3-6
+      const opener = game.forcedQueue.find(
+        (e) => e.kind === 'leadershipStand' || e.kind === 'leadershipNomination'
+      );
+      expect(opener).toBeDefined();
+      const ids = opener!.payload?.candidateIds as string[];
+      const shape = opener!.kind === 'leadershipStand'
+        ? ((opener!.payload?.shape as string) ?? 'standard') : 'coronation';
+      if (shape === 'twoHorse') {
+        // a two-horse race is trimmed to the single strongest rival
+        expect(ids.length).toBe(1);
+        expect(game.characters[ids[0]]?.name).toBeTruthy();
+      } else {
+        expect(ids.length).toBeGreaterThanOrEqual(3);
+        expect(ids.length).toBeLessThanOrEqual(6);
+      }
       for (const id of ids) expect(game.characters[id]?.name).toBeTruthy();
-      const card = materializeForced(game, rng, stand!);
-      expect(card.body).toContain(game.characters[ids[0]].name);
+      const card = materializeForced(game, rng, opener!);
+      if (opener!.kind === 'leadershipStand') expect(card.body).toContain(game.characters[ids[0]].name);
     }
   });
 
@@ -165,10 +177,16 @@ describe('leadership contest structure', () => {
     game.player.officeId = 'sos_foreign';
     game.player.stats = { profile: 80, partyStanding: 80, competence: 75, constituencyApproval: 60, integrity: 60 };
     openLeadershipVacancy(game, rng, game.player.partyId);
-    const stand = game.forcedQueue.find((e) => e.kind === 'leadershipStand');
-    const ids = (stand?.payload?.candidateIds as string[]) ?? [];
-    expect(ids.length).toBeGreaterThanOrEqual(3);
-    const card = materializeForced(game, rng, stand!);
+    const opener = game.forcedQueue.find(
+      (e) => e.kind === 'leadershipStand' || e.kind === 'leadershipNomination'
+    );
+    expect(opener).toBeDefined();
+    // the field names real opponents (never the empty-field placeholder), whatever the
+    // shape — a standard field of 3-6, or the strongest rival in a trimmed two-horse race
+    const ids = (opener!.payload?.candidateIds as string[]) ?? [];
+    expect(ids.length).toBeGreaterThanOrEqual(1);
+    for (const id of ids) expect(game.characters[id]?.name).toBeTruthy();
+    const card = materializeForced(game, rng, opener!);
     expect(card.body).not.toContain('Several heavyweights are circling');
   });
 });

@@ -67,6 +67,14 @@ export function DebugMenu() {
             })}
           />
           <DebugBtn
+            label="Force opposition vacancy"
+            onClick={() => debugMutate((g, rng) => {
+              openLeadershipVacancy(g, rng, g.government.oppositionParty);
+              g.currentCard = null;
+              nextStep(g, rng);
+            })}
+          />
+          <DebugBtn
             label="Max stats"
             onClick={() => debugMutate((g) => {
               g.player.stats = {

@@ -19,13 +19,15 @@ function makeGame(opts: Partial<CreationInput> = {}): GameState {
   return createNewGame(input);
 }
 
-/** drive a leadership contest (declare + 5 ballots) picking choice 0 each time */
+/** drive a whole leadership contest — declaration, launch/debate/scrutiny episodes,
+ *  every ballot, and the backing flow if eliminated — picking choice 0 each time */
+const CONTEST_KINDS = new Set(['leadershipStand', 'leadershipBallot', 'leadershipEpisode', 'leadershipBacking']);
 function runContest(game: GameState, rng: Rng): void {
   openLeadershipVacancy(game, rng, game.player.partyId);
   let guard = 0;
-  while (game.forcedQueue.length > 0 && guard < 10) {
+  while (game.forcedQueue.length > 0 && guard < 30) {
     const ev = game.forcedQueue.shift()!;
-    if (ev.kind !== 'leadershipStand' && ev.kind !== 'leadershipBallot') break;
+    if (!CONTEST_KINDS.has(ev.kind)) break;
     const card = materializeForced(game, rng, ev);
     resolveForcedChoice(game, rng, card, 0);
     guard++;
@@ -65,17 +67,32 @@ describe('open leadership standing', () => {
     expect(won / runs).toBeLessThan(0.25); // long-shots rarely win
   });
 
-  it('a strong frontbencher still wins a good share of contests', () => {
-    let won = 0;
+  it('a strong frontbencher is a serious contender — reliably reaching the final', () => {
+    // With the two-currency campaign, MP support carries a strong candidate TO the
+    // members' final; WINNING it then depends on having courted the membership (a
+    // separate strategic axis). So the robust "strong candidates are serious" claim is
+    // that they reliably reach the final (or win outright via a coronation/two-horse).
+    let seriousRun = 0;
     const runs = 30;
     for (let i = 0; i < runs; i++) {
       const game = makeGame({ seed: 700 + i });
+      const rng = new Rng(1300 + i);
       game.player.officeId = 'sos_treasury';
       game.player.stats = { profile: 85, partyStanding: 85, competence: 85, constituencyApproval: 70, integrity: 65 };
-      runContest(game, new Rng(1300 + i));
-      if (game.player.officeId === 'leader') won++;
+      openLeadershipVacancy(game, rng, game.player.partyId);
+      let reachedFinal = false;
+      let guard = 0;
+      while (game.forcedQueue.length > 0 && guard < 30) {
+        const ev = game.forcedQueue.shift()!;
+        if (!CONTEST_KINDS.has(ev.kind)) break;
+        if (ev.kind === 'leadershipBallot' && ev.payload?.finalRound) reachedFinal = true;
+        const card = materializeForced(game, rng, ev);
+        resolveForcedChoice(game, rng, card, 0);
+        guard++;
+      }
+      if (reachedFinal || game.player.officeId === 'leader') seriousRun++;
     }
-    expect(won / runs).toBeGreaterThan(0.35);
+    expect(seriousRun / runs).toBeGreaterThan(0.6);
   });
 });
 
