@@ -1482,8 +1482,9 @@ function situationalPlays(state: GameState, contest: ContestState): { key: strin
       sublabel: 'trade a doomed run for a job at the top',
     });
   }
-  // stop-X: a trailing candidate can broker an "anyone but the front-runner" pact
-  if (rank >= 2 && rank <= 3 && topT - me >= 15) {
+  // stop-X: a trailing candidate can broker an "anyone but the front-runner" pact —
+  // but only ONCE per contest (a pact can't be brokered fresh every single ballot)
+  if (rank >= 2 && rank <= 3 && topT - me >= 15 && !contest.consolidated) {
     plays.push({
       key: 'stopX',
       label: `Broker an "anyone but ${characterName(state, topId)}" pact`,
@@ -1496,12 +1497,16 @@ function situationalPlays(state: GameState, contest: ContestState): { key: strin
 /** the members' stage is a campaign in its own right, not a single card: a hustings
  *  tour, a head-to-head debate, and the final week (postal votes locking in) all sit
  *  before the members' verdict. Open it with the hustings; each arc episode queues the
- *  next, and the final week queues the members' ballot itself. */
+ *  next, and the final week queues the members' ballot itself.
+ *  A two-horse race — which never had an elimination phase — opens instead with the
+ *  `alsoRans` beat, where the candidates who never made the ballot pick a side. That
+ *  courting fight is unique to a duel and gives it its own texture. */
 function queueMembersFinal(state: GameState, contest: ContestState, finalistId: string): void {
   const c: ContestState = { ...contest, finalistId };
+  const openingBeat = c.shape === 'twoHorse' && !c.beatsDone.includes('alsoRans') ? 'alsoRans' : 'hustings';
   state.forcedQueue.unshift({
     kind: 'leadershipEpisode',
-    payload: payloadWith(c, { beat: 'hustings' }),
+    payload: payloadWith(c, { beat: openingBeat }),
   });
 }
 
@@ -1603,6 +1608,23 @@ function addPledge(
   context: import('../types/game').Pledge['context'], direction: 'made' | 'received'
 ): void {
   (state.player.promises ??= []).push({ characterId, officeId, madeDay: state.day, context, direction });
+}
+
+/** Settle the contest ledger the moment a leadership contest RESOLVES — a pledge is only
+ *  worth anything if the person who ends up holding the power actually won:
+ *    • a `made` pledge (the player promised someone a job to win) survives ONLY if the
+ *      player won — you cannot honour a job you were never in a position to give;
+ *    • a `received` pledge (someone promised the player a job for backing them) survives
+ *      ONLY if that debtor is the one who won.
+ *  Everything else evaporates, so a bet on the wrong horse leaves no stranded IOUs.
+ *  `winnerId` is the new leader ('player' or an NPC id). Call only when resolving the
+ *  PLAYER'S OWN party's contest — other parties never touch the player's ledger. */
+function settlePledges(state: GameState, winnerId: string): void {
+  const promises = state.player.promises;
+  if (!promises || promises.length === 0) return;
+  state.player.promises = promises.filter((p) =>
+    p.direction === 'made' ? winnerId === 'player' : p.characterId === winnerId
+  );
 }
 
 /** seed a player-standing contest and open it with the launch episode. Shared by the
@@ -1921,6 +1943,10 @@ export function resolveNpcLeadership(
       headline: `${winner.name} reshuffles the ${party === state.government.governingParty ? 'cabinet' : 'shadow cabinet'}`,
     });
   }
+  // an NPC won the PLAYER'S OWN party's contest: the player lost, so any job they
+  // promised evaporates; a job promised TO them survives only if THIS winner is the
+  // debtor (they backed the right horse). Bets on the losers leave no stranded IOUs.
+  if (party === state.player.partyId) settlePledges(state, winner.id);
   return winner;
 }
 
@@ -2003,6 +2029,9 @@ export function resolvePendingContests(state: GameState, rng: Rng): void {
 
 function makePlayerLeader(state: GameState, rng: Rng, opts: { softMandate?: boolean } = {}): void {
   const party = state.player.partyId;
+  // the player won: keep the debts they made (honoured/broken at the reshuffle), and
+  // discard any pledges owed TO them (they are the leader now — those are moot)
+  settlePledges(state, 'player');
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = 'leader';
   state.player.officeSinceDay = state.day;
@@ -2909,12 +2938,22 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       };
     case 'leadershipStand': {
       const candidateIds = (ev.payload?.candidateIds as string[]) ?? [];
+      const shape = (ev.payload?.shape as ContestState['shape']) ?? 'standard';
       const names = candidateIds.map((id) => characterName(state, id));
       const field = names.length >= 2
         ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} have already declared`
         : names.length === 1
           ? `${names[0]} has already declared`
           : 'Several heavyweights are circling';
+      // the number of candidates sets the shape of the fight — spelt out so the player
+      // knows whether they face a straight duel or a long war of attrition
+      const scale = shape === 'twoHorse'
+        ? ' This one is a straight two-way fight — no ballots to survive, just you, them, and the membership.'
+        : candidateIds.length >= 5
+          ? ' A crowded field: it will take the MPs several brutal ballots to whittle it down to two.'
+          : candidateIds.length === 4
+            ? ' A four-way race — a couple of ballots of attrition before the members get their say.'
+            : ' A tight field — one ballot of MPs, then it is down to the membership.';
       // if anyone owes you, you can cash that in to shore up your launch — any banked
       // favour counts (favours are one currency; kind records who owes you)
       const favour = (state.player.favours ?? [])[0];
@@ -2929,9 +2968,9 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         cardId: `forced_stand_${state.day}`,
         kind: 'leadershipStand',
         title: 'The leadership is vacant',
-        body: `The ${PARTIES[state.player.partyId].name} needs a new leader. ${field}, and the tea room is a hive of arithmetic. More than one colleague has glanced your way. Nomination papers close on Friday.`,
+        body: `The ${PARTIES[state.player.partyId].name} needs a new leader. ${field}, and the tea room is a hive of arithmetic.${scale} More than one colleague has glanced your way. Nomination papers close on Friday.`,
         choices,
-        payload: { candidateIds, advance: rng.int(7, 14), ...(favour ? { favourKind: favour.kind } : {}) },
+        payload: { candidateIds, shape, advance: rng.int(7, 14), ...(favour ? { favourKind: favour.kind } : {}) },
       };
     }
     case 'leadershipBallot': {
@@ -3108,6 +3147,21 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       }
       // ---- the members' campaign arc: hustings → head-to-head → final week ----
       const finalistName = characterName(state, contest.finalistId ?? '');
+      if (beat === 'alsoRans') {
+        // unique to a two-horse duel: the figures who never made the ballot line up
+        // behind one of you, and their people are worth courting
+        return {
+          cardId: `forced_alsorans_${state.day}`, kind: 'leadershipEpisode',
+          title: 'The also-rans line up',
+          body: `A straight fight, you and ${finalistName} — and no one else on the ballot. But the party's other big names, the ones who looked and decided not to run, still have followings worth having. As they weigh whom to endorse, how do you court them?`,
+          choices: [
+            { label: 'Woo the party grandees', sublabel: 'the establishment brings its blocs' },
+            { label: 'Rally the grassroots factions', sublabel: 'the activists bring the noise' },
+            { label: 'Stay above the horse-trading', sublabel: 'look like the unifier, win no favours' },
+          ],
+          payload: pass,
+        };
+      }
       if (beat === 'hustings') {
         return {
           cardId: `forced_hustings_${state.day}`, kind: 'leadershipEpisode',
@@ -4331,6 +4385,7 @@ export function resolveForcedChoice(
           pulled += take;
         }
         change = pulled;
+        contest.consolidated = true; // a pact is a one-time move — not re-brokerable every ballot
         if (frontId && rng.chance(0.35)) tallies[frontId] += 6; // a sympathy backlash for the leader
         flavour = `You broker an "anyone but ${characterName(state, frontId ?? '')}" pact, and the trailing camps rally to you as the stop-the-front-runner candidate.`;
       } else if (choiceIndex === 0) {
@@ -4650,6 +4705,26 @@ export function resolveForcedChoice(
       }
       // ---- the members' campaign arc ----
       const finalistName = characterName(state, contest.finalistId ?? '');
+      if (beat === 'alsoRans') {
+        contest.beatsDone = [...contest.beatsDone, 'alsoRans'];
+        let text = '';
+        if (choiceIndex === 0) {
+          // the grandees: solid bank, MP-friendly, but the base sniffs a stitch-up
+          setBank(3 + rng.int(0, 4)); gain('partyStanding', 2, 'Standing');
+          text = 'You dine the grandees and win their blessing. Their endorsements land with a thud of gravitas — and a faint whiff of the establishment closing ranks.';
+        } else if (choiceIndex === 1) {
+          // the grassroots: bank-heavy, amplified for the change candidate
+          const laneBoost = contest.lane === 'change' ? 3 : 0;
+          setBank(4 + rng.int(0, 4) + laneBoost); gain('profile', 2, 'Profile');
+          text = 'You go straight to the activists — the ones who actually knock the doors. They come across loudly, and the momentum in the halls is unmistakable.';
+        } else {
+          // above it: small, principled
+          setBank(rng.int(0, 2)); gain('integrity', 2, 'Integrity');
+          text = 'You decline to trade jobs for endorsements, and let the also-rans jump whichever way they like. Dignified — and the blocs mostly drift to your opponent.';
+        }
+        state.forcedQueue.unshift({ kind: 'leadershipEpisode', payload: payloadWith(contest, { beat: 'hustings' }) });
+        return { text, deltas };
+      }
       if (beat === 'hustings') {
         contest.beatsDone = [...contest.beatsDone, 'hustings'];
         let text = '';
