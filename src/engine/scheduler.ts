@@ -736,12 +736,17 @@ export function nextStep(state: GameState, rng: Rng): void {
         return;
       }
       // no pledged job to honour: the new leader forms their government and decides the
-      // player's fate — kept on, moved, promoted, sacked, or (from the benches) brought in
-      const { fate, officeId } = decideFormationFate(state, rng);
-      if (fate !== 'none') {
-        state.forcedQueue.push({ kind: 'governmentFormation', payload: { leaderId, fate, officeId } });
-        nextStep(state, rng);
-        return;
+      // player's fate — kept on, moved, promoted, sacked, or (from the benches) brought in.
+      // Re-check circumstances: the card was scheduled 7–35 days ago and things may have
+      // moved on (seat lost to an election, floor crossed, party dropped out of the top
+      // two), in which case a "new PM decides your fate" beat no longer applies.
+      if (state.player.hasSeat && onFrontbenchTrack(state) && canHoldOffice(state)) {
+        const { fate, officeId } = decideFormationFate(state, rng);
+        if (fate !== 'none') {
+          state.forcedQueue.push({ kind: 'governmentFormation', payload: { leaderId, fate, officeId } });
+          nextStep(state, rng);
+          return;
+        }
       }
     }
   }

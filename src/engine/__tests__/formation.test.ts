@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import {
   resolveNpcLeadership, decideFormationFate, materializeForced, resolveForcedChoice,
+  openNpcContest,
 } from '../career';
+import { nextStep } from '../scheduler';
 import { GameState, OfficeId } from '../../types/game';
 import { CABINET_OFFICES } from '../../data/offices';
 import { Rng } from '../rng';
@@ -170,5 +172,95 @@ describe('governmentFormation card resolution', () => {
     const brought = build(g2, 'broughtIn', 'sos_health');
     resolveForcedChoice(g2, new Rng(1), brought, 0);
     expect(g2.player.officeId).toBe('sos_health');
+  });
+});
+
+describe('fix pass — audit follow-ups', () => {
+  // Fix #3: a junior minister (not a cabinet post) is retained/moved/sacked, not treated
+  // as a backbencher to be "brought in"
+  it('classifies a Minister of State as a sitting minister, not a backbencher', () => {
+    let anyInOffice = false;
+    for (let seed = 1; seed <= 8; seed++) {
+      const g = makeGame(seed);
+      g.player.officeId = 'min_health'; // tier-3 Minister of State (not in CABINET_OFFICES)
+      g.player.stats = { profile: 70, partyStanding: 72, competence: 78, constituencyApproval: 65, integrity: 65 };
+      const rel = g.relationships.find((r) => r.kind === 'leader');
+      if (rel) rel.value = 40;
+      const { fate } = decideFormationFate(g, new Rng(seed));
+      expect(['retained', 'moved', 'promoted', 'sacked']).toContain(fate);
+      expect(['broughtIn', 'none']).not.toContain(fate);
+      anyInOffice = true;
+    }
+    expect(anyInOffice).toBe(true);
+  });
+
+  // Fix #4: the "brought in" copy reflects the destination rank
+  it('brought-in wording matches the destination office rank', () => {
+    const textFor = (officeId: OfficeId) => {
+      const g = makeGame();
+      g.player.officeId = null; // a genuine backbencher of the governing party
+      const card = materializeForced(g, new Rng(1), {
+        kind: 'governmentFormation', payload: { leaderId: g.government.pmId, fate: 'broughtIn', officeId },
+      });
+      return resolveForcedChoice(g, new Rng(1), card, 0).text;
+    };
+    expect(textFor('sos_health')).toContain('the cabinet');
+    expect(textFor('sos_health')).toContain('seat at the table');
+    const mos = textFor('min_health');
+    expect(mos).toContain('a ministerial role');
+    expect(mos).not.toContain('seat at the table');
+    const junior = textFor('pps');
+    expect(junior).toContain('a junior role');
+    expect(junior).not.toContain('seat at the table');
+  });
+
+  // Fix #2: the fate card must not fire if circumstances changed after it was scheduled.
+  // These are deliberately set up so the fate WOULD be non-none (a card would fire without
+  // the guard) — otherwise the test would be tautological. The flag being consumed proves
+  // the scheduler handler was actually reached and the guard (not pre-emption) suppressed it.
+  it('suppresses the fate card for a player whose party is no longer front-bench', () => {
+    const g = makeGame();
+    g.player.partyId = 'green';        // seat kept, but party is neither gov nor opposition
+    g.player.officeId = 'min_health';  // still holds an office → a fate WOULD be decided
+    // control: with a held office, decideFormationFate never returns 'none'
+    expect(decideFormationFate(g, new Rng(3)).fate).not.toBe('none');
+    g.player.flags._npcLeaderReshuffleBy = g.day;
+    g.currentCard = null;
+    g.forcedQueue.length = 0;
+    nextStep(g, new Rng(3));
+    // handler ran (flag consumed) but the onFrontbenchTrack guard blocked the card
+    expect(g.player.flags._npcLeaderReshuffleBy).toBeUndefined();
+    const cur = g.currentCard as { kind?: string } | null;
+    expect(cur?.kind).not.toBe('governmentFormation');
+    expect(g.forcedQueue.some((e) => e.kind === 'governmentFormation')).toBe(false);
+  });
+
+  it('suppresses the fate card for a seated minister who lost their seat', () => {
+    const g = makeGame();
+    seatPlayer(g, 'sos_home'); // a sitting cabinet minister — a fate WOULD be decided
+    expect(decideFormationFate(g, new Rng(3)).fate).not.toBe('none');
+    g.player.hasSeat = false;  // ...but the seat is gone since the beat was scheduled
+    g.player.flags._npcLeaderReshuffleBy = g.day;
+    g.currentCard = null;
+    g.forcedQueue.length = 0;
+    nextStep(g, new Rng(3));
+    const cur = g.currentCard as { kind?: string } | null;
+    expect(cur?.kind).not.toBe('governmentFormation');
+    expect(g.forcedQueue.some((e) => e.kind === 'governmentFormation')).toBe(false);
+  });
+
+  // Fix #5: post-election successions run a longer interim than mid-term ones
+  it('elongates a post-election contest by the extra-delay days', () => {
+    const base = makeGame();
+    openNpcContest(base, new Rng(1), 'con');
+    const baseDelay = base.pendingContests![0].resolveDay - base.day;
+    expect(baseDelay).toBeGreaterThanOrEqual(28);
+    expect(baseDelay).toBeLessThanOrEqual(56);
+
+    const elongated = makeGame();
+    openNpcContest(elongated, new Rng(1), 'con', { extraDelayDays: 20 });
+    const longDelay = elongated.pendingContests![0].resolveDay - elongated.day;
+    // same seed + identical code path before the additive delay → exactly +20
+    expect(longDelay - baseDelay).toBe(20);
   });
 });

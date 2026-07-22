@@ -1047,7 +1047,14 @@ function pickAppointee(
     fresh.loyalty = Math.round(clamp((fresh.loyalty ?? 0) + 15, -100, 100));
     return fresh;
   }
-  const chosen = [...workingPool].sort((a, b) => appointeeScore(b, tilt, rng) - appointeeScore(a, tilt, rng))[0];
+  // score each candidate ONCE (drawing the noise inside a sort comparator would make
+  // it inconsistent), then take the strongest
+  let chosen = workingPool[0];
+  let best = appointeeScore(chosen, tilt, rng);
+  for (let i = 1; i < workingPool.length; i++) {
+    const s = appointeeScore(workingPool[i], tilt, rng);
+    if (s > best) { best = s; chosen = workingPool[i]; }
+  }
   const idx = workingPool.indexOf(chosen);
   if (idx >= 0) workingPool.splice(idx, 1);
   chosen.loyalty = Math.round(clamp((chosen.loyalty ?? 0) + 15, -100, 100));
@@ -1155,7 +1162,13 @@ function runBenchChurn(
     // this vacancy, then backfill THEIR old seat with fresh blood. One hop only.
     const eligible = movable.filter((m) => seniority(post.officeId) >= seniority(m.officeId));
     if (eligible.length > 0 && lateralCount < LATERAL_CAP && rng.chance(lateralChance(post.officeId))) {
-      const mover = [...eligible].sort((a, b) => moverScore(b.c) - moverScore(a.c))[0];
+      // score each candidate once, then take the strongest (see note in pickAppointee)
+      let mover = eligible[0];
+      let bestMover = moverScore(mover.c);
+      for (let i = 1; i < eligible.length; i++) {
+        const s = moverScore(eligible[i].c);
+        if (s > bestMover) { bestMover = s; mover = eligible[i]; }
+      }
       const fromOffice = mover.officeId;
       const promotion = seniority(post.officeId) > seniority(fromOffice);
       mover.c.officeId = post.officeId;
@@ -1191,6 +1204,16 @@ function runBenchChurn(
   return moves;
 }
 
+/** the rank-noun for a destination office: 'the cabinet' / 'the shadow cabinet' for a
+ *  full cabinet post, 'a ministerial role' for a Minister of State, 'a junior role' for
+ *  a whip or PPS — so a "brought in" beat reads correctly at every rank. */
+function roleNoun(officeId: OfficeId, inGov: boolean): string {
+  const tier = OFFICES[officeId]?.tier ?? 0;
+  if (tier >= 4) return inGov ? 'the cabinet' : 'the shadow cabinet';
+  if (tier === 3) return 'a ministerial role';
+  return 'a junior role';
+}
+
 export type FormationFate = 'retained' | 'moved' | 'promoted' | 'sacked' | 'broughtIn' | 'none';
 
 /** When a new NPC leader forms their government, decide what becomes of the player,
@@ -1204,7 +1227,9 @@ export function decideFormationFate(state: GameState, rng: Rng): { fate: Formati
   const cur = state.player.officeId;
   const scandal = !!state.player.flags.scandal;
 
-  if (cur && CABINET_OFFICES.includes(cur)) {
+  // any government office (cabinet, Minister of State, whip or PPS) — a sitting minister
+  // whom the new leader keeps, moves or sacks. The handler already excludes the leader.
+  if (cur) {
     const score = eligibilityScore(state, cur) + leaderVal * 0.25 + rng.normal(0, 8) - (scandal ? 18 : 0);
     if (score < 44 || (scandal && rng.chance(0.6))) return { fate: 'sacked' };
     if (score >= 58) {
@@ -2018,7 +2043,9 @@ export function openPlayerChallenge(state: GameState, rng: Rng): void {
   openLeadershipVacancy(state, rng, state.player.partyId);
 }
 
-export function openLeadershipVacancy(state: GameState, rng: Rng, party: PartyId): void {
+export function openLeadershipVacancy(
+  state: GameState, rng: Rng, party: PartyId, opts: { extraDelayDays?: number } = {}
+): void {
   const isPlayerParty = party === state.player.partyId;
   const playerContest = isPlayerParty
     && playerCanStandForLeader(state) && playerCredibleForLeadership(state, rng);
@@ -2030,7 +2057,7 @@ export function openLeadershipVacancy(state: GameState, rng: Rng, party: PartyId
     if (isPlayerParty && state.player.hasSeat && !playerIsLeader(state)) {
       startBacking(state, rng, party, pickContestCandidates(state, rng, party));
     } else {
-      openNpcContest(state, rng, party);
+      openNpcContest(state, rng, party, opts);
     }
     return;
   }
@@ -2209,11 +2236,13 @@ export function resolveNpcLeadership(
     // ~30% of the bench: a bit more than a routine NPC reshuffle, well under a full purge.
     // Bias to the weakest, with noise, so the churn set is heterogeneous.
     const churnCount = Math.max(1, Math.round(ownPosts.length * (0.25 + rng.next() * 0.12)));
-    const churnPosts = [...ownPosts]
-      .sort((a, b) =>
-        (state.characters[a.characterId]?.competence ?? 100) + rng.normal(0, 14)
-        - ((state.characters[b.characterId]?.competence ?? 100) + rng.normal(0, 14)))
-      .slice(0, churnCount);
+    // key each post ONCE (weakest-biased with noise), then take the churnCount lowest —
+    // drawing the noise inside the comparator would make the sort inconsistent
+    const churnPosts = ownPosts
+      .map((p) => ({ p, k: (state.characters[p.characterId]?.competence ?? 100) + rng.normal(0, 14) }))
+      .sort((a, b) => a.k - b.k)
+      .slice(0, churnCount)
+      .map((e) => e.p);
     const moves = runBenchChurn(state, rng, { side, party, churnPosts, tilt: 'balance' });
     state.history.push({
       kind: 'event', date: state.day,
@@ -2255,7 +2284,9 @@ export function startBacking(state: GameState, rng: Rng, party: PartyId, survivo
  *  is recorded in state.pendingContests to resolve itself a few weeks later — surfacing as
  *  news headlines (open → [hustings] → result) rather than a silent same-tick appointment.
  *  See resolvePendingContests. */
-export function openNpcContest(state: GameState, rng: Rng, party: PartyId): void {
+export function openNpcContest(
+  state: GameState, rng: Rng, party: PartyId, opts: { extraDelayDays?: number } = {}
+): void {
   const pending = (state.pendingContests ??= []);
   // never stack a second contest on a party already mid-contest
   if (pending.some((c) => c.party === party)) return;
@@ -2270,7 +2301,9 @@ export function openNpcContest(state: GameState, rng: Rng, party: PartyId): void
   const winnerId = contenders
     .map((id) => ({ id, s: rivalStrengthOf(state.characters[id], rng) }))
     .reduce((a, b) => (a.s >= b.s ? a : b)).id;
-  const resolveDay = state.day + rng.int(28, 56);
+  // post-election successions run a bit longer (a more realistic interim before the new
+  // leader is installed); mid-term contests use the base window
+  const resolveDay = state.day + rng.int(28, 56) + (opts.extraDelayDays ?? 0);
   pending.push({ party, contenders, winnerId, openDay: state.day, resolveDay, beatsDone: [] });
   const names = contenders.map((id) => characterName(state, id));
   const field = names.length >= 2
@@ -3036,7 +3069,7 @@ function settleNpcLeaderships(
     const gap = (result.seats[newGov] ?? 0) - (result.seats[prevGov] ?? 0);
     const narrow = result.outcome !== 'majority' || gap < 60;
     const stayChance = narrow ? 0.22 : 0;
-    if (!rng.chance(stayChance)) openLeadershipVacancy(state, rng, prevGov);
+    if (!rng.chance(stayChance)) openLeadershipVacancy(state, rng, prevGov, { extraDelayDays: rng.int(14, 28) });
   }
 
   // the party that WAS the official opposition (no change of government). A leader who
@@ -3058,7 +3091,7 @@ function settleNpcLeaderships(
       else if (gained < 0) p += 0.1;
       if (result.outcome !== 'majority') p -= 0.22; // denied them a majority — real credit
     }
-    if (rng.chance(clamp(p, 0.1, 0.96))) openLeadershipVacancy(state, rng, prevOpp);
+    if (rng.chance(clamp(p, 0.1, 0.96))) openLeadershipVacancy(state, rng, prevOpp, { extraDelayDays: rng.int(14, 28) });
   }
 
   // minor parties churn their leaders on a gentler performance gradient too:
@@ -3073,7 +3106,7 @@ function settleNpcLeaderships(
     else if (gained > 3) prob -= 0.22;
     else if (gained < -10) prob += 0.24;
     else if (gained < 0) prob += 0.1;
-    if (rng.chance(clamp(prob, 0.05, 0.85))) openLeadershipVacancy(state, rng, p);
+    if (rng.chance(clamp(prob, 0.05, 0.85))) openLeadershipVacancy(state, rng, p, { extraDelayDays: rng.int(14, 28) });
   }
 }
 
@@ -3641,6 +3674,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const teamWord = inGov ? 'government' : 'shadow cabinet';
       const curTitle = state.player.officeId ? officeTitle(state.player.officeId, inGov) : 'your post';
       const newTitle = targetOffice ? officeTitle(targetOffice, inGov) : '';
+      const wasCabinet = !!state.player.officeId && (OFFICES[state.player.officeId]?.tier ?? 0) >= 4;
       const card = (title: string, body: string, choices: { label: string; sublabel?: string }[]): DrawnCard => ({
         cardId: `forced_govformation_${state.day}`, kind: 'governmentFormation',
         title, body, choices, payload: { ...(ev.payload ?? {}), advance: rng.int(5, 12) },
@@ -3648,7 +3682,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       if (fate === 'sacked') {
         return card(
           `${leaderName} lets you go`,
-          `${leaderName} is forming a ${teamWord}, and you are not in it. The call comes early — a short, careful conversation — and then the red box is gone. After ${curTitle}, you are out. How you leave is up to you.`,
+          `${leaderName} is forming a ${teamWord}, and you are not in it. The call comes early — a short, careful conversation — and then ${wasCabinet ? 'the red box is gone' : 'the job is gone'}. After ${curTitle}, you are out. How you leave is up to you.`,
           [{ label: 'Leave with grace', sublabel: 'the loyal soldier; a debt the new leader may remember' },
            { label: 'Go out fighting', sublabel: 'a parting shot the papers will love' }]
         );
@@ -5615,7 +5649,13 @@ export function resolveForcedChoice(
           if (tilt === 'talent') return c.competence + rng.normal(0, 12);
           return rng.normal(0, 100);
         };
-        churnPosts = [...ownPosts].sort((a, b) => priority(a) - priority(b)).slice(0, churnCount);
+        // key each post ONCE (drawing the noise inside the comparator would make the
+        // sort inconsistent), then take the lowest-priority churnCount
+        churnPosts = ownPosts
+          .map((p) => ({ p, k: priority(p) }))
+          .sort((a, b) => a.k - b.k)
+          .slice(0, churnCount)
+          .map((e) => e.p);
       }
 
       // drop / promote / lateral / backfill — the shared heterogeneous churn engine
@@ -5663,7 +5703,6 @@ export function resolveForcedChoice(
       const leaderId = card.payload?.leaderId as string | undefined;
       const leaderName = leaderId ? characterName(state, leaderId) : 'the new leader';
       const inGov = playerInGovernment(state);
-      const benchWord = inGov ? 'cabinet' : 'shadow cabinet';
 
       if (fate === 'sacked') {
         const graceful = choiceIndex === 0;
@@ -5684,12 +5723,12 @@ export function resolveForcedChoice(
         if (choiceIndex === 0) {
           gain('partyStanding', 3, 'Standing');
           adjustRelationship(state, 'leader', 6); push('Leader', 6);
-          return { text: `You stay at your post. Continuity, the new ${inGov ? 'PM' : 'leader'} calls it; survival, the sketch-writers call it. Either way the red box is still yours, and a leader who kept you is a leader you now, cautiously, owe.`, deltas };
+          return { text: `You stay at your post. Continuity, the new ${inGov ? 'PM' : 'leader'} calls it; survival, the sketch-writers call it. Either way you keep the job, and a leader who kept you is a leader you now, cautiously, owe.`, deltas };
         }
         stripOffice(state, rng, 'resigned');
         gain('integrity', 5, 'Integrity'); gain('profile', 4, 'Profile');
         adjustRelationship(state, 'leader', -8); push('Leader', -8);
-        return { text: `You could have stayed. Instead you go — a resignation on principle that the papers can't quite decode, and a reputation for putting conviction over the ministerial car. ${leaderName} did not expect it, and will not forget it.`, deltas };
+        return { text: `You could have stayed. Instead you go — a resignation on principle that the papers can't quite decode, and a reputation for putting conviction over office. ${leaderName} did not expect it, and will not forget it.`, deltas };
       }
 
       if (fate === 'moved' || fate === 'promoted') {
@@ -5702,7 +5741,7 @@ export function resolveForcedChoice(
           adjustRelationship(state, 'leader', 4); push('Leader', 4);
           return { text: promoted
             ? `You take the step up. ${leaderName} wanted a big name in ${title}, and chose you. The brief is heavier, the scrutiny fiercer — but this is how careers are made.`
-            : `You accept the move. A new brief, a new department, the same red box in a different colour. ${title} it is; the civil service welcome pack is already on the desk.`, deltas };
+            : `You accept the move. A new brief, a fresh corner of the operation — ${title} it is, and the machine is already briefing you in.`, deltas };
         }
         stripOffice(state, rng, 'resigned');
         gain('integrity', 3, 'Integrity'); gain('profile', 2, 'Profile');
@@ -5714,9 +5753,11 @@ export function resolveForcedChoice(
       if (choiceIndex === 0 && targetOffice) {
         giveOffice(state, rng, targetOffice, 'appointed');
         const title = officeTitle(targetOffice, inGov);
+        const dest = roleNoun(targetOffice, inGov); // 'the cabinet' | 'a ministerial role' | 'a junior role'
+        const isCabinet = (OFFICES[targetOffice]?.tier ?? 0) >= 4;
         gain('profile', 5, 'Profile'); gain('partyStanding', 3, 'Standing');
         adjustRelationship(state, 'leader', 6); push('Leader', 6);
-        return { text: `You take the call. From the back benches to the ${benchWord} in a single conversation — ${title}, and a seat at the table you have been watching from the cheap seats. ${leaderName}'s gamble on you starts now.`, deltas };
+        return { text: `You take the call. From the back benches to ${dest} in a single conversation — ${title}${isCabinet ? ', and a seat at the table you have been watching from the cheap seats' : ''}. ${leaderName}'s gamble on you starts now.`, deltas };
       }
       gain('integrity', 2, 'Integrity');
       return { text: `You thank ${leaderName} and decline. The back benches suit you for now — free of collective responsibility, free to pick your fights. There will, you tell yourself, be other offers.`, deltas };
