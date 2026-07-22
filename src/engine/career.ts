@@ -3691,8 +3691,8 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         return card(
           `${leaderName} keeps you on`,
           `The new ${leaderTitle} is assembling a ${teamWord} — and, to relief or surprise, there is a place in it for you. ${leaderName} wants you to stay on as ${curTitle}. Serve the new regime, or make a point of going?`,
-          [{ label: 'Serve on', sublabel: `stay as ${curTitle}` },
-           { label: 'Resign in protest', sublabel: 'principle over position — back to the benches' }]
+          [{ label: 'Serve on' },
+           { label: 'Resign in protest' }]
         );
       }
       if (fate === 'moved' || fate === 'promoted') {
