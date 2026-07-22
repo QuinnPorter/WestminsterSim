@@ -167,6 +167,9 @@ describe('rebalance targets (difficulty & coalitions)', () => {
   const forcedOut = sum((r) => r.forcedOutLeader);
   const honoured = sum((r) => r.honouredPledge);
   const broken = sum((r) => r.brokenPledge);
+  const pledgeHonoured = sum((r) => r.contestPledgeHonoured);
+  const pledgeBroken = sum((r) => r.contestPledgeBroken);
+  const finalistWithdrew = sum((r) => r.finalistWithdrew);
   const coalitionOffice = results.filter((r) => r.coalitionOfficeWon).length;
   const leaderRate = results.filter((r) => r.becameLeader).length / RUNS;
   const tenures = results.map((r) => r.avgPostTenureYears).filter((t) => t > 0);
@@ -179,6 +182,7 @@ describe('rebalance targets (difficulty & coalitions)', () => {
     subMajRate: +(subMajority / totalElections).toFixed(3),
     coalitionRateOfSubMaj: +(coalitions / Math.max(1, subMajority)).toFixed(3),
     coalitions, fellEarly, forcedOut, honoured, broken, coalitionOffice,
+    pledgeHonoured, pledgeBroken, finalistWithdrew,
     leaderRate: +leaderRate.toFixed(3), avgTenure: +avgTenure.toFixed(2),
     avgElections: +avgElections.toFixed(2),
   }));

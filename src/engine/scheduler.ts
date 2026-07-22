@@ -10,14 +10,27 @@ import {
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS, offerThreshold,
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, canChairCommittee, pickCommittee,
+  resolvePendingContests,
 } from './career';
 import { OFFICES } from '../data/offices';
-import { relationshipValue } from './relationships';
+import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
 import { runElection } from './election';
 import { gainStat } from './effects';
 import { partyPolling, pollingLead, lastElectionShares } from './polling';
 import { isoToDay, yearOf, monthOf } from './clock';
 import { Rng } from './rng';
+
+/** a leader crowned without a real contest (a coronation or a squeezed-out challenger)
+ *  carries a soft, never-tested mandate: their authority frays faster until they have
+ *  either survived a heave or won an election. Adds to the pressure that triggers one.
+ *  Decays to nothing after ~2 years — by then they are a known quantity. */
+function softMandatePressure(state: GameState): number {
+  const set = state.player.flags._softMandate as number | undefined;
+  if (set === undefined) return 0;
+  const age = state.day - set;
+  if (age >= 730) return 0;
+  return 10 * (1 - age / 730);
+}
 
 // ---------- calendar ----------
 
@@ -375,6 +388,7 @@ const PLAYER_PM_ELECTION_PROMPT = 0.08;
 const PM_LONGEVITY_RESIGN = 0.015;      // PM stands down after a long innings
 const PM_SCANDAL_RESIGN = 0.0025;       // PM felled by scandal
 const LEADER_COLLAPSE_HAZARD = 0.028;   // NPC leader felled by a sustained polling mire
+const NPC_OPP_COUP_HAZARD_CAP = 0.015;  // rare, EARNED mid-term coup of an NPC opposition leader
 const NPC_LEADER_SCANDAL = 0.0025;      // an NPC leader felled by scandal
 const NPC_RESHUFFLE_HAZARD = 0.04;      // an NPC-led front bench reshuffles itself
 const NPC_FRONTBENCH_RETIRE = 0.012;    // an NPC frontbencher steps back
@@ -574,6 +588,10 @@ export function nextStep(state: GameState, rng: Rng): void {
   }
 
   // 3. systemic checks
+  // resolve any NPC leadership contests under way (installs the new leader when the
+  // contest window closes; emits interim news beats). Shows no card, so just fall through.
+  resolvePendingContests(state, rng);
+
   // election due?
   if (state.day >= state.nextElectionBy - 60) {
     queueGeneralElection(state);
@@ -687,6 +705,36 @@ export function nextStep(state: GameState, rng: Rng): void {
     const due = state.player.flags._npcLeaderReshuffleBy as number | undefined;
     if (!playerIsLeader(state) && due !== undefined && state.day >= due) {
       delete state.player.flags._npcLeaderReshuffleBy;
+      // a job pledged TO the player during a contest comes due when the debtor now leads.
+      // Prune dead-letter pledges (the debtor never made it / lost power); honour a live
+      // one ~85% of the time, betray it (with compensation) the rest.
+      const leaderId = getRelationship(state, 'leader')?.characterId;
+      state.player.promises = (state.player.promises ?? []).filter(
+        (p) => p.direction !== 'received' || !!state.characters[p.characterId]?.active
+      );
+      const pledgeIdx = (state.player.promises ?? []).findIndex(
+        (p) => p.direction === 'received' && p.characterId === leaderId
+      );
+      if (leaderId && pledgeIdx >= 0 && canHoldOffice(state)) {
+        const pledge = state.player.promises[pledgeIdx];
+        state.player.promises.splice(pledgeIdx, 1);
+        if (rng.chance(0.85)) {
+          state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: pledge.officeId, fromPledge: true } });
+          nextStep(state, rng);
+          return;
+        }
+        // betrayal — the leader reneges; a cold shoulder, and a favour banked in apology
+        (state.player.favours ??= []).push({
+          kind: 'leader', characterId: leaderId, note: 'reneged on a promise they made you',
+        });
+        adjustRelationship(state, 'leader', -12);
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${characterName(state, leaderId)} passes over ${state.player.name}, breaking a promise made in the leadership contest`,
+        });
+        nextStep(state, rng);
+        return;
+      }
       runReshuffle(state, rng);
       if (state.forcedQueue.length > 0) {
         nextStep(state, rng);
@@ -771,6 +819,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     if (state.player.flags.scandal) pressure += 18;
     pressure += state.player.rebellionCount * 6;
     if (tenureYears > 4) pressure += (tenureYears - 4) * 5;
+    pressure += softMandatePressure(state);
     const hazard = Math.min(0.16, pressure / 150);
     if (hazard > 0 && rng.chance(hazard)) {
       // most authority crises are survivable; a "brutal" one can topple even a strong
@@ -805,6 +854,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     pressure += state.player.rebellionCount * 4;
     if (tenureYears > 3) pressure += (tenureYears - 3) * 3;
     if (polls < tookOver - 2) pressure += (tookOver - polls) * 0.9;
+    pressure += softMandatePressure(state);
     const hazard = Math.min(0.1, pressure / 280);
     if (hazard > 0 && rng.chance(hazard)) {
       if (rng.chance(0.4)) state.forcedQueue.push({ kind: 'resignPledge' });
@@ -1089,6 +1139,36 @@ export function nextStep(state: GameState, rng: Rng): void {
       openLeadershipVacancy(state, rng, party);
       nextStep(state, rng);
       return;
+    }
+
+    // a rare, EARNED mid-term coup of an NPC opposition leader. Unlike the polling
+    // collapse above (which needs a genuine slide or wipeout), this catches a leader who
+    // has simply run out of road — long tenure and/or a quiet drift below the polling they
+    // inherited. Mirrors the player-LO heave model at a far lower rate, so a fresh or
+    // over-performing leader is essentially safe. Opposition only (the PM has their own
+    // pressures elsewhere). Tenure comes from loHistory; a missing/mismatched record reads
+    // as tenure 0 and is gated out, so older saves degrade to a safe no-op.
+    if (!isGov) {
+      const loSpell = state.loHistory?.[state.loHistory.length - 1];
+      const npcTenureYears = loSpell && loSpell.characterId === leaderId
+        ? (state.day - loSpell.startDay) / 365
+        : 0;
+      const inherited = (state.government.loInheritedPolls as number) ?? polls;
+      let pressure = 0;
+      if (npcTenureYears > 3) pressure += (npcTenureYears - 3) * 3;
+      if (polls < inherited - 2) pressure += (inherited - polls) * 0.9;
+      if (polls < BACKSTOP_FLOOR) pressure += (BACKSTOP_FLOOR - polls) * 0.5;
+      const coupHazard = Math.min(NPC_OPP_COUP_HAZARD_CAP, pressure / 900);
+      if (npcTenureYears > 2 && coupHazard > 0 && rng.chance(coupHazard)) {
+        const leaderName = state.characters[leaderId]?.name ?? 'The leader';
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${leaderName} is ousted as ${PARTIES[party].shortName} leader in a party coup`,
+        });
+        openLeadershipVacancy(state, rng, party);
+        nextStep(state, rng);
+        return;
+      }
     }
 
     // periodic NPC reshuffles and the very occasional retirement

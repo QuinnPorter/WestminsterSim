@@ -3,7 +3,7 @@ import { ALL_CARDS } from '../content/cards';
 import {
   nextStep, resolveCalendarChoice, resolveEarlyElectionChoice,
 } from './scheduler';
-import { resolveForcedChoice, dissolveCoalition } from './career';
+import { resolveForcedChoice, dissolveCoalition, openPlayerChallenge } from './career';
 import { applyEffects } from './effects';
 import { resolveTokens } from './cardEngine';
 import { updatePolling, samplePolling } from './polling';
@@ -41,7 +41,7 @@ export function resolveChoiceCore(game: GameState, rng: Rng, choiceIndex: number
       game.forcedQueue.push({ kind: 'resignPrompt', payload: { reason: 'scandal' } });
     }
     if (triggered === 'leadershipChallenge') {
-      game.forcedQueue.push({ kind: 'leadershipStand' });
+      openPlayerChallenge(game, rng);
     }
     if (triggered === 'coalitionBreak') {
       dissolveCoalition(game, rng);

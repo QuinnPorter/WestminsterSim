@@ -25,7 +25,7 @@ export interface CreationInput {
   seed?: number;
 }
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -54,6 +54,7 @@ function buildPlayer(input: CreationInput, seatId: string, startDay: number): Pl
     enteredParliament: startDay,
     causes: (input.causes ?? []).slice(0, 3),
     favours: [],
+    promises: [],
   };
 }
 
@@ -207,6 +208,7 @@ export function createNewGame(input: CreationInput): GameState {
       ...(data.confidencePartner ? { confidencePartner: data.confidencePartner } : {}),
       ...(data.coalitionPartner ? { coalitionPartner: data.coalitionPartner } : {}),
       termsInPower: 1,
+      loInheritedPolls: (data.baselineShares[oppParty] ?? 0) * 100,
     },
     polling: { shares: { ...data.baselineShares }, lastUpdated: startDay },
     pollHistory: [{ day: startDay, shares: { ...data.baselineShares } }],
@@ -228,6 +230,7 @@ export function createNewGame(input: CreationInput): GameState {
     currentCard: null,
     pendingElectionId: null,
     forcedQueue: [],
+    pendingContests: [],
     cardHistory: {},
     calendarDone: {},
     lastCardId: null,

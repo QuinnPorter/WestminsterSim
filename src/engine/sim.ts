@@ -34,6 +34,9 @@ export interface SimSummary {
   forcedOutLeader: number;
   honouredPledge: number;
   brokenPledge: number;
+  contestPledgeHonoured: number;
+  contestPledgeBroken: number;
+  finalistWithdrew: number;
   /** the player's (minor) party won a government office via a coalition */
   coalitionOfficeWon: boolean;
   /** mean length of the player's office spells, in years (cycling cadence) */
@@ -166,6 +169,10 @@ export function simulateCareer(opts: SimOptions): SimSummary {
     forcedOutLeader: countH(/is ousted as leader|is forced out as Prime Minister|breaks pledge to stand down/),
     honouredPledge: countH(/stands down as promised/),
     brokenPledge: countH(/breaks pledge to stand down/),
+    // leadership-contest ledger: job promises honoured/broken, and finalist withdrawals
+    contestPledgeHonoured: countH(/honours the deals struck during the leadership/),
+    contestPledgeBroken: countH(/breaks the promises made to win the leadership/),
+    finalistWithdrew: countH(/withdraws from the leadership race/),
     coalitionOfficeWon: headlines.some((h) => /takes a senior government role|joins a coalition government/.test(h)),
     avgPostTenureYears: spellCount > 0 ? (spellSum / spellCount) / 365 : 0,
     npcPmResigned: headlines.some((h) =>

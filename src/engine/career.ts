@@ -1,7 +1,7 @@
 import {
-  CabinetPost, CauseId, Character, DepartmentId, DrawnCard, ElectionResult, ForcedEvent, GameState, HistoryEntry,
-  LegacySummary, Mentor, OfficeId, PartyId, Player, PlayerStats, PmTenure, RegionId, Relationship,
-  RelationshipKind, StatDelta,
+  CabinetPost, CauseId, Character, ContestState, DepartmentId, DrawnCard, ElectionResult, ForcedEvent,
+  GameState, HistoryEntry, LegacySummary, Mentor, NpcContest, OfficeId, PartyId, Player, PlayerStats, PmTenure, RegionId,
+  Relationship, RelationshipKind, StatDelta,
 } from '../types/game';
 import type { CreationInput } from './newGame';
 import { COMMITTEE_NAMES, committeeChairTitle } from '../data/committees';
@@ -988,6 +988,8 @@ export function npcFrontbencherRetires(state: GameState, rng: Rng, party: PartyI
 export function leadershipBaseSupport(state: GameState): number {
   const s = state.player.stats;
   const pastLosses = (state.player.flags._contestLosses as number) ?? 0;
+  const brokenPromises = (state.player.flags._brokenPromises as number) ?? 0;
+  const nearMiss = state.player.flags._nearMiss !== undefined ? 5 : 0;
   return clamp(
     0.28 * s.partyStanding +
       0.18 * s.profile +
@@ -996,9 +998,13 @@ export function leadershipBaseSupport(state: GameState): number {
       (playerTier(state) >= 4 ? 6 : 0) +
       (state.player.flags._isDeputyPM ? 12 : 0) +
       // a respected select-committee chair is a credible backbench figure
-      (state.player.committeeChair || state.player.flags._wasCommitteeChair ? 3 : 0) -
+      (state.player.committeeChair || state.player.flags._wasCommitteeChair ? 3 : 0) +
+      // a narrow last defeat earns "next time it's yours" credit (cleared next contest)
+      nearMiss -
       3 * state.player.rebellionCount -
-      7 * pastLosses,
+      7 * pastLosses -
+      // a known promise-breaker: colleagues trust the next pledge less
+      4 * brokenPromises,
     5, 90
   );
 }
@@ -1023,6 +1029,8 @@ export function leadershipRecordScore(state: GameState): number {
   const seniority = Math.min(10, yearsServed * 0.7); // a small seniority bonus; caps ~14 years
   const publicAppeal = 0.5 * s.profile + 0.3 * s.competence + 0.2 * s.constituencyApproval;
   const pastLosses = (state.player.flags._contestLosses as number) ?? 0;
+  const brokenPromises = (state.player.flags._brokenPromises as number) ?? 0;
+  const nearMiss = state.player.flags._nearMiss !== undefined ? 5 : 0;
   // Calibrated to share a scale with fieldStrengthScore: a maxed tier-4 figure (all
   // stats ~90) lands ~85, matching a maxed rival, so a heavyweight player is NOT a
   // structural underdog against a heavyweight field — record decides the gap.
@@ -1032,9 +1040,11 @@ export function leadershipRecordScore(state: GameState): number {
       seniority +
       0.30 * publicAppeal +
       (state.player.flags._isDeputyPM ? 8 : 0) +
-      (state.player.committeeChair || state.player.flags._wasCommitteeChair ? 3 : 0) -
+      (state.player.committeeChair || state.player.flags._wasCommitteeChair ? 3 : 0) +
+      nearMiss -
       3 * state.player.rebellionCount -
-      6 * pastLosses,
+      6 * pastLosses -
+      4 * brokenPromises,
     0, 100
   );
 }
@@ -1324,6 +1334,304 @@ function contestSalt(state: GameState): number {
   return Math.abs(Math.floor(state.day)) % 7;
 }
 
+// ---------- contest state adapter ----------
+//
+// One `ContestState` object rides in `payload.contest` through every card of a
+// single leadership contest. Reads go through `contestFrom` and writes through
+// `payloadWith`, which ALSO mirrors the legacy flat keys (tallies/round/fieldSize/
+// justEliminated) so the materialize side and any rolled-back reader keep working.
+// An older save whose in-flight contest predates `contest` is reconstructed from
+// those flat keys with safe defaults — every scripted beat marked done, so it runs
+// plain ballots to an old-style final rather than sprouting new beats mid-stream.
+
+/** the scripted episode beats, in order — used as the "all done" default so a
+ *  reconstructed (old-save) contest fires none of them */
+const SCRIPTED_BEATS = ['launch', 'debate', 'scrutiny', 'hustings', 'headToHead', 'finalWeek'] as const;
+
+/** the player's opening members'-ballot appeal, from the day's stats. This is the
+ *  bank a contest starts with; courting the membership adds to it over the rounds.
+ *  Identical to the historical final-round `memberAppeal` blend, so a player who
+ *  never courts finals on exactly the old numbers (calibration anchor). */
+export function initialMemberBank(state: GameState): number {
+  const s = state.player.stats;
+  return 0.34 * s.profile + 0.22 * s.competence + 0.18 * s.constituencyApproval + 0.12 * s.integrity + 8;
+}
+
+/** read the contest state from a forced-event payload, reconstructing from the
+ *  legacy flat fields (and safe defaults) when a save predates `payload.contest` */
+export function contestFrom(state: GameState, payload: Record<string, unknown> | undefined): ContestState {
+  const existing = payload?.contest as ContestState | undefined;
+  if (existing) return { ...existing, mpTally: { ...existing.mpTally } };
+  return {
+    party: state.player.partyId,
+    shape: 'standard',
+    round: (payload?.round as number) ?? 1,
+    fieldSize: (payload?.fieldSize as number) ?? 3,
+    mpTally: { ...((payload?.tallies as Record<string, number>) ?? {}) },
+    memberBank: initialMemberBank(state),
+    momentum: 0,
+    beatsDone: [...SCRIPTED_BEATS],
+    justEliminated: (payload?.justEliminated as { name: string; swungTo: string }[]) ?? [],
+    finalistId: payload?.finalistId as string | undefined,
+    prevPlayerTally: payload?.prevPlayerTally as number | undefined,
+  };
+}
+
+/** build a forced-event payload carrying the contest state, mirroring the legacy
+ *  flat keys so the materialize readout (which reads `tallies`/`round`/…) is unchanged.
+ *  `extra` supplies per-card, non-contest fields (finalRound, advance, beat, …). */
+export function payloadWith(
+  contest: ContestState, extra: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    contest,
+    tallies: contest.mpTally,
+    round: contest.round,
+    fieldSize: contest.fieldSize,
+    justEliminated: contest.justEliminated,
+    ...(contest.finalistId !== undefined ? { finalistId: contest.finalistId } : {}),
+    ...(contest.prevPlayerTally !== undefined ? { prevPlayerTally: contest.prevPlayerTally } : {}),
+    ...extra,
+  };
+}
+
+/** map an implied win probability (0..1) to a bookmaker's-odds phrase for card
+ *  flavour. Pure and deterministic — consumes no rng, so it never perturbs the
+ *  seeded outcome stream. */
+export function impliedOddsLine(winChance: number): string {
+  const p = clamp(winChance, 0.02, 0.97);
+  // fractional odds against: (1-p)/p to 1, rounded to a familiar-looking ratio
+  const ratio = (1 - p) / p;
+  const FRACS: [number, string][] = [
+    [0.2, 'odds-on favourite'], [0.4, '1/2'], [0.6, '4/6'], [0.85, '4/5'],
+    [1.15, 'evens'], [1.6, '6/4'], [2.2, '2/1'], [3.2, '3/1'], [4.5, '4/1'],
+    [7, '6/1'], [12, '10/1'], [Infinity, 'a rank outsider'],
+  ];
+  const label = FRACS.find(([hi]) => ratio <= hi)?.[1] ?? 'evens';
+  return `The bookmakers have you as ${
+    label === 'odds-on favourite' || label === 'a rank outsider' ? label : `a ${label} shot`
+  }.`;
+}
+
+// ---------- contest episode sequencing ----------
+//
+// A contest is not just ballots: scripted episode beats are interleaved between the
+// numbered rounds so the campaign has texture — a launch (pick your lane) before the
+// first ballot, a TV debate after it, and a scrutiny round after the second where the
+// press digs through the player's real record. `nextScriptedBeat` decides which beat
+// (if any) is due before the UPCOMING ballot; `queueContestBallot` queues either that
+// episode (which then queues the ballot) or the ballot directly.
+
+/** the scripted beat due before `contest.round`, or null. Only standard-shape contests
+ *  run the elimination-stage beats; a two-horse race skips straight to the members' arc. */
+function nextScriptedBeat(contest: ContestState): 'debate' | 'scrutiny' | null {
+  if (contest.shape !== 'standard') return null;
+  if (contest.round === 2 && !contest.beatsDone.includes('debate')) return 'debate';
+  if (contest.round === 3 && !contest.beatsDone.includes('scrutiny')) return 'scrutiny';
+  return null;
+}
+
+/** queue the next numbered ballot — but first interleave any scripted episode that is
+ *  due (debate/scrutiny). The `extra` carries members'-final routing (finalRound/
+ *  finalistId), which is never preceded by an elimination-stage beat. */
+function queueContestBallot(
+  state: GameState, contest: ContestState, extra: Record<string, unknown> = {}
+): void {
+  const beat = extra.finalRound ? null : nextScriptedBeat(contest);
+  if (beat) {
+    const carried: ContestState = { ...contest, beatsDone: [...contest.beatsDone, beat] };
+    state.forcedQueue.unshift({
+      kind: 'leadershipEpisode',
+      payload: payloadWith(carried, { beat, pendingBallot: extra }),
+    });
+  } else {
+    state.forcedQueue.unshift({ kind: 'leadershipBallot', payload: payloadWith(contest, extra) });
+  }
+}
+
+/** the tactical plays available on an elimination ballot, given the standings. These are
+ *  APPENDED after the three base choices (work/court/attack), so the base indices never
+ *  move. Both the materialize (labels) and resolve (by key) read this. */
+function situationalPlays(state: GameState, contest: ContestState): { key: string; label: string; sublabel: string }[] {
+  const t = contest.mpTally;
+  const me = t.player ?? 0;
+  const rivals = Object.entries(t).filter(([id]) => id !== 'player' && state.characters[id])
+    .sort((a, b) => b[1] - a[1]);
+  if (rivals.length === 0) return [];
+  const total = rivals.length + 1;
+  const rank = 1 + rivals.filter(([, v]) => v > me).length;
+  const topId = rivals[0][0];
+  const topT = rivals[0][1];
+  const plays: { key: string; label: string; sublabel: string }[] = [];
+  // vote-lending: a clear front-runner can prop up a weaker rival to CHOOSE their final
+  // opponent — the Cleverly-2024 gambit, with the same risk of misjudging the arithmetic
+  if (rank === 1 && me - topT >= 12 && rivals.length >= 2) {
+    const weakId = rivals[rivals.length - 1][0];
+    plays.push({
+      key: `lend:${weakId}`,
+      label: `Lend votes to ${characterName(state, weakId)} — pick your final foe`,
+      sublabel: 'engineer an easier final — if the numbers hold',
+    });
+  }
+  // withdraw-and-deal: a trailing candidate can fold a losing hand WELL, trading their
+  // candidacy to the front-runner for a named office (the Granita move)
+  if (rank >= total - 1 && total >= 3) {
+    plays.push({
+      key: `withdraw:${topId}`,
+      label: `Withdraw — and name your price to ${characterName(state, topId)}`,
+      sublabel: 'trade a doomed run for a job at the top',
+    });
+  }
+  // stop-X: a trailing candidate can broker an "anyone but the front-runner" pact
+  if (rank >= 2 && rank <= 3 && topT - me >= 15) {
+    plays.push({
+      key: 'stopX',
+      label: `Broker an "anyone but ${characterName(state, topId)}" pact`,
+      sublabel: 'rally the field against the front-runner',
+    });
+  }
+  return plays;
+}
+
+/** the members' stage is a campaign in its own right, not a single card: a hustings
+ *  tour, a head-to-head debate, and the final week (postal votes locking in) all sit
+ *  before the members' verdict. Open it with the hustings; each arc episode queues the
+ *  next, and the final week queues the members' ballot itself. */
+function queueMembersFinal(state: GameState, contest: ContestState, finalistId: string): void {
+  const c: ContestState = { ...contest, finalistId };
+  state.forcedQueue.unshift({
+    kind: 'leadershipEpisode',
+    payload: payloadWith(c, { beat: 'hustings' }),
+  });
+}
+
+/** the openings a hostile press can dig into at the scrutiny round, drawn from the
+ *  player's ACTUAL record. Returns the most damaging first; an empty-ish record still
+ *  yields the generic "what do you really stand for" angle. */
+function scrutinyAngles(state: GameState): { key: string; line: string }[] {
+  const out: { key: string; line: string }[] = [];
+  if (state.player.flags.scandal) {
+    out.push({ key: 'scandal', line: 'the scandal still clinging to your name' });
+  }
+  if (state.player.rebellionCount > 0) {
+    out.push({
+      key: 'rebellion',
+      line: `the ${state.player.rebellionCount === 1 ? 'time you rebelled' : `${state.player.rebellionCount} times you rebelled`} against your own whip`,
+    });
+  }
+  const resignations = state.history.filter(
+    (h) => h.kind === 'roleChange' && h.how === 'resigned'
+  ).length;
+  if (resignations > 0) {
+    out.push({ key: 'resigned', line: 'the job you walked out on when it suited you' });
+  }
+  const declined = (state.player.flags._declinedOffers as number) ?? 0;
+  if (declined > 0) {
+    out.push({ key: 'declined', line: 'the promotions you turned down while others did the work' });
+  }
+  if ((state.player.flags._brokenPromises as number) ?? 0) {
+    out.push({ key: 'broken', line: 'the colleagues you promised jobs and then forgot' });
+  }
+  return out;
+}
+
+// ---------- contest shapes (the nomination stage) ----------
+//
+// Before the first ballot, the nominations decide the SHAPE of the contest: usually a
+// standard multi-candidate field, occasionally a two-horse race, and — rarely — a
+// coronation where one figure locks up the nominations before anyone else can file.
+
+/** a nomination lead this big can lock up the leadership before a contest even starts */
+const CORONATION_GAP = 20;
+/** a clear gap back to third makes the top two a straight fight */
+const TWO_HORSE_GAP = 20;
+
+interface ShapeRoll {
+  shape: ContestState['shape'];
+  /** for a coronation: who locks it up ('player' or a rival id) */
+  heirId?: string;
+  /** the field, strongest first (by seeded nomination strength) */
+  ranked: string[];
+}
+
+/** decide the shape of a contest from the nomination arithmetic. Consumes rng (the
+ *  same seeded strength scale the contest itself uses), so a save replays identically.
+ *  Frequencies land ~coronation 8% / two-horse 14% / standard 78% (see contestShapes test). */
+export function rollContestShape(state: GameState, rng: Rng, party: PartyId, candidateIds: string[]): ShapeRoll {
+  const scored = candidateIds
+    .filter((id) => state.characters[id])
+    .map((id) => ({ id, nom: rivalTallyFrom(rivalStrengthOf(state.characters[id], rng)) }))
+    .sort((a, b) => b.nom - a.nom);
+  const ranked = scored.map((s) => s.id);
+  if (scored.length === 0) return { shape: 'standard', ranked };
+  const top = scored[0];
+  const second = scored[1];
+  const third = scored[2];
+  const gap = second ? top.nom - second.nom : 99;
+
+  // player-as-heir: the player is the dominant, standing-eligible candidate and can
+  // lock the field up before it forms
+  if (party === state.player.partyId && playerCanStandForLeader(state)) {
+    const { winChance, playerScore, fieldScore } = leadershipContestScore(state, candidateIds);
+    if (winChance >= 0.7 && playerScore - fieldScore >= 10 && rng.chance(0.4)) {
+      return { shape: 'coronation', heirId: 'player', ranked };
+    }
+  }
+
+  // an NPC heir locks up the nominations (a commanding lead, or a dominant sitting
+  // Secretary of State the rest won't run against)
+  const topOffice = state.characters[top.id]?.officeId;
+  const dominant = gap >= CORONATION_GAP
+    || (!!topOffice && OFFICES[topOffice]?.tier === 4 && gap >= 15);
+  if (dominant && rng.chance(0.65)) {
+    return { shape: 'coronation', heirId: top.id, ranked };
+  }
+
+  // a clear top two (a big drop back to third), or occasionally just the luck of the
+  // draw, narrows it to a straight fight
+  const clearTopTwo = third ? (second!.nom - third.nom) >= TWO_HORSE_GAP : !!second;
+  if ((second && clearTopTwo) || rng.chance(0.06)) {
+    return { shape: 'twoHorse', ranked };
+  }
+  return { shape: 'standard', ranked };
+}
+
+/** record a job promise in the ledger — a debt made by the player (honoured or broken
+ *  at their first reshuffle) or received (owed to them by an incoming NPC leader) */
+function addPledge(
+  state: GameState, characterId: string, officeId: OfficeId,
+  context: import('../types/game').Pledge['context'], direction: 'made' | 'received'
+): void {
+  (state.player.promises ??= []).push({ characterId, officeId, madeDay: state.day, context, direction });
+}
+
+/** seed a player-standing contest and open it with the launch episode. Shared by the
+ *  ordinary "stand for leader" path and the nomination-stage paths (a two-horse race
+ *  that emerges from a squeeze, or a scramble the player wins). The caller handles the
+ *  office resignation, any favour spend, and the launch stat gains. */
+function beginPlayerContest(
+  state: GameState, rng: Rng, party: PartyId, candidateIds: string[],
+  shape: ContestState['shape'],
+  opts: { legitimacy?: boolean; tallyBonus?: number; baseTally?: number } = {}
+): void {
+  // the base MP support MUST reflect the office the player held when they declared —
+  // callers compute it BEFORE resigning to stand, and pass it in
+  const playerTally = (opts.baseTally ?? Math.round(leadershipBaseSupport(state))) + (opts.tallyBonus ?? 0);
+  const tallies: Record<string, number> = { player: playerTally };
+  for (const id of candidateIds) {
+    if (state.characters[id]) tallies[id] = Math.round(rivalTallyFrom(rivalStrengthOf(state.characters[id], rng)));
+  }
+  const finalistId = shape === 'twoHorse' ? candidateIds.find((id) => state.characters[id]) : undefined;
+  const contest: ContestState = {
+    party, shape, round: 1, fieldSize: candidateIds.length, mpTally: tallies,
+    memberBank: initialMemberBank(state) + (opts.legitimacy ? 6 : 0), momentum: 0,
+    beatsDone: [], justEliminated: [],
+    ...(finalistId ? { finalistId } : {}),
+    ...(opts.legitimacy ? { legitimacy: true } : {}),
+  };
+  state.forcedQueue.unshift({ kind: 'leadershipEpisode', payload: payloadWith(contest, { beat: 'launch' }) });
+}
+
 /** the round-opening line: distinct per ballot, coloured by where the player sits.
  *  Round 1 sets the scene; later rounds open on the previous eliminations (elimLine)
  *  plus a fresh, momentum-aware beat so no two ballots read the same. */
@@ -1420,15 +1728,51 @@ function courtOutcomeText(round: number, strong: boolean, salt: number): string 
 }
 
 /** a leadership vacancy has opened in `party` */
+/** the player mounts a challenge for their own party's leadership (a card trigger).
+ *  Routes through the same shaped-contest machinery as a natural vacancy, so a
+ *  challenge gets the full launch/ballot/episode experience — not a bare empty field. */
+export function openPlayerChallenge(state: GameState, rng: Rng): void {
+  openLeadershipVacancy(state, rng, state.player.partyId);
+}
+
 export function openLeadershipVacancy(state: GameState, rng: Rng, party: PartyId): void {
-  if (party === state.player.partyId && playerCanStandForLeader(state) && playerCredibleForLeadership(state, rng)) {
-    state.forcedQueue.push({
-      kind: 'leadershipStand',
-      payload: { candidateIds: pickContestCandidates(state, rng, party) },
-    });
-  } else {
-    resolveNpcLeadership(state, rng, party);
+  const isPlayerParty = party === state.player.partyId;
+  const playerContest = isPlayerParty
+    && playerCanStandForLeader(state) && playerCredibleForLeadership(state, rng);
+  if (!playerContest) {
+    // a vacancy NEVER resolves as a silent same-tick appointment:
+    //   • the player's own party, but they can't credibly stand → they still witness and
+    //     shape the contest as a kingmaker (the multi-round backing flow);
+    //   • any other party → a visible, multi-tick contest that plays out as news beats.
+    if (isPlayerParty && state.player.hasSeat && !playerIsLeader(state)) {
+      startBacking(state, rng, party, pickContestCandidates(state, rng, party));
+    } else {
+      openNpcContest(state, rng, party);
+    }
+    return;
   }
+  const candidateIds = pickContestCandidates(state, rng, party);
+  const roll = rollContestShape(state, rng, party, candidateIds);
+
+  if (roll.shape === 'coronation' && roll.heirId === 'player') {
+    // the player is the heir apparent — a squeeze: lock it up, or earn the mandate
+    state.forcedQueue.push({
+      kind: 'leadershipNomination',
+      payload: { mode: 'squeeze', candidateIds, challengerId: roll.ranked[0] },
+    });
+    return;
+  }
+  if (roll.shape === 'coronation') {
+    // an NPC heir is locking up the nominations — the player must scramble
+    state.forcedQueue.push({
+      kind: 'leadershipNomination',
+      payload: { mode: 'scramble', heirId: roll.heirId, candidateIds },
+    });
+    return;
+  }
+  // standard or two-horse — a two-horse race is trimmed to the strongest rival
+  const field = roll.shape === 'twoHorse' && roll.ranked[0] ? [roll.ranked[0]] : candidateIds;
+  state.forcedQueue.push({ kind: 'leadershipStand', payload: { candidateIds: field, shape: roll.shape } });
 }
 
 /** Should the leadership vacancy actually reach the player as a standable contest?
@@ -1500,11 +1844,18 @@ export function resolveNpcLeadership(
   }
   winner.officeId = 'leader';
 
-  // retire the old leader
+  // retire the old leader. For the two frontbench parties the id is authoritative;
+  // for the player's OWN party the leader relationship points at them; for any OTHER
+  // party (a minor third party, or a former official opposition just demoted by a
+  // realignment) find that party's sitting leader by scanning — the player's leader
+  // relationship belongs to a different party and must not be used here.
   const oldLeaderId =
     party === state.government.governingParty ? state.government.pmId :
     party === state.government.oppositionParty ? state.government.loId :
-    getRelationship(state, 'leader')?.characterId;
+    party === state.player.partyId ? getRelationship(state, 'leader')?.characterId :
+    Object.values(state.characters).find(
+      (c) => c.active && c.partyId === party && c.officeId === 'leader' && c.id !== winner.id
+    )?.id;
   if (oldLeaderId && oldLeaderId !== 'player' && state.characters[oldLeaderId]) {
     state.characters[oldLeaderId].active = false;
     state.characters[oldLeaderId].officeId = null;
@@ -1521,6 +1872,11 @@ export function resolveNpcLeadership(
   } else if (party === state.government.oppositionParty) {
     state.government.loId = winner.id;
     recordLoChange(state, winner.id);
+    // snapshot the polling the new NPC LO inherits — the baseline a later mid-term coup
+    // measures their slide against (the NPC mirror of flags._leaderTookOverPolls)
+    if (winner.id !== 'player') {
+      state.government.loInheritedPolls = (state.polling.shares[party] ?? 0) * 100;
+    }
     state.history.push({
       kind: 'event', date: state.day,
       headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
@@ -1586,7 +1942,66 @@ export function startBacking(state: GameState, rng: Rng, party: PartyId, survivo
   });
 }
 
-function makePlayerLeader(state: GameState, rng: Rng): void {
+/** Open a visible, multi-tick leadership contest in a NON-player party. The field and
+ *  winner are chosen NOW (rng draws local to this tick), the contest is announced, and it
+ *  is recorded in state.pendingContests to resolve itself a few weeks later — surfacing as
+ *  news headlines (open → [hustings] → result) rather than a silent same-tick appointment.
+ *  See resolvePendingContests. */
+export function openNpcContest(state: GameState, rng: Rng, party: PartyId): void {
+  const pending = (state.pendingContests ??= []);
+  // never stack a second contest on a party already mid-contest
+  if (pending.some((c) => c.party === party)) return;
+  const contenders = pickContestCandidates(state, rng, party);
+  if (contenders.length === 0) {
+    // no field at all (shouldn't happen) — resolve directly so a vacancy is never left open
+    resolveNpcLeadership(state, rng, party);
+    return;
+  }
+  // pre-pick the winner: the strongest declared contender (mirrors resolveNpcLeadership's
+  // rivalStrengthOf scoring), so the announced field and the eventual winner agree
+  const winnerId = contenders
+    .map((id) => ({ id, s: rivalStrengthOf(state.characters[id], rng) }))
+    .reduce((a, b) => (a.s >= b.s ? a : b)).id;
+  const resolveDay = state.day + rng.int(28, 56);
+  pending.push({ party, contenders, winnerId, openDay: state.day, resolveDay, beatsDone: [] });
+  const names = contenders.map((id) => characterName(state, id));
+  const field = names.length >= 2
+    ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    : names[0];
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `A ${PARTIES[party].name} leadership contest opens: ${field} declare`,
+  });
+}
+
+/** Advance any NPC leadership contests under way: emit an interim hustings beat around
+ *  the midpoint, and install the pre-picked winner once resolveDay passes (or a fresh
+ *  winner if the pick has since left the stage). Runs every ordinary tick; shows no card. */
+export function resolvePendingContests(state: GameState, rng: Rng): void {
+  const pending = state.pendingContests;
+  if (!pending || pending.length === 0) return;
+  const remaining: NpcContest[] = [];
+  for (const c of pending) {
+    if (state.day >= c.resolveDay) {
+      const winnerValid = state.characters[c.winnerId]?.active;
+      resolveNpcLeadership(state, rng, c.party, winnerValid ? c.winnerId : undefined);
+      continue;
+    }
+    // interim hustings beat once, around the midpoint of the contest window
+    const midpoint = c.openDay + (c.resolveDay - c.openDay) / 2;
+    if (!c.beatsDone.includes('hustings') && state.day >= midpoint) {
+      c.beatsDone.push('hustings');
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `The ${PARTIES[c.party].name} leadership hustings get under way`,
+      });
+    }
+    remaining.push(c);
+  }
+  state.pendingContests = remaining;
+}
+
+function makePlayerLeader(state: GameState, rng: Rng, opts: { softMandate?: boolean } = {}): void {
   const party = state.player.partyId;
   removePlayerFromFrontbench(state, rng);
   state.player.officeId = 'leader';
@@ -1595,6 +2010,12 @@ function makePlayerLeader(state: GameState, rng: Rng): void {
   // and clear any stale resignation pledge from a previous spell as leader
   state.player.flags._leaderTookOverPolls = (state.polling.shares[party] ?? 0) * 100;
   delete state.player.flags._pledgeResignBy;
+  // a leader crowned without a real contest carries a soft, never-tested mandate — the
+  // party gave them the job but not the scars, and the authority frays faster (scheduler)
+  if (opts.softMandate) state.player.flags._softMandate = state.day;
+  else delete state.player.flags._softMandate;
+  // reaching the leadership spends any near-miss credit
+  delete state.player.flags._nearMiss;
   // a new leader remakes the bench quickly — usually within a few weeks
   if (rng.chance(0.80)) {
     state.player.flags._newLeaderReshuffleBy = state.day + rng.int(7, 35);
@@ -2305,17 +2726,26 @@ function settleNpcLeaderships(
     if (!rng.chance(stayChance)) openLeadershipVacancy(state, rng, prevGov);
   }
 
-  // a party that stayed in opposition (no change of government) changes its leader
-  // often after the result — but a big advance, or denying the winner a majority,
-  // earns the incumbent the benefit of the doubt
+  // the party that WAS the official opposition (no change of government). A leader who
+  // stayed the opposition churns hard on a performance gradient — a flat or poor result
+  // usually ends them, while a genuine advance or denying the winner a majority earns real
+  // credit. A leader DEMOTED from official-opposition status by a third party almost
+  // always goes: that humiliation is rarely survived.
   if (!changeOfGov && prevOpp !== state.player.partyId && leaderOf(prevOpp) !== 'player') {
-    const gained = (result.seats[prevOpp] ?? 0) - (prevSeats[prevOpp] ?? 0);
-    let p = 0.6;
-    if (gained > 30) p -= 0.45;
-    else if (gained > 10) p -= 0.25;
-    else if (gained < -10) p += 0.2;
-    if (result.outcome !== 'majority') p -= 0.2; // denied them a majority — more credit
-    if (rng.chance(clamp(p, 0.1, 0.92))) openLeadershipVacancy(state, rng, prevOpp);
+    const demoted = prevOpp !== state.government.oppositionParty;
+    let p: number;
+    if (demoted) {
+      p = 0.95;
+    } else {
+      const gained = (result.seats[prevOpp] ?? 0) - (prevSeats[prevOpp] ?? 0);
+      p = 0.72;
+      if (gained > 30) p -= 0.5;
+      else if (gained > 10) p -= 0.3;
+      else if (gained < -10) p += 0.28;
+      else if (gained < 0) p += 0.1;
+      if (result.outcome !== 'majority') p -= 0.22; // denied them a majority — real credit
+    }
+    if (rng.chance(clamp(p, 0.1, 0.96))) openLeadershipVacancy(state, rng, prevOpp);
   }
 
   // minor parties churn their leaders on a gentler performance gradient too:
@@ -2325,12 +2755,12 @@ function settleNpcLeaderships(
     if (p === newGov || p === oppParty || p === state.player.partyId) continue;
     if (p === 'sf' || p === 'spk' || p === 'ind' || !PARTIES[p]) continue;
     const gained = seats - (prevSeats[p] ?? 0);
-    let prob = 0.4;
-    if (gained > 15) prob -= 0.32;
-    else if (gained > 3) prob -= 0.2;
-    else if (gained < -10) prob += 0.22;
-    else if (gained < 0) prob += 0.08;
-    if (rng.chance(clamp(prob, 0.05, 0.8))) openLeadershipVacancy(state, rng, p);
+    let prob = 0.45;
+    if (gained > 15) prob -= 0.34;
+    else if (gained > 3) prob -= 0.22;
+    else if (gained < -10) prob += 0.24;
+    else if (gained < 0) prob += 0.1;
+    if (rng.chance(clamp(prob, 0.05, 0.85))) openLeadershipVacancy(state, rng, p);
   }
 }
 
@@ -2384,15 +2814,24 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
           },
         };
       }
+      const fromPledge = ev.payload?.fromPledge === true;
+      const unityOffer = ev.payload?.unityOffer === true;
+      const victor = characterName(state, ev.payload?.fromCharacterId as string);
       return {
         cardId: `forced_offer_${state.day}`,
         kind: 'reshuffleOffer',
-        title: sideways ? 'A sideways glance' : 'The call',
-        body: (sideways
-          ? `${office} rings with an unusual offer: same rank, new brief — ${title}. A fresh start, a fresh department to master, and a quiet test of your flexibility.`
-          : `Your phone buzzes. It's ${from}. They want you as ${title}. The whips are waiting on your answer.`) + deputyLine,
-        choices: [{ label: 'Accept the job' }, { label: 'Politely decline' }],
-        payload: { officeId, advance: rng.int(7, 14), keepDeputy },
+        title: unityOffer ? 'The olive branch' : fromPledge ? 'A promise kept' : sideways ? 'A sideways glance' : 'The call',
+        body: (unityOffer
+          ? `The contest is lost — but ${victor}, the victor, wants you in the tent, not sniping from outside it. They offer you ${title}: a great office, and a very public burying of the hatchet. Serve under the person who beat you, or keep your independence on the back benches?`
+          : fromPledge
+            ? `${office} calls, and the new leader is as good as their word: the job you were promised during the contest is yours — ${title}. Debts, it turns out, run both ways in this party.`
+            : sideways
+              ? `${office} rings with an unusual offer: same rank, new brief — ${title}. A fresh start, a fresh department to master, and a quiet test of your flexibility.`
+              : `Your phone buzzes. It's ${from}. They want you as ${title}. The whips are waiting on your answer.`) + deputyLine,
+        choices: unityOffer
+          ? [{ label: 'Accept — serve in the new government' }, { label: 'Decline — the king over the water' }]
+          : [{ label: 'Accept the job' }, { label: 'Politely decline' }],
+        payload: { officeId, advance: rng.int(7, 14), keepDeputy, ...(unityOffer ? { unityOffer: true } : {}) },
       };
     }
     case 'dismissal': {
@@ -2524,7 +2963,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         return {
           cardId: `forced_ballot_final_${state.day}`, kind: 'leadershipBallot',
           title: `Members' ballot — you vs ${finalistName}`,
-          body: `${finalSetup} The hustings tour is done; the ballots are in the post. Your closing pitch to the members?`,
+          body: `${finalSetup} The count is tonight. One last argument to the members before the result — what note do you end on?`,
           choices: [
             { label: 'A barnstorming, emotional rally' },
             { label: 'Sober, detailed, prime-ministerial' },
@@ -2549,16 +2988,23 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         : pos === 'chasing'
           ? `You are second of ${ranked.length}, snapping at ${frontrunner}`
           : `You sit ${ordinal(myRank)} of ${ranked.length}; ${frontrunner} leads`;
+      // the betting markets' read on the whole contest — deterministic, no rng draw
+      const rivalIds = ranked.filter((r) => r.id !== 'player').map((r) => r.id);
+      const odds = impliedOddsLine(leadershipContestScore(state, rivalIds).winChance);
+      // situational tactical plays (vote-lending / withdraw-deal / stop-X) append AFTER
+      // the three base choices, so the base indices the balance tests use never move
+      const plays = situationalPlays(state, contestFrom(state, ev.payload));
       return {
         cardId: `forced_ballot${round}_${state.day}`, kind: 'leadershipBallot',
         title: `Ballot ${round}`,
-        body: `${opener}MPs declare — ${readout}. ${placeLine}. What is your move this round?`,
+        body: `${opener}MPs declare — ${readout}. ${placeLine}. ${odds} What is your move this round?`,
         choices: [
           { label: labels[0] },
           { label: labels[1] },
           { label: labels[2] },
+          ...plays.map((p) => ({ label: p.label, sublabel: p.sublabel })),
         ],
-        payload: pass,
+        payload: { ...pass, situational: plays.map((p) => p.key) },
       };
     }
     case 'leadershipBacking': {
@@ -2603,6 +3049,159 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         payload: { ...ev.payload, candidateIds: backable, advance: rng.int(7, 12) },
       };
     }
+    case 'leadershipEpisode': {
+      const contest = contestFrom(state, ev.payload);
+      const beat = (ev.payload?.beat as string) ?? 'launch';
+      const pass = { ...ev.payload, advance: rng.int(4, 9) };
+      if (beat === 'launch') {
+        return {
+          cardId: `forced_launch_${state.day}`, kind: 'leadershipEpisode',
+          title: 'The launch',
+          body: `The cameras are waiting on the steps and the party — and the country — want to know what kind of leader you would be. You have one chance to define the pitch. What is your campaign about?`,
+          choices: [
+            { label: 'Continuity — a safe pair of hands', sublabel: 'reassures the parliamentary party' },
+            { label: 'Change — sweep the cobwebs out', sublabel: 'excites the membership' },
+            { label: 'Unity — heal the divisions', sublabel: 'a foot in both camps' },
+          ],
+          payload: pass,
+        };
+      }
+      if (beat === 'debate') {
+        const front = characterName(
+          state,
+          Object.entries(contest.mpTally).filter(([id]) => id !== 'player').sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+        );
+        const laneLine = contest.lane === 'change'
+          ? 'You are the change candidate, and a debate is your natural stage. '
+          : contest.lane === 'continuity'
+            ? 'Steady is your brand; a debate is all downside for the front-runner’s stalking-horse. '
+            : '';
+        return {
+          cardId: `forced_debate_${state.day}`, kind: 'leadershipEpisode',
+          title: 'The television debate',
+          body: `${laneLine}The candidates line up under the studio lights against ${front} and the rest. Millions are watching, and one moment — a breakout or a blunder — can define the whole contest. How do you play it?`,
+          choices: [
+            { label: 'Go on the attack', sublabel: 'high risk, high reward' },
+            { label: 'Stay statesmanlike and above it', sublabel: 'safe, small gain' },
+            { label: 'Land a rehearsed, viral zinger', sublabel: 'medium risk' },
+          ],
+          payload: pass,
+        };
+      }
+      if (beat === 'endorsementBid') {
+        const fallenName = (ev.payload?.fallenName as string) ?? 'the fallen candidate';
+        const front = characterName(
+          state,
+          Object.entries(contest.mpTally).filter(([id]) => id !== 'player').sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+        );
+        return {
+          cardId: `forced_endorse_${state.day}`, kind: 'leadershipEpisode',
+          title: 'The kingmaker\'s price',
+          body: `${fallenName} is out, and their bloc of MPs is the richest prize left in the contest. ${front} is already on the phone to them — but so can you be, if you are willing to promise ${fallenName} a seat at the very top table. What do you offer for their endorsement?`,
+          choices: [
+            { label: 'Promise them the Exchequer', sublabel: 'a great office — and a great debt' },
+            { label: 'Promise them the Foreign Office', sublabel: 'a serious job, a serious pledge' },
+            { label: `Make no promises — let ${front} have them`, sublabel: 'keep your hands free' },
+          ],
+          payload: pass,
+        };
+      }
+      // ---- the members' campaign arc: hustings → head-to-head → final week ----
+      const finalistName = characterName(state, contest.finalistId ?? '');
+      if (beat === 'hustings') {
+        return {
+          cardId: `forced_hustings_${state.day}`, kind: 'leadershipEpisode',
+          title: 'The hustings tour',
+          body: `It is you and ${finalistName} now, criss-crossing the country in draughty halls to win the members one region at a time. Six weeks, forty hustings, endless warm white wine. How do you spend the tour?`,
+          choices: [
+            { label: 'Tour relentlessly — every hall, every hand', sublabel: 'grind out the grassroots' },
+            { label: 'Target the big membership heartlands', sublabel: 'efficient, where the votes are' },
+            { label: 'Play it safe and protect your lead', sublabel: 'low risk, low reward' },
+          ],
+          payload: pass,
+        };
+      }
+      if (beat === 'headToHead') {
+        return {
+          cardId: `forced_h2h_${state.day}`, kind: 'leadershipEpisode',
+          title: 'The head-to-head',
+          body: `The set-piece of the whole contest: you and ${finalistName}, one stage, no one else to hide behind. The members are watching, and many have not yet voted. Everything you have built comes down to ninety minutes. How do you fight it?`,
+          choices: [
+            { label: 'Take the fight to them', sublabel: 'a knockout — or a backfire' },
+            { label: 'Rise above and look like the leader', sublabel: 'steady, statesmanlike' },
+            { label: 'Speak past them, straight to the members', sublabel: 'court the hall directly' },
+          ],
+          payload: pass,
+        };
+      }
+      if (beat === 'finalWeek') {
+        return {
+          cardId: `forced_finalweek_${state.day}`, kind: 'leadershipEpisode',
+          title: 'The final week',
+          body: `The ballots are out and the first postal votes are already coming back — from here, most minds are made up. A last week to close it out against ${finalistName}. What is your final move?`,
+          choices: [
+            { label: 'A barnstorming closing rally', sublabel: 'end on a high, high variance' },
+            { label: 'A sober, prime-ministerial closing pitch', sublabel: 'reassure the last waverers' },
+            { label: 'Get out the vote — chase every ballot', sublabel: 'grind, dependable' },
+          ],
+          payload: pass,
+        };
+      }
+      // scrutiny — the press digs through the player's actual record
+      const angles = scrutinyAngles(state);
+      const dossier = angles.length
+        ? `They have a dossier: ${angles.slice(0, 3).map((a) => a.line).join(', ')}.`
+        : 'They rake over your record and find little to grip — but a hostile press never comes back empty-handed, and the question of what you actually stand for hangs in the air.';
+      return {
+        cardId: `forced_scrutiny_${state.day}`, kind: 'leadershipEpisode',
+        title: 'The scrutiny',
+        body: `The contest turns nasty. The papers, and your rivals' outriders, start going through your career line by line. ${dossier} The story runs all week. How do you handle it?`,
+        choices: [
+          { label: 'Own it — contrition and a clean line', sublabel: 'limits the damage, costs nothing but pride' },
+          { label: 'Brazen it out — give them nothing', sublabel: 'defiant; the members either love it or don’t' },
+          { label: 'Turn your fire on the press', sublabel: 'a gamble — rally the base or look rattled' },
+        ],
+        payload: pass,
+      };
+    }
+    case 'leadershipNomination': {
+      const mode = (ev.payload?.mode as string) ?? 'squeeze';
+      const pass = { ...ev.payload, advance: rng.int(5, 10) };
+      if (mode === 'squeeze') {
+        const challenger = characterName(state, ev.payload?.challengerId as string);
+        const favour = (state.player.favours ?? [])[0];
+        const choices = [
+          { label: 'Move fast — lock up the nominations', sublabel: 'a coronation, but never truly tested' },
+        ];
+        if (favour) {
+          choices.push({
+            label: `Call in ${characterName(state, favour.characterId)}'s favour to clear the field`,
+            sublabel: 'spend a banked favour for a clean coronation',
+          });
+        }
+        choices.push({ label: 'Let them stand — win the mandate properly', sublabel: 'a real contest earns real authority' });
+        return {
+          cardId: `forced_nom_squeeze_${state.day}`, kind: 'leadershipNomination',
+          title: 'The heir apparent',
+          body: `The party has all but handed it to you — the big names are falling in behind, and the whips are counting your nominations, not anyone else's. Only ${challenger} is still gathering signatures. You have a narrow window to close the whole thing down before it starts. Do you?`,
+          choices,
+          payload: { ...pass, ...(favour ? { favourKind: favour.kind } : {}) },
+        };
+      }
+      // scramble — an NPC heir is locking it up; the player fights for a place
+      const heir = characterName(state, ev.payload?.heirId as string);
+      return {
+        cardId: `forced_nom_scramble_${state.day}`, kind: 'leadershipNomination',
+        title: 'Locked out?',
+        body: `${heir} has moved with ruthless speed: the Cabinet heavyweights, the whips and the money are already lined up, and the nominations are closing. You are short of the numbers to get onto the ballot at all. What do you do?`,
+        choices: [
+          { label: 'Fight for the nominations you need', sublabel: 'an uphill battle onto the ballot' },
+          { label: `Endorse ${heir} early — bank the goodwill`, sublabel: 'a friend in the new leader' },
+          { label: 'Stand aside and keep your powder dry', sublabel: 'live to fight another day' },
+        ],
+        payload: pass,
+      };
+    }
     case 'pmReshuffle': {
       const side = playerInGovernment(state) ? 'cabinet' : 'shadowCabinet';
       const posts = state.government[side].filter((p) =>
@@ -2616,16 +3215,44 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       // cabinet is empty so the body never ships a raw token to the player.
       const rivalName =
         [...members].sort((a, b) => b.competence - a.competence)[0]?.name ?? 'a hungry-looking junior minister';
+      // debts made to win the leadership come due at the first reshuffle
+      const madePledges = (state.player.promises ?? []).filter(
+        (p) => p.direction === 'made' && state.characters[p.characterId]?.active
+      );
+      const baseChoices: { label: string; sublabel?: string }[] = [
+        { label: 'Promote your loyalists' },
+        { label: 'Big tent — bring in your critics' },
+        { label: weakest ? `Sack ${weakest.name} and refresh` : 'Refresh the weakest performers' },
+      ];
+      // the leadership finalist you just beat can be brought into the tent (unity) —
+      // the classic post-contest olive branch
+      const defeatedId = state.player.flags._defeatedFinalistId as string | undefined;
+      const defeated = defeatedId ? state.characters[defeatedId] : undefined;
+      if (defeated?.active) {
+        baseChoices.push({ label: `Bring ${defeated.name} into the tent`, sublabel: 'unity — a great office for the one you beat' });
+      }
+      if (madePledges.length > 0) {
+        const debts = madePledges.slice(0, 3)
+          .map((p) => `${characterName(state, p.characterId)} (${officeTitle(p.officeId, playerInGovernment(state))})`).join(', ');
+        return {
+          cardId: `forced_pmreshuffle_${state.day}`,
+          kind: 'pmReshuffle',
+          title: 'Reshuffle day — the debts come due',
+          body: `You did not get here for nothing. There are debts to settle from the contest — you promised jobs to ${debts} — and the corridor outside knows it. Honour the deals and hand out the offices you pledged, or tear up the IOUs and build the team YOU want? Politics remembers either way.`,
+          choices: [
+            { label: 'Honour your debts — pay what you promised', sublabel: 'loyalty banked; a bench you did not fully choose' },
+            { label: 'Break them — your bench, your rules', sublabel: 'freedom now; enemies who never forget' },
+            ...baseChoices,
+          ],
+          payload: { weakestId: weakest?.id, advance: rng.int(7, 14), pledgeChoices: true },
+        };
+      }
       return {
         cardId: `forced_pmreshuffle_${state.day}`,
         kind: 'pmReshuffle',
         title: 'Reshuffle day',
         body: `The corridor outside your office contains, at various distances, hope, dread, and ${rivalName} pretending to read their phone. The ${playerInGovernment(state) ? 'cabinet' : 'shadow cabinet'} is yours to remake — whose career do you make today, and whose do you end?`,
-        choices: [
-          { label: 'Promote your loyalists' },
-          { label: 'Big tent — bring in your critics' },
-          { label: weakest ? `Sack ${weakest.name} and refresh` : 'Refresh the weakest performers' },
-        ],
+        choices: baseChoices,
         payload: { weakestId: weakest?.id, advance: rng.int(7, 14) },
       };
     }
@@ -3168,6 +3795,21 @@ export function resolveForcedChoice(
           deltas,
         };
       }
+      // the victor's unity offer, refused — the beaten finalist becomes the king over the
+      // water, a higher profile on the back benches, biding their time (no decliner penalty)
+      if (card.payload?.unityOffer === true) {
+        gain('profile', 6, 'Profile');
+        gain('integrity', 3, 'Integrity');
+        state.player.flags._kingOverWater = state.day;
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} declines to serve under the new leader`,
+        });
+        return {
+          text: 'They offer you a great office to bind the party\'s wounds — and you decline it. You will not serve under the person who beat you; better to wait, watch, and keep your hands clean. The back benches suit a king over the water.',
+          deltas,
+        };
+      }
       adjustRelationship(state, 'leader', -8);
       push('Leader', -8);
       gain('integrity', 3, 'Integrity');
@@ -3457,11 +4099,12 @@ export function resolveForcedChoice(
 
     case 'leadershipStand': {
       const candidateIds = (card.payload?.candidateIds as string[]) ?? [];
+      const shape = ((card.payload?.shape as ContestState['shape']) ?? 'standard');
       const sitOutIndex = card.choices.length - 1;
       if (choiceIndex !== sitOutIndex) {
-        // the player's MP support reflects their standing (tier, Deputy-PM), computed
-        // BEFORE resigning the office to stand
-        let playerTally = Math.round(leadershipBaseSupport(state));
+        // the player's MP support reflects the office they hold (tier, Deputy-PM),
+        // captured BEFORE resigning to stand
+        const baseTally = Math.round(leadershipBaseSupport(state));
         // cashing in a favour from a senior friend gives a real launch boost
         const usingFavour = choiceIndex === 1 && !!card.payload?.favourKind;
         let favourName = '';
@@ -3476,7 +4119,6 @@ export function resolveForcedChoice(
             favourName = characterName(state, favours[fi].characterId);
             favours.splice(fi, 1);
           }
-          playerTally += 12;
           push('Support', 12);
         }
         // a frontbencher resigns their post to mount a challenge — win or lose,
@@ -3488,19 +4130,14 @@ export function resolveForcedChoice(
             headline: `${state.player.name} resigns from the front bench to stand for the leadership`,
           });
         }
-        // seed one tally table: the player plus every rival on a shared MP-support scale.
-        // The contest then plays out dynamically — one (or more) eliminated per ballot.
-        const tallies: Record<string, number> = { player: playerTally };
-        for (const id of candidateIds) {
-          if (state.characters[id]) {
-            tallies[id] = Math.round(rivalTallyFrom(rivalStrengthOf(state.characters[id], rng)));
-          }
-        }
-        state.forcedQueue.unshift({
-          kind: 'leadershipBallot',
-          payload: { tallies, round: 1, fieldSize: candidateIds.length, justEliminated: [] },
-        });
+        // the launch bump lands before the bank is struck, so a strong declaration
+        // is worth a little grassroots appeal from the off
         gain('profile', 6, 'Profile');
+        // seed the contest (player + rivals on a shared MP-support scale) and open the
+        // launch episode; the favour boost, if cashed, adds to the player's opening tally
+        beginPlayerContest(state, rng, state.player.partyId, candidateIds, shape, {
+          tallyBonus: usingFavour ? 12 : 0, baseTally,
+        });
         const arc = contestArc(state);
         const launchText = usingFavour && favourName
           ? `${favourName} makes the calls they promised, and a bloc of waverers swings behind you before you have even declared. You launch from a position of strength.`
@@ -3519,10 +4156,11 @@ export function resolveForcedChoice(
     }
 
     case 'leadershipBallot': {
-      const tallies = { ...((card.payload?.tallies as Record<string, number>) ?? {}) };
-      const round = (card.payload?.round as number) ?? 1;
+      const contest = contestFrom(state, card.payload);
+      const tallies = contest.mpTally;   // contestFrom returns a fresh copy; mutated in place below
+      const round = contest.round;
       const finalRound = !!card.payload?.finalRound;
-      const fieldSize = (card.payload?.fieldSize as number) ?? 3;
+      const fieldSize = contest.fieldSize;
       // text-rotation salt — deterministic, NOT from rng, so outcome odds are untouched
       const salt = contestSalt(state);
 
@@ -3533,6 +4171,8 @@ export function resolveForcedChoice(
         state.player.flags._contestLossDay = state.day;
         state.player.flags._contestLosses =
           (((state.player.flags._contestLosses as number) ?? 0) + 1);
+        // any "next time it's yours" credit from a prior near-miss is spent by a fresh loss
+        delete state.player.flags._nearMiss;
       };
 
       // ---- the members' ballot: decided on PUBLIC appeal, not MP support ----
@@ -3542,21 +4182,27 @@ export function resolveForcedChoice(
         if (choiceIndex === 0) change = rng.int(-6, 16);        // rally: high variance
         if (choiceIndex === 1) change = rng.int(2, 10);         // steady, statesmanlike
         if (choiceIndex === 2) { change = rng.int(4, 12); gain('integrity', -4, 'Integrity'); }
-        const s = state.player.stats;
-        // grassroots appeal: profile leads, then competence/approval/integrity — NOT party standing
-        const memberAppeal =
-          0.34 * s.profile + 0.22 * s.competence + 0.18 * s.constituencyApproval + 0.12 * s.integrity + 8;
+        // grassroots appeal is now the BANK the player built over the campaign — the
+        // opening stats-appeal plus everything courted in the rounds — not a fresh
+        // read of the day's stats. Courting the membership through the MP ballots is
+        // what puts a candidate in a winning position in the hall.
+        const memberAppeal = contest.memberBank;
+        // the final week's postal votes lock early: once they're cast, the closing
+        // pitch (`change`) and late momentum weigh only half — a strong finish can't
+        // rescue a weak campaign
+        const postalLock = !!contest.postalLock;
         // B3: the player's RECORD (accumulated standing, peak office reached, years
-        // served) is a real weight on the membership's verdict, not just the day's
-        // appeal. A sitting/former Chancellor with deep standing carries authority into
-        // the hall; an untested backbencher who fluked their way here does not. The
-        // record gap vs the finalist's standing tips the result toward who earned it,
-        // while memberAppeal keeps the contest a genuine popularity test (the noise term
-        // stays, so a strong record converts MORE without making it a foregone result).
+        // served) is a real weight on the membership's verdict, not just the appeal.
+        // A sitting/former Chancellor with deep standing carries authority into the
+        // hall; an untested backbencher who fluked their way here does not.
         const finalist2 = card.payload?.finalistId as string | undefined;
         const recordGap = leadershipRecordScore(state) - (finalist2 ? fieldStrengthScore(state, [finalist2]) : 45);
+        // momentum through the MP rounds carries into the hall (halved once postal votes lock)
+        const momentumTerm = 0.4 * contest.momentum * (postalLock ? 0.5 : 1);
+        const closingPitch = postalLock ? Math.round(change / 2) : change;
         const playerFinal =
-          0.7 * memberAppeal + 0.3 * (tallies.player ?? 50) + 0.30 * recordGap + change + rng.normal(0, 6);
+          0.7 * memberAppeal + 0.3 * (tallies.player ?? 50) + 0.30 * recordGap
+          + momentumTerm + closingPitch + rng.normal(0, 6);
         const finalistComp = finalist ? finalist.competence : 60;
         const finalistAppeal = 0.6 * finalistComp + (finalist ? rivalStrengthOf(finalist, rng) - 0.6 * finalistComp : 0) + 18;
         // a bigger field leaves a more fractured membership and a stronger
@@ -3578,6 +4224,8 @@ export function resolveForcedChoice(
           if (finalist) {
             const rivalRel = state.relationships.find((r) => r.kind === 'rival');
             if (rivalRel) { rivalRel.characterId = finalist.id; rivalRel.value = -15; }
+            // remember who you beat — a unity appointment (or a purge) awaits at the reshuffle
+            if (finalist.active) state.player.flags._defeatedFinalistId = finalist.id;
           }
           const leaderRole = playerLeaderRole(state);
           const closer = leaderRole === 'pm'
@@ -3601,7 +4249,20 @@ export function resolveForcedChoice(
         resolveNpcLeadership(state, rng, state.player.partyId, finalist?.id);
         gain('profile', 8, 'Profile');
         gain('partyStanding', -6, 'Standing');
-        const winnerNm = characterName(state, getRelationship(state, 'leader')?.characterId);
+        const winnerId = getRelationship(state, 'leader')?.characterId;
+        const winnerNm = characterName(state, winnerId);
+        // a NARROW defeat earns "next time it's yours" credit AND a unity olive branch —
+        // the victor offers the runner-up a great office to bind the party's wounds
+        if (margin > -5) {
+          state.player.flags._nearMiss = state.day;
+          if (winnerId && winnerId !== 'player' && canHoldOffice(state)) {
+            const unityOffice: OfficeId = rng.chance(0.5) ? 'sos_foreign' : 'sos_home';
+            state.forcedQueue.push({
+              kind: 'reshuffleOffer',
+              payload: { officeId: unityOffice, unityOffer: true, fromCharacterId: winnerId },
+            });
+          }
+        }
         // distinct loss copy: a narrow heartbreaker reads differently from a thumping,
         // and a comeback that falls short stings worse than a maiden run
         const lossText =
@@ -3620,15 +4281,71 @@ export function resolveForcedChoice(
         state,
         Object.entries(tallies).filter(([id]) => id !== 'player').sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
       );
-      let change = 0; let flavour = '';
-      if (choiceIndex === 0) {
+      // situational tactical plays sit at indices 3+ (after work/court/attack)
+      const situational = (card.payload?.situational as string[]) ?? [];
+      const sitKey = choiceIndex >= 3 ? situational[choiceIndex - 3] : undefined;
+
+      // withdraw-and-deal — fold a losing hand well: trade the candidacy to the
+      // front-runner for a named office, and swing behind them for the rest of the contest
+      if (sitKey && sitKey.startsWith('withdraw:')) {
+        const frontId = sitKey.slice('withdraw:'.length);
+        state.player.flags._withdrewDeal = state.day;
+        if (state.characters[frontId]) addPledge(state, frontId, 'sos_home', 'withdrawDeal', 'received');
+        gain('profile', 3, 'Profile');
+        const survivors = Object.keys(tallies).filter((id) => id !== 'player' && state.characters[id]?.active);
+        // pre-credit the front-runner you dealt with, then run the backing flow
+        startBacking(state, rng, state.player.partyId, survivors);
+        const backCard = state.forcedQueue.find((e) => e.kind === 'leadershipBacking');
+        if (backCard && backCard.payload) {
+          const b = (backCard.payload.backing as Record<string, number>) ?? {};
+          b[frontId] = (b[frontId] ?? 0) + 24;
+          backCard.payload.backing = b;
+        }
+        return {
+          text: `You do the arithmetic and don't like it — so you fold, but you fold well. A quiet meeting with ${characterName(state, frontId)}, a handshake, and a promise of a great office in their government. You are out of the race, and closer to the top than ever.`,
+          deltas,
+        };
+      }
+
+      // two currencies: `change` moves MP support (survival), `bankGain` moves the
+      // player's banked members'-ballot appeal (decides the final). Every round is an
+      // allocation between them — the explicit tension the contest is built around.
+      let change = 0; let bankGain = 0; let flavour = '';
+      if (sitKey && sitKey.startsWith('lend:')) {
+        // vote-lending — prop up a weaker rival to choose your final opponent; if the
+        // arithmetic is off it can eliminate the wrong candidate, or even you (Cleverly '24)
+        const target = sitKey.slice('lend:'.length);
+        const lend = 6 + rng.int(0, 4);
+        change = -lend;
+        if (state.characters[target]) tallies[target] = (tallies[target] ?? 0) + lend;
+        flavour = `You quietly lend ${characterName(state, target)} a bloc of your own MPs, trying to steer the contest toward the final you want. A clever move — if the numbers hold.`;
+      } else if (sitKey === 'stopX') {
+        // stop-X pact — pull the trailing candidates' support toward you against the leader
+        const frontId = Object.entries(tallies).filter(([id]) => id !== 'player')
+          .sort((a, b) => b[1] - a[1])[0]?.[0];
+        let pulled = 0;
+        for (const [id, v] of Object.entries(tallies)) {
+          if (id === 'player' || id === frontId) continue;
+          const take = v * 0.3;
+          tallies[id] = v - take;
+          pulled += take;
+        }
+        change = pulled;
+        if (frontId && rng.chance(0.35)) tallies[frontId] += 6; // a sympathy backlash for the leader
+        flavour = `You broker an "anyone but ${characterName(state, frontId ?? '')}" pact, and the trailing camps rally to you as the stop-the-front-runner candidate.`;
+      } else if (choiceIndex === 0) {
+        // work the tea room: pure MP graft, nothing banked with the members
         change = 3 + rng.int(0, 6);
         flavour = workOutcomeText(round, change >= 6, salt);
       } else if (choiceIndex === 1) {
-        change = rng.int(-3, 12);
-        flavour = courtOutcomeText(round, change > 3, salt);
+        // court the membership and the media: appeal banked for the final, but a small
+        // MP cost — the parliamentary party distrusts a campaign run over their heads
+        change = -rng.int(0, 3);
+        bankGain = 4 + rng.int(0, 5);
+        flavour = courtOutcomeText(round, bankGain >= 7, salt);
       } else {
-        // go after the frontrunner: risky — dent them, or it rebounds on you
+        // go after the frontrunner: risky — dent them, or it rebounds on you (and the
+        // members recoil from blue-on-blue, costing banked appeal)
         const frontId = Object.entries(tallies).filter(([id]) => id !== 'player')
           .sort((a, b) => b[1] - a[1])[0]?.[0];
         if (rng.chance(0.55)) {
@@ -3641,6 +4358,7 @@ export function resolveForcedChoice(
           ], round, salt);
         } else {
           change = -4 - rng.int(0, 5);
+          bankGain = -rng.int(2, 5);
           flavour = roundPick([
             `The attack on ${frontNameBefore} looks desperate; it rebounds on you.`,
             `Going negative backfires — colleagues recoil, and ${frontNameBefore} plays the wounded statesman.`,
@@ -3649,7 +4367,9 @@ export function resolveForcedChoice(
         }
       }
       tallies.player = (tallies.player ?? 50) + change;
+      contest.memberBank = clamp(contest.memberBank + bankGain, 0, 100);
       if (change !== 0) push('Support', Math.round(change));
+      if (bankGain !== 0) push('Members', Math.round(bankGain));
       // a little campaign drift for every rival
       for (const id of Object.keys(tallies)) if (id !== 'player') tallies[id] += rng.normal(0, 4);
 
@@ -3684,10 +4404,18 @@ export function resolveForcedChoice(
         return { text: outText, deltas };
       }
 
+      // the frontrunner (for the "big faller ≥55% of the leader" endorsement test)
+      const frontrunnerTally = Object.entries(tallies).filter(([k]) => k !== 'player')
+        .sort((a, b) => b[1] - a[1])[0]?.[1] ?? 0;
       // swing each eliminated rival's backers (mostly to the frontrunner, partly to you)
       const justEliminated: { name: string; swungTo: string }[] = [];
+      let bigFaller: { id: string; name: string } | null = null;
       for (const id of eliminated) {
         const pot = Math.max(0, tallies[id] ?? 0);
+        // a heavyweight who fell carries a bloc of backers worth bidding for
+        if (pot >= 0.55 * frontrunnerTally && (!bigFaller || pot > (tallies[bigFaller.id] ?? 0))) {
+          bigFaller = { id, name: characterName(state, id) };
+        }
         delete tallies[id];
         const frontId = Object.entries(tallies).filter(([k]) => k !== 'player')
           .sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -3700,16 +4428,31 @@ export function resolveForcedChoice(
         });
       }
 
-      // momentum read for the tail line + the next round's prompt
+      // momentum read for the tail line + the next round's prompt, and the rolling
+      // momentum figure (carried on the contest) that weighs on the members' final:
+      // a candidate visibly climbing through the MP rounds arrives with the wind behind them
       const climbedThisRound = (tallies.player ?? 0) > prevPlayerTally + 0.5;
+      contest.momentum = clamp(0.6 * contest.momentum + 0.4 * ((tallies.player ?? 0) - prevPlayerTally), -10, 10);
 
       // advance: another elimination ballot, the members' final, or a walkover
       const remaining = Object.keys(tallies);
       if (remaining.length > 2) {
-        state.forcedQueue.unshift({
-          kind: 'leadershipBallot',
-          payload: { tallies, round: round + 1, fieldSize, justEliminated, prevPlayerTally },
-        });
+        const next: ContestState = { ...contest, round: round + 1, mpTally: tallies, justEliminated, prevPlayerTally };
+        // when a heavyweight falls, their bloc of backers is up for grabs — an
+        // endorsement bid fires (once) before the next ballot, where the player can
+        // pledge a job to pull them across
+        if (bigFaller && !contest.beatsDone.includes('endorsementBid') && state.characters[bigFaller.id]) {
+          const carried: ContestState = { ...next, beatsDone: [...next.beatsDone, 'endorsementBid'] };
+          state.forcedQueue.unshift({
+            kind: 'leadershipEpisode',
+            payload: payloadWith(carried, { beat: 'endorsementBid', fallenId: bigFaller.id, fallenName: bigFaller.name }),
+          });
+          return {
+            text: `${flavour} ${bigFaller.name} is out — and their backers are suddenly the most valuable currency in the contest.`,
+            deltas,
+          };
+        }
+        queueContestBallot(state, next);
         const narrow = climbedThisRound
           ? roundPick([
               'The field narrows, and you are climbing through it.',
@@ -3725,10 +4468,11 @@ export function resolveForcedChoice(
       }
       const finalistId = remaining.find((id) => id !== 'player');
       if (finalistId) {
-        state.forcedQueue.unshift({
-          kind: 'leadershipBallot',
-          payload: { tallies, round: round + 1, finalRound: true, finalistId, fieldSize, justEliminated, prevPlayerTally },
-        });
+        const next: ContestState = {
+          ...contest, round: round + 1, mpTally: tallies, justEliminated, prevPlayerTally, finalistId,
+        };
+        // the members' stage is its own campaign arc — hustings, head-to-head, final week
+        queueMembersFinal(state, next, finalistId);
         const through = roundPick([
           'You are through to the membership ballot.',
           'It is down to the last two — and now the members decide.',
@@ -3809,7 +4553,20 @@ export function resolveForcedChoice(
       let winnerId: string;
       if (remaining.length === 2) {
         const [a, b] = remaining;
-        winnerId = eff(a) + rng.normal(0, 7) >= eff(b) + rng.normal(0, 7) ? a : b;
+        // the rare Leadsom/May moment mirrors on the NPC side too — occasionally the
+        // stronger finalist implodes and withdraws, handing it to the other
+        if (rng.chance(0.03)) {
+          const strong = eff(a) >= eff(b) ? a : b;
+          const other = strong === a ? b : a;
+          if (state.characters[strong]) state.characters[strong].active = false;
+          winnerId = other;
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${characterName(state, strong)} dramatically withdraws from the leadership race`,
+          });
+        } else {
+          winnerId = eff(a) + rng.normal(0, 7) >= eff(b) + rng.normal(0, 7) ? a : b;
+        }
       } else {
         winnerId = remaining[0];
       }
@@ -3847,6 +4604,365 @@ export function resolveForcedChoice(
       return { text: resultText, deltas };
     }
 
+    case 'leadershipEpisode': {
+      const contest = contestFrom(state, card.payload);
+      const beat = (card.payload?.beat as string) ?? 'launch';
+      const salt = contestSalt(state);
+      const setBank = (delta: number) => { contest.memberBank = clamp(contest.memberBank + delta, 0, 100); if (delta) push('Members', Math.round(delta)); };
+      const setMomentum = (delta: number) => { contest.momentum = clamp(contest.momentum + delta, -10, 10); };
+      // queue whatever card was waiting behind this episode: ballot 1 after the launch,
+      // otherwise the ballot the sequencer deferred (carrying any members'-final routing)
+      const proceed = () => {
+        // a two-horse race skips the elimination ballots entirely — after the launch it
+        // is straight into the members' campaign arc between the two candidates
+        if (contest.shape === 'twoHorse' && contest.finalistId) {
+          queueMembersFinal(state, { ...contest, round: 2 }, contest.finalistId);
+          return;
+        }
+        const extra = (card.payload?.pendingBallot as Record<string, unknown>) ?? {};
+        state.forcedQueue.unshift({ kind: 'leadershipBallot', payload: payloadWith(contest, extra) });
+      };
+
+      if (beat === 'endorsementBid') {
+        const fallenId = card.payload?.fallenId as string;
+        const fallenName = characterName(state, fallenId);
+        const frontEntry = Object.entries(contest.mpTally).filter(([id]) => id !== 'player')
+          .sort((a, b) => b[1] - a[1])[0];
+        const frontId = frontEntry?.[0];
+        let text = '';
+        if (choiceIndex === 0 || choiceIndex === 1) {
+          const officeId: OfficeId = choiceIndex === 0 ? 'sos_treasury' : 'sos_foreign';
+          const officeName = choiceIndex === 0 ? 'the Exchequer' : 'the Foreign Office';
+          const swing = (choiceIndex === 0 ? 10 : 6) + rng.int(0, 4);
+          // pull the fallen candidate's bloc across from the frontrunner to you
+          contest.mpTally.player = (contest.mpTally.player ?? 0) + swing;
+          if (frontId) contest.mpTally[frontId] = Math.max(0, (contest.mpTally[frontId] ?? 0) - swing);
+          push('Support', swing);
+          if (fallenId) addPledge(state, fallenId, officeId, 'endorsement', 'made');
+          text = `You get ${fallenName} on the phone and offer them ${officeName}. Within the hour their people are briefing that they are with you — and ${swing} MPs move with them. The promise is made; the bill comes later.`;
+        } else {
+          if (frontId) contest.mpTally[frontId] = (contest.mpTally[frontId] ?? 0) + 2;
+          text = `You keep your hands clean and your promises unmade. ${fallenName}'s people drift to ${characterName(state, frontId ?? '')} — a bloc you could have had, gone. Principled, or naive; the tea room can't decide.`;
+        }
+        // resume the contest — the next scripted beat (if any) then the next ballot
+        queueContestBallot(state, contest);
+        return { text, deltas };
+      }
+      // ---- the members' campaign arc ----
+      const finalistName = characterName(state, contest.finalistId ?? '');
+      if (beat === 'hustings') {
+        contest.beatsDone = [...contest.beatsDone, 'hustings'];
+        let text = '';
+        if (choiceIndex === 0) {
+          // grind: reliable bank, a touch of momentum
+          setBank(2 + rng.int(0, 3)); setMomentum(1); gain('constituencyApproval', 2, 'Approval');
+          text = 'You do the miles — every draughty hall, every raffle, every selfie. It is exhausting and it works: the members warm to someone who bothered to show up.';
+        } else if (choiceIndex === 1) {
+          // targeted: efficient bank
+          setBank(2 + rng.int(0, 5));
+          text = 'You go where the members are, not where the cameras are. A leaner tour, but the numbers where it counts tick your way.';
+        } else {
+          // protect the lead: small, safe
+          setBank(rng.int(0, 3));
+          text = 'You keep it tight and make no mistakes, protecting what you have. Safe — though a contest is rarely won by playing not to lose.';
+        }
+        state.forcedQueue.unshift({ kind: 'leadershipEpisode', payload: payloadWith(contest, { beat: 'headToHead' }) });
+        return { text, deltas };
+      }
+      if (beat === 'headToHead') {
+        contest.beatsDone = [...contest.beatsDone, 'headToHead'];
+        let text = '';
+        if (choiceIndex === 0) {
+          // attack — a knockout or a backfire
+          if (rng.chance(0.5)) {
+            setBank(7 + rng.int(0, 6)); setMomentum(2); gain('profile', 3, 'Profile');
+            text = `You corner ${finalistName} on the one question they cannot answer, and the hall knows it. The knockout everyone will be talking about.`;
+          } else {
+            setBank(-(5 + rng.int(0, 5))); setMomentum(-2);
+            text = `You come out swinging and miss. ${finalistName} stays calm, you look aggressive, and the room's sympathy drifts to them.`;
+          }
+        } else if (choiceIndex === 1) {
+          setBank(1 + rng.int(0, 4)); gain('competence', 2, 'Competence');
+          text = 'You stay measured and prime-ministerial while the format tries to goad you. No knockout, but you leave looking like the grown-up.';
+        } else {
+          // court the hall directly
+          if (rng.chance(0.6)) {
+            setBank(5 + rng.int(0, 5)); gain('profile', 2, 'Profile');
+            text = 'You ignore the moderator and the opponent and talk straight to the members in the hall. It is a little demagogic, and they love it.';
+          } else {
+            setBank(-(2 + rng.int(0, 3)));
+            text = 'You play to the gallery, but it reads as evasive — the undecideds wanted answers, not applause lines.';
+          }
+        }
+        state.forcedQueue.unshift({ kind: 'leadershipEpisode', payload: payloadWith(contest, { beat: 'finalWeek' }) });
+        return { text, deltas };
+      }
+      if (beat === 'finalWeek') {
+        contest.beatsDone = [...contest.beatsDone, 'finalWeek'];
+        // the postal votes are in — late swings weigh only half at the verdict
+        contest.postalLock = true;
+        let text = '';
+        if (choiceIndex === 0) {
+          setBank(rng.int(-3, 8)); setMomentum(1); gain('profile', 2, 'Profile');
+          text = 'You close on a high — a barnstormer of a rally, the base roaring. Whether the late deciders were watching is another matter.';
+        } else if (choiceIndex === 1) {
+          setBank(rng.int(0, 5)); gain('competence', 2, 'Competence');
+          text = 'You close soberly and seriously, a closing argument aimed squarely at the last few waverers. No fireworks — just reassurance.';
+        } else {
+          setBank(2 + rng.int(0, 3));
+          text = 'You put the campaign into the phones and the doorsteps, chasing every last ballot. Unglamorous, and exactly what wins the tight ones.';
+        }
+        // the rare Leadsom/May moment — the finalist implodes and withdraws, handing it
+        // to the player mid-campaign. Very rare (2–4%), a touch likelier vs a weak or
+        // maverick opponent.
+        const finalist = state.characters[contest.finalistId ?? ''];
+        const wp = clamp(
+          0.02 + (finalist?.traits.includes('maverick') ? 0.015 : 0) + ((finalist?.competence ?? 60) < 45 ? 0.01 : 0),
+          0.02, 0.045
+        );
+        if (finalist && rng.chance(wp)) {
+          state.history.push({ kind: 'leadershipContest', date: state.day, won: true, partyId: state.player.partyId });
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${finalist.name} withdraws from the leadership race; ${state.player.name} wins unopposed`,
+          });
+          makePlayerLeader(state, rng);
+          gain('profile', 12, 'Profile');
+          gain('partyStanding', 6, 'Standing');
+          finalist.active = false;
+          const leaderRole = playerLeaderRole(state);
+          const closer = leaderRole === 'pm' ? ' You walk into Number 10 by default.'
+            : leaderRole === 'lo' ? ' You lead the opposition, handed the job in the strangest of ways.' : '';
+          return {
+            text: `${text} And then, extraordinarily, it is over before the votes are counted: ${finalist.name} withdraws, their campaign imploding in the final days. There is no one left to beat.${closer}`,
+            deltas,
+          };
+        }
+        // otherwise the members deliver their verdict
+        state.forcedQueue.unshift({
+          kind: 'leadershipBallot',
+          payload: payloadWith(contest, { finalRound: true, finalistId: contest.finalistId }),
+        });
+        return { text: `${text} The ballots are cast. Now the count.`, deltas };
+      }
+
+      if (beat === 'launch') {
+        contest.beatsDone = [...contest.beatsDone, 'launch'];
+        let text = '';
+        if (choiceIndex === 1) {
+          contest.lane = 'change';
+          setBank(3);
+          gain('profile', 3, 'Profile');
+          text = 'You pitch yourself as the clean break — the candidate of change. The membership leans in; the establishment reaches for the smelling salts.';
+        } else if (choiceIndex === 2) {
+          contest.lane = 'unity';
+          setBank(1);
+          contest.mpTally.player = (contest.mpTally.player ?? 50) + 1;
+          gain('partyStanding', 1, 'Standing');
+          text = 'You run to heal, not to divide — a big-tent pitch that asks both wings to come inside. Worthy, if a little bloodless.';
+        } else {
+          contest.lane = 'continuity';
+          contest.mpTally.player = (contest.mpTally.player ?? 50) + 2;
+          push('Support', 2);
+          text = 'You offer a safe pair of hands: steady, experienced, no surprises. The parliamentary party exhales; the activists want more.';
+        }
+        proceed();
+        return { text, deltas };
+      }
+
+      if (beat === 'debate') {
+        // the change candidate is at home on the debate stage; a bigger swing either way
+        const laneBoost = contest.lane === 'change' ? 2 : 0;
+        let text = '';
+        if (choiceIndex === 0) {
+          // attack — a genuine breakout or a blunder
+          if (rng.chance(0.5)) {
+            const swing = 8 + rng.int(0, 6) + laneBoost;
+            setBank(swing); setMomentum(2); gain('profile', 4, 'Profile');
+            text = roundPick([
+              'You go for the jugular and land it clean. The clip is everywhere by morning — this is your breakout moment.',
+              'You take the fight to the front-runner and win the exchange in front of millions. The room, and the country, notices.',
+            ], 1, salt);
+          } else {
+            const swing = -(6 + rng.int(0, 6)) + laneBoost;
+            setBank(swing); setMomentum(-2); gain('profile', 2, 'Profile');
+            text = roundPick([
+              'The attack looks rehearsed and a touch desperate; the moderator lets your opponent bat it away, and the sketch-writers are cruel.',
+              'You overreach, and it shows. A promising line collapses into a soundbite that follows you all week — the wrong kind of viral.',
+            ], 1, salt);
+          }
+        } else if (choiceIndex === 1) {
+          setBank(rng.int(0, 4) + laneBoost); setMomentum(1);
+          gain('competence', 2, 'Competence');
+          text = 'You stay above the fray, prime-ministerial and unruffled. No fireworks, but nobody watching doubts you could do the job.';
+        } else {
+          if (rng.chance(0.6)) {
+            setBank(5 + rng.int(0, 5) + laneBoost); setMomentum(1); gain('profile', 3, 'Profile');
+            text = 'The line you rehearsed in the mirror lands perfectly. The audience laughs, your opponent flushes, and the highlight reel writes itself.';
+          } else {
+            setBank(-(3 + rng.int(0, 4))); gain('profile', 1, 'Profile');
+            text = 'The zinger dies on delivery — a beat too slow, a touch too pleased with itself. The silence in the studio is its own verdict.';
+          }
+        }
+        proceed();
+        return { text, deltas };
+      }
+
+      // scrutiny — a members'-appeal hit that scales with how chequered the record is
+      const angles = scrutinyAngles(state);
+      const damage = 2 + 3 * angles.length;
+      let text = '';
+      if (choiceIndex === 0) {
+        // own it — contrition halves the hit and earns a little integrity
+        setBank(-damage * 0.5);
+        gain('integrity', 2, 'Integrity');
+        text = angles.length
+          ? 'You get ahead of it: a frank word to camera, no excuses. The contrition draws the sting, and the story burns out faster than your rivals hoped.'
+          : 'You address the manufactured row head-on and briskly. There was never much there, and your calm handling puts it to bed.';
+      } else if (choiceIndex === 1) {
+        // brazen it out — full hit, but defiance can play with a section of the base
+        setBank(-damage);
+        if (rng.chance(0.5)) { gain('profile', 3, 'Profile'); }
+        text = angles.length
+          ? 'You give them nothing — no apology, no retreat. Half the membership admires the steel; the other half files it away, and the papers keep digging.'
+          : 'You refuse to dignify it, and mostly that works — though a whiff of arrogance lingers where a straight answer would have done.';
+      } else {
+        // counter-attack the press — high variance
+        if (rng.chance(0.5)) {
+          setBank(-damage * 0.4); gain('profile', 4, 'Profile');
+          text = 'You turn on your inquisitors and make the story about them. It is bravura stuff; the base roars, and the pack backs off — for now.';
+        } else {
+          setBank(-damage * 1.3); setMomentum(-2);
+          text = 'Picking a fight with the media was a mistake. You look rattled, the row doubles in size, and now you are the story for all the wrong reasons.';
+        }
+      }
+      proceed();
+      return { text, deltas };
+    }
+
+    case 'leadershipNomination': {
+      const mode = (card.payload?.mode as string) ?? 'squeeze';
+      const party = state.player.partyId;
+      // resign the front bench when entering a real contest (as when standing)
+      const resignToRun = () => {
+        if (state.player.officeId && !playerIsLeader(state)) {
+          stripOffice(state, rng, 'resigned');
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} resigns from the front bench to stand for the leadership`,
+          });
+        }
+      };
+
+      if (mode === 'squeeze') {
+        const challengerId = card.payload?.challengerId as string;
+        const challenger = characterName(state, challengerId);
+        const favourChoice = (state.player.favours ?? []).length > 0;
+        const lastIndex = card.choices.length - 1;
+        // "let them stand" — a real two-horse contest, with a legitimacy bonus
+        if (choiceIndex === lastIndex) {
+          const baseTally = Math.round(leadershipBaseSupport(state));
+          resignToRun();
+          gain('profile', 6, 'Profile');
+          gain('integrity', 2, 'Integrity');
+          beginPlayerContest(state, rng, party, [challengerId], 'twoHorse', { legitimacy: true, baseTally });
+          return {
+            text: `You could have strangled it in the cradle, but you don't. "Let the party choose," you say — and mean it. ${challenger} will get their contest, and if you win it, you will win it clean.`,
+            deltas,
+          };
+        }
+        // "call in a favour" (only present when a favour is banked) — a clean coronation
+        if (favourChoice && choiceIndex === 1) {
+          const favours = state.player.favours ?? [];
+          const kind = card.payload?.favourKind as RelationshipKind | undefined;
+          let fi = kind ? favours.findIndex((f) => f.kind === kind) : 0;
+          if (fi < 0 && favours.length > 0) fi = 0;
+          const debtor = fi >= 0 ? characterName(state, favours[fi].characterId) : 'an old friend';
+          if (fi >= 0) favours.splice(fi, 1);
+          makePlayerLeader(state, rng, { softMandate: true });
+          gain('profile', 10, 'Profile');
+          return {
+            text: `A quiet word from ${debtor} in the right ears, and ${challenger}'s support evaporates overnight. By Friday no one else has the numbers to stand. You are leader — unopposed, if not quite untested.`,
+            deltas,
+          };
+        }
+        // "move fast" — a lock-up that usually works, but a botched squeeze forces a fight
+        if (rng.chance(0.75)) {
+          makePlayerLeader(state, rng, { softMandate: true });
+          gain('profile', 8, 'Profile');
+          gain('partyStanding', 4, 'Standing');
+          return {
+            text: `You move before anyone else can. By the time nominations close, ${challenger} can't find the signatures, and the returning officer has only one name. A coronation — swift, ruthless, and yours.`,
+            deltas,
+          };
+        }
+        const baseTally = Math.round(leadershipBaseSupport(state));
+        resignToRun();
+        gain('profile', 6, 'Profile');
+        beginPlayerContest(state, rng, party, [challengerId], 'twoHorse', { baseTally });
+        return {
+          text: `The squeeze fails. ${challenger} scrapes the nominations together at the eleventh hour and forces a contest — and now the party mutters that you tried to deny them a say. You will have to win it after all.`,
+          deltas,
+        };
+      }
+
+      // scramble — an NPC heir is locking up; the player fights, endorses, or stands aside
+      const heirId = card.payload?.heirId as string;
+      const heir = characterName(state, heirId);
+      if (choiceIndex === 0) {
+        // fight for a place on the ballot — the underdog's uphill battle
+        const { winChance } = leadershipContestScore(state, [heirId]);
+        const chance = clamp(winChance, 0.25, 0.75);
+        if (rng.chance(chance)) {
+          const baseTally = Math.round(leadershipBaseSupport(state));
+          resignToRun();
+          gain('profile', 5, 'Profile');
+          beginPlayerContest(state, rng, party, [heirId], 'twoHorse', { baseTally });
+          return {
+            text: `You refuse to be shut out. A frantic week of phone calls and favours drags your nomination over the line — and suddenly the coronation is a contest. ${heir} did not see you coming.`,
+            deltas,
+          };
+        }
+        // fell short — the heir is crowned; no ballot loss recorded (you never made it)
+        resolveNpcLeadership(state, rng, party, heirId);
+        gain('profile', 2, 'Profile');
+        gain('partyStanding', -2, 'Standing');
+        return {
+          text: `You throw everything at it and fall just short of the nominations. ${heir} is crowned, and you are left explaining to the cameras why you bothered. Still — the party saw you try.`,
+          deltas,
+        };
+      }
+      if (choiceIndex === 1) {
+        // endorse early — a friend in the new leader, and a job pledged in return
+        resolveNpcLeadership(state, rng, party, heirId);
+        adjustRelationship(state, 'leader', 12);
+        push('Leader', 12);
+        gain('partyStanding', 2, 'Standing');
+        const newLeaderId = getRelationship(state, 'leader')?.characterId;
+        if (newLeaderId && newLeaderId !== 'player') {
+          addPledge(state, newLeaderId, 'sos_home', 'nomination', 'received');
+        }
+        return {
+          text: `You read the arithmetic and get out in front of it: your endorsement, given early and warmly, is worth more than a doomed campaign. ${heir} takes the crown — and, quietly, promises you a place at the top table for your loyalty.`,
+          deltas,
+        };
+      }
+      // stand aside and bank a favour from the incoming leader
+      resolveNpcLeadership(state, rng, party, heirId);
+      const newLeaderId = getRelationship(state, 'leader')?.characterId;
+      if (newLeaderId && newLeaderId !== 'player') {
+        (state.player.favours ??= []).push({
+          kind: 'leader', characterId: newLeaderId,
+          note: 'owes you for standing aside in the leadership contest',
+        });
+      }
+      gain('integrity', 3, 'Integrity');
+      return {
+        text: `You keep your powder dry. No grand gestures, no doomed run — just a private understanding with ${heir} that a debt has been banked. The crown is theirs; the favour is yours, for when it counts.`,
+        deltas,
+      };
+    }
+
     case 'pmReshuffle': {
       const inGov = playerInGovernment(state);
       const side = inGov ? 'cabinet' : 'shadowCabinet';
@@ -3859,8 +4975,99 @@ export function resolveForcedChoice(
       const headline = (text: string) =>
         state.history.push({ kind: 'event', date: state.day, headline: text });
 
-      const text = (() => {
+      // when this reshuffle carries contest debts, the first two choices are honour/break;
+      // the ordinary three follow, so their logic is reached at choiceIndex - 2
+      const pledgeChoices = card.payload?.pledgeChoices === true;
+      if (pledgeChoices && (choiceIndex === 0 || choiceIndex === 1)) {
+        const madePledges = (state.player.promises ?? []).filter(
+          (p) => p.direction === 'made' && state.characters[p.characterId]?.active
+        );
         if (choiceIndex === 0) {
+          // honour: appoint each pledge-holder to the office you promised them
+          const appointed: string[] = [];
+          for (const p of madePledges) {
+            if (!CABINET_OFFICES.includes(p.officeId)) continue;
+            const existing = state.government[side].find((post) => post.officeId === p.officeId);
+            if (existing && existing.characterId !== p.characterId) {
+              const displaced = state.characters[existing.characterId];
+              if (displaced && displaced.id !== 'player') displaced.officeId = null;
+            }
+            const holder = state.characters[p.characterId];
+            if (holder) holder.officeId = p.officeId;
+            setFrontbenchPost(state, side, p.officeId, p.characterId);
+            appointed.push(`${characterName(state, p.characterId)} to ${titleOf(p.officeId)}`);
+          }
+          // debts cleared
+          state.player.promises = (state.player.promises ?? []).filter((p) => p.direction !== 'made');
+          adjustRelationship(state, 'ally', 10);
+          push('Ally', 10);
+          gain('integrity', 3, 'Integrity');
+          state.history.push({
+            kind: 'event', date: state.day,
+            headline: `${state.player.name} honours the deals struck during the leadership contest`,
+          });
+          if (inGov) reshuffleNpcDeputyPm(state, rng);
+          return {
+            text: appointed.length
+              ? `You pay your debts in full: ${appointed.join('; ')}. It is not the cabinet you would have picked on merit — but a leader who honours their word banks a loyalty that outlasts any single reshuffle.`
+              : 'You honour the deals you struck — the offices go where you promised. Not the team of your dreams, but your word is your bond, and the party notes it.',
+            deltas,
+          };
+        }
+        // break: tear up the IOUs
+        state.player.flags._brokenPromises = (((state.player.flags._brokenPromises as number) ?? 0) + 1);
+        const jilted = madePledges
+          .map((p) => state.characters[p.characterId])
+          .filter((c): c is Character => !!c)
+          .sort((a, b) => (b.officeId ? OFFICES[b.officeId].tier : 0) - (a.officeId ? OFFICES[a.officeId].tier : 0))[0];
+        if (jilted) {
+          const rivalRel = state.relationships.find((r) => r.kind === 'rival');
+          if (rivalRel) { rivalRel.characterId = jilted.id; rivalRel.value = -35; }
+        }
+        state.player.promises = (state.player.promises ?? []).filter((p) => p.direction !== 'made');
+        adjustRelationship(state, 'ally', -6);
+        push('Ally', -6);
+        gain('profile', 2, 'Profile');
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} breaks the promises made to win the leadership`,
+        });
+        if (inGov) reshuffleNpcDeputyPm(state, rng);
+        return {
+          text: jilted
+            ? `You tear up the IOUs. The jobs you promised go to people you actually rate, and ${jilted.name} — passed over, publicly humiliated — becomes exactly the enemy you would expect. "They gave me their word," they tell anyone who will listen. Everyone listens.`
+            : 'You break the deals and build the bench you want. Cleaner on paper — but a reputation for breaking your word is a debt of its own, and it always comes due.',
+          deltas,
+        };
+      }
+      const baseIndex = pledgeChoices ? choiceIndex - 2 : choiceIndex;
+
+      const text = (() => {
+        if (baseIndex === 3) {
+          // unity — bring the beaten finalist into a great office and reset the rivalry
+          const defeatedId = state.player.flags._defeatedFinalistId as string | undefined;
+          const defeated = defeatedId ? state.characters[defeatedId] : undefined;
+          delete state.player.flags._defeatedFinalistId;
+          if (defeated?.active) {
+            const officeId: OfficeId = 'sos_foreign';
+            const post = state.government[side].find((p) => p.officeId === officeId);
+            if (post) {
+              const old = state.characters[post.characterId];
+              if (old && old.id !== 'player') old.officeId = null;
+            }
+            defeated.officeId = officeId;
+            setFrontbenchPost(state, side, officeId, defeated.id);
+            const rivalRel = state.relationships.find((r) => r.kind === 'rival');
+            if (rivalRel && rivalRel.characterId === defeated.id) rivalRel.value = clamp(rivalRel.value + 25, -100, 100);
+            adjustRelationship(state, 'ally', 4);
+            push('Ally', 4);
+            gain('integrity', 3, 'Integrity');
+            headline(`${defeated.name}, ${state.player.name}'s defeated leadership rival, brought into the ${inGov ? 'cabinet' : 'shadow cabinet'} as ${titleOf(officeId)}`);
+            return `You do the magnanimous thing and hand ${defeated.name} — the rival you just beat — a great office. Keep your friends close, the saying goes. The party, weary of the contest, exhales with relief.`;
+          }
+          return 'You reach out to bring your defeated rival into the fold, but they have already made other plans — the wound, it seems, is still too raw.';
+        }
+        if (baseIndex === 0) {
           // loyalists in, competence be damned
           for (const post of rng.shuffle(posts).slice(0, 2)) {
             const old = state.characters[post.characterId];
@@ -3879,7 +5086,7 @@ export function resolveForcedChoice(
           applyPollingShock(state, party, -0.2);
           return 'The team around the table is now unmistakably yours — government by people who answer your texts. The sketch writers reach for "chumocracy"; the excluded factions retreat to the tearoom to begin the long, patient work of resenting you.';
         }
-        if (choiceIndex === 1) {
+        if (baseIndex === 1) {
           // big tent: bring in talented critics
           const post = rng.shuffle(posts)[0];
           if (post) {
@@ -3960,6 +5167,8 @@ export function resolveForcedChoice(
       if (strength + rng.normal(0, 6) >= bar) {
         applyPollingShock(state, state.player.partyId, severe ? 0.3 : 0.5);
         state.player.rebellionCount = Math.max(0, state.player.rebellionCount - 1);
+        // a leader who faces down a heave is no longer untested — the soft mandate hardens
+        delete state.player.flags._softMandate;
         state.history.push({
           kind: 'event', date: state.day,
           headline: severe
@@ -4265,6 +5474,8 @@ export function resolveForcedChoice(
       if (strength + rng.normal(0, 6) >= bar) {
         state.player.rebellionCount = Math.max(0, state.player.rebellionCount - 1);
         state.player.flags._coupCooldownUntil = state.day + rng.int(180, 360);
+        // seeing off a challenge tests a soft mandate — it hardens
+        delete state.player.flags._softMandate;
         state.history.push({
           kind: 'event', date: state.day,
           headline: `${state.player.name} sees off a leadership challenge`,
@@ -5092,7 +6303,7 @@ function installProtege(state: GameState, rng: Rng, input: CreationInput, oldSea
     },
     officeId: null, officeSinceDay: null, rebellionCount: 0, flags: {},
     seatId, hasSeat: true, enteredParliament: state.day,
-    causes: (input.causes ?? []).slice(0, 3), favours: [],
+    causes: (input.causes ?? []).slice(0, 3), favours: [], promises: [],
   };
   state.player = player;
 

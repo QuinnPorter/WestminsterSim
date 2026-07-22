@@ -132,6 +132,17 @@ export interface Favour {
   note: string;
 }
 
+/** a job promised during a leadership contest — a debt the winner is expected to honour.
+ *  `direction: 'made'` is owed BY the player (to be honoured or broken at their first
+ *  reshuffle); `direction: 'received'` is owed TO the player by the incoming leader. */
+export interface Pledge {
+  characterId: string;
+  officeId: OfficeId;
+  madeDay: GameDay;
+  context: 'endorsement' | 'withdrawDeal' | 'finalRally' | 'nomination' | 'unity';
+  direction: 'made' | 'received';
+}
+
 // ---- player ----
 
 export type BackgroundId =
@@ -181,6 +192,8 @@ export interface Player {
   causes: CauseId[];
   /** banked favours the player can spend at key moments */
   favours: Favour[];
+  /** job promises made or received during leadership contests — the debt ledger */
+  promises: Pledge[];
 }
 
 // ---- politics state ----
@@ -225,6 +238,10 @@ export interface GovernmentState {
   pmHeavePressure?: number;
   /** accumulated pressure on the player's (NPC) opposition/minor-party leader to go */
   oppLeaderPressure?: number;
+  /** the opposition party's polling share (pts) at the moment the current NPC Leader
+   *  of the Opposition took over — the baseline a mid-term coup measures the slide from
+   *  (the NPC mirror of the player's flags._leaderTookOverPolls) */
+  loInheritedPolls?: number;
   /** the cabinet minister (or 'player') currently doubling as Deputy PM / First Secretary */
   deputyPmId?: string;
   /** which deputy title the current deputy holds */
@@ -324,6 +341,65 @@ export type HistoryEntry =
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
   | { kind: 'enteredParliament'; date: GameDay; seatName: string };
 
+// ---- leadership contest state ----
+
+/** the shape a contest takes, decided at the nomination stage */
+export type ContestShape = 'standard' | 'twoHorse' | 'coronation';
+/** the campaign lane a standing player picks at launch — colours later beats */
+export type ContestLane = 'continuity' | 'change' | 'unity';
+
+/** the single evolving object threaded through every card of ONE leadership
+ *  contest, carried in `ForcedEvent.payload.contest`. Reads always go through the
+ *  `contestFrom` adapter in career.ts so an older save's flat payload (tallies/round/
+ *  fieldSize) degrades gracefully. Two currencies: `mpTally` decides the elimination
+ *  ballots, `memberBank` the members' final. */
+export interface ContestState {
+  party: PartyId;
+  shape: ContestShape;
+  /** the next numbered ballot to run */
+  round: number;
+  /** the original field size (feeds the fractured-field term at the final) */
+  fieldSize: number;
+  /** MP support per candidate id (includes 'player') — the elimination currency */
+  mpTally: Record<string, number>;
+  /** the player's banked members'-ballot appeal (0–100) — the final currency */
+  memberBank: number;
+  /** rolling MP-tally momentum, -10..+10 */
+  momentum: number;
+  /** the launch lane a standing player chose */
+  lane?: ContestLane;
+  /** episode beats already fired this contest (launch/debate/scrutiny/…) */
+  beatsDone: string[];
+  justEliminated: { name: string; swungTo: string }[];
+  finalistId?: string;
+  prevPlayerTally?: number;
+  /** the heir let the challenger stand (a legitimacy-earning two-horse race) */
+  legitimacy?: boolean;
+  /** crowned without a real contest — a never-tested, soft mandate */
+  softMandate?: boolean;
+  /** a stop-X consolidation has already been applied against the player */
+  consolidated?: boolean;
+  /** the final week's postal votes are locked in — late swings weigh less */
+  postalLock?: boolean;
+}
+
+/** a non-player party's leadership contest playing out over several weeks. Unlike
+ *  the player's card-based contest, this is a passive interim state that surfaces as
+ *  news headlines (open → hustings → result) and resolves itself on `resolveDay`,
+ *  installing the pre-picked `winnerId`. Lives in `GameState.pendingContests`. */
+export interface NpcContest {
+  party: PartyId;
+  /** the declared field, named in the opening headline */
+  contenders: string[];
+  /** pre-selected at open time so the announced field and the eventual winner stay
+   *  consistent and the rng draws stay local to the opening tick */
+  winnerId: string;
+  openDay: GameDay;
+  resolveDay: GameDay;
+  /** interim news beats already emitted (e.g. 'hustings') */
+  beatsDone: string[];
+}
+
 // ---- the running card ----
 
 export interface StatDelta {
@@ -334,7 +410,8 @@ export interface StatDelta {
 export type ForcedKind =
   | 'reshuffleOffer' | 'dismissal' | 'resignPrompt'
   | 'campaign' | 'electionNight' | 'lostSeat' | 'wilderness'
-  | 'leadershipStand' | 'leadershipBallot' | 'leadershipBacking' | 'pmReshuffle' | 'pmPressure'
+  | 'leadershipStand' | 'leadershipBallot' | 'leadershipBacking' | 'leadershipEpisode'
+  | 'leadershipNomination' | 'pmReshuffle' | 'pmPressure'
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'deputyRemoval' | 'speakerContest'
@@ -426,6 +503,8 @@ export interface GameState {
   /** election result waiting to be shown on the election-night screen */
   pendingElectionId: string | null;
   forcedQueue: ForcedEvent[];
+  /** non-player party leadership contests currently under way (resolve over weeks) */
+  pendingContests?: NpcContest[];
   /** cardId -> day last played */
   cardHistory: Record<string, GameDay>;
   /** calendar event key -> year last fired */

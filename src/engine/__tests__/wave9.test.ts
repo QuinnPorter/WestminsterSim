@@ -36,10 +36,13 @@ describe('wave 9 — standing for leader resigns the current office', () => {
     });
     resolveForcedChoice(game, rng, card, 0); // stand
     expect(game.player.officeId).toBeNull(); // resigned to stand
-    const ballot = game.forcedQueue.find((e) => e.kind === 'leadershipBallot');
-    expect(ballot).toBeDefined();
-    // the player's seeded MP support (computed pre-strip) lives in the ballot tally table
-    const tallies = ballot!.payload?.tallies as Record<string, number>;
+    // standing now opens with a launch episode before ballot 1; the seeded MP support
+    // (computed pre-strip) rides on the first queued contest card's tally table
+    const contestCard = game.forcedQueue.find(
+      (e) => e.kind === 'leadershipEpisode' || e.kind === 'leadershipBallot'
+    );
+    expect(contestCard).toBeDefined();
+    const tallies = contestCard!.payload?.tallies as Record<string, number>;
     expect(tallies.player).toBe(expectedSupport);
   });
 
