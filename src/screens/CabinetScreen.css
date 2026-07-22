@@ -28,6 +28,35 @@
   margin-bottom: 12px;
 }
 
+.cab-featured-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* the PM / Leader of the Opposition's "remake the bench" action */
+.cab-reshuffle {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--party);
+  background: var(--surface);
+  border: 1px solid var(--party);
+  border-radius: 999px;
+  padding: 8px 16px;
+  min-height: 44px;
+}
+
+.cab-reshuffle:active {
+  transform: scale(0.96);
+}
+
+.cab-reshuffle:disabled {
+  opacity: 0.4;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
 .cab-featured-name {
   font-weight: 800;
   font-size: var(--fs-md);
@@ -147,4 +176,72 @@
 .cab-sack:active,
 .cab-deputy:active {
   transform: scale(0.95);
+}
+
+/* ---- sack replacement picker ---- */
+.sack-pool {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.sack-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.sack-option:active {
+  transform: scale(0.99);
+  background: var(--surface-2);
+}
+
+.sack-option-default {
+  border-style: dashed;
+}
+
+.sack-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sack-option-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: var(--fs-sm);
+}
+
+.sack-option-sub {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.sack-option-stats {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sack-loyalty.pos {
+  color: var(--success);
+}
+
+.sack-loyalty.neg {
+  color: var(--danger);
 }

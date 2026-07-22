@@ -82,6 +82,15 @@ export function generateCharacter(
     const t = rng.pick(ALL_TRAITS);
     if (!traits.includes(t)) traits.push(t);
   }
+  // baseline standing with a sitting leader, derived from traits alone (NOT a fresh
+  // rng draw — that would shift the whole deterministic stream). The `loyal` are
+  // naturally warmer, the `ambitious`/`ruthless` naturally cooler; appointments,
+  // snubs and sackings move it from here during play.
+  const loyaltyBias =
+    (traits.includes('loyal') ? 22 : 0) -
+    (traits.includes('ambitious') ? 12 : 0) -
+    (traits.includes('ruthless') ? 8 : 0) +
+    (traits.includes('principled') ? 4 : 0);
   return {
     id: `npc_${idCounter.value++}`,
     name: generateName(rng, gender, usedNames, opts.region),
@@ -93,5 +102,6 @@ export function generateCharacter(
     competence: Math.round(clamp(rng.normal(opts.competenceMean ?? 55, 12), 25, 92)),
     avatar: randomAvatar(rng),
     active: true,
+    loyalty: clamp(loyaltyBias, -100, 100),
   };
 }

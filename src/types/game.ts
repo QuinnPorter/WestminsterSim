@@ -112,6 +112,10 @@ export interface Character {
   avatar: AvatarConfig;
   /** false → retired/left politics, kept for history */
   active: boolean;
+  /** standing with the sitting player-leader (-100..100). Undefined ≈ neutral (0).
+   *  Rises when the player appoints/keeps them, falls when sacked or passed over.
+   *  Drives loyalty-vs-talent trade-offs in cabinet-building and coup pressure. */
+  loyalty?: number;
 }
 
 export type RelationshipKind =
@@ -411,7 +415,7 @@ export type ForcedKind =
   | 'reshuffleOffer' | 'dismissal' | 'resignPrompt'
   | 'campaign' | 'electionNight' | 'lostSeat' | 'wilderness'
   | 'leadershipStand' | 'leadershipBallot' | 'leadershipBacking' | 'leadershipEpisode'
-  | 'leadershipNomination' | 'pmReshuffle' | 'pmPressure'
+  | 'leadershipNomination' | 'pmReshuffle' | 'playerReshuffle' | 'pmPressure'
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'deputyRemoval' | 'speakerContest'

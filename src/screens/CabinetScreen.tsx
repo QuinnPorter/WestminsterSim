@@ -4,14 +4,17 @@ import { CABINET_OFFICES, OFFICES } from '../data/offices';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
-import { playerIsLeader, playerIsPM, cabinetTitleFor } from '../engine/career';
+import { playerIsLeader, playerIsPM, cabinetTitleFor, benchPoolFor } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
+import { tap } from '../native/haptics';
 import './CabinetScreen.css';
 
 export function CabinetScreen({ game }: { game: GameState }) {
   const [side, setSide] = useState<'gov' | 'opp'>('gov');
+  const [sackTarget, setSackTarget] = useState<{ officeId: OfficeId; name: string } | null>(null);
   const sackMinister = useGameStore((s) => s.sackMinister);
   const setDeputyPm = useGameStore((s) => s.setDeputyPm);
+  const reshuffleCabinet = useGameStore((s) => s.reshuffleCabinet);
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
   const setLoHistoryOpen = useUiStore((s) => s.setLoHistoryOpen);
@@ -26,6 +29,10 @@ export function CabinetScreen({ game }: { game: GameState }) {
   const canSack = (isGov && playerIsPM(game)) || (!isGov && leadsOpposition);
   // only a sitting Prime Minister names the Deputy PM
   const canMakeDeputy = isGov && playerIsPM(game);
+  // a reshuffle can't interrupt a forced decision already in play (a contest, an
+  // election, a confidence vote) or a resolved card still being read
+  const reshuffleBlocked = !!game.currentCard
+    && (game.currentCard.kind !== 'normal' || !!game.currentCard.outcome);
 
   return (
     <div className="screen">
@@ -46,7 +53,19 @@ export function CabinetScreen({ game }: { game: GameState }) {
         titleColour={isGov
           ? partyTextColour(game.government.governingParty)
           : partyTextColour(game.government.oppositionParty)}
+        onReshuffle={canSack ? () => { tap(); reshuffleCabinet(); } : undefined}
+        reshuffleDisabled={reshuffleBlocked}
       />
+
+      {sackTarget && (
+        <SackPicker
+          game={game}
+          party={party}
+          target={sackTarget}
+          onClose={() => setSackTarget(null)}
+          onSack={(replacementId) => { sackMinister(sackTarget.officeId, replacementId); setSackTarget(null); }}
+        />
+      )}
 
       <div className="cab-grid">
         {/* a Deputy PM who holds no department (Clegg-style) isn't a post-holder, so
@@ -85,13 +104,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
               onSack={canSack && isNpc
                 ? () => {
                     const name = game.characters[post.characterId]?.name ?? 'this minister';
-                    requestConfirm({
-                      title: `Sack ${name}?`,
-                      message: "It spends political capital, and they won't forget.",
-                      confirmLabel: 'Sack',
-                      danger: true,
-                      onConfirm: () => sackMinister(officeId as OfficeId),
-                    });
+                    setSackTarget({ officeId: officeId as OfficeId, name });
                   }
                 : undefined}
               onMakeDeputy={canMakeDeputy && isNpc && deputyEligible && !isDeputy
@@ -118,8 +131,9 @@ export function CabinetScreen({ game }: { game: GameState }) {
   );
 }
 
-function FeaturedMember({ game, characterId, title, onTitleClick, titleColour }: {
-  game: GameState; characterId: string; title: string; onTitleClick?: () => void; titleColour?: string;
+function FeaturedMember({ game, characterId, title, onTitleClick, titleColour, onReshuffle, reshuffleDisabled }: {
+  game: GameState; characterId: string; title: string; onTitleClick?: () => void;
+  titleColour?: string; onReshuffle?: () => void; reshuffleDisabled?: boolean;
 }) {
   const isPlayer = characterId === 'player';
   const char = isPlayer ? null : game.characters[characterId];
@@ -132,7 +146,7 @@ function FeaturedMember({ game, characterId, title, onTitleClick, titleColour }:
       {avatar && (
         <Avatar config={avatar} size={68} partyColour={PARTIES[partyId].colour} />
       )}
-      <div>
+      <div className="cab-featured-body">
         <div className="cab-featured-name">
           {name} {isPlayer && <span className="cab-you">YOU</span>}
         </div>
@@ -147,6 +161,67 @@ function FeaturedMember({ game, characterId, title, onTitleClick, titleColour }:
         ) : (
           <div className="cab-featured-title">{title}</div>
         )}
+      </div>
+      {onReshuffle && (
+        <button
+          className="cab-reshuffle"
+          onClick={onReshuffle}
+          disabled={reshuffleDisabled}
+          title={reshuffleDisabled ? 'Deal with the matter in hand first' : undefined}
+        >
+          Reshuffle
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** picking a named replacement when the player-leader sacks a minister — the ablest
+ *  available hand by default, or any backbencher from the party's real bench pool. */
+function SackPicker({ game, party, target, onClose, onSack }: {
+  game: GameState; party: GameState['player']['partyId'];
+  target: { officeId: OfficeId; name: string };
+  onClose: () => void;
+  onSack: (replacementId?: string) => void;
+}) {
+  const pool = benchPoolFor(game, party).slice(0, 5);
+  const choose = (replacementId?: string) => { tap(); onSack(replacementId); };
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <h3 className="modal-title">Sack {target.name}?</h3>
+        <p className="modal-message">
+          It spends political capital, and they won&rsquo;t forget. Choose who steps up.
+        </p>
+        <div className="sack-pool">
+          <button className="sack-option sack-option-default" onClick={() => choose(undefined)}>
+            <span className="sack-option-text">
+              <span className="sack-option-name">Promote the ablest available</span>
+              <span className="sack-option-sub">Let the whips find the strongest hand</span>
+            </span>
+          </button>
+          {pool.map((c) => {
+            const loyalty = c.loyalty ?? 0;
+            return (
+              <button key={c.id} className="sack-option" onClick={() => choose(c.id)}>
+                <Avatar config={c.avatar} size={30} partyColour={PARTIES[c.partyId].colour} />
+                <span className="sack-option-name">{c.name}</span>
+                <span className="sack-option-stats">
+                  <span title="Competence">{Math.round(c.competence)}</span>
+                  <span
+                    className={`sack-loyalty${loyalty >= 0 ? ' pos' : ' neg'}`}
+                    title="Loyalty to you"
+                  >
+                    {loyalty > 0 ? '+' : ''}{Math.round(loyalty)}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="modal-actions">
+          <button className="btn modal-cancel" onClick={onClose}>Cancel</button>
+        </div>
       </div>
     </div>
   );
