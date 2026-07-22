@@ -415,7 +415,7 @@ export type ForcedKind =
   | 'reshuffleOffer' | 'dismissal' | 'resignPrompt'
   | 'campaign' | 'electionNight' | 'lostSeat' | 'wilderness'
   | 'leadershipStand' | 'leadershipBallot' | 'leadershipBacking' | 'leadershipEpisode'
-  | 'leadershipNomination' | 'pmReshuffle' | 'playerReshuffle' | 'pmPressure'
+  | 'leadershipNomination' | 'pmReshuffle' | 'playerReshuffle' | 'governmentFormation' | 'pmPressure'
   | 'resignPledge' | 'confidenceVote' | 'partyCoup'
   | 'coalitionTalks' | 'coalitionOffer' | 'pmHeave'
   | 'deputyPmOffer' | 'deputyRemoval' | 'speakerContest'

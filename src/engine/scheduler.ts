@@ -10,7 +10,7 @@ import {
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS, offerThreshold,
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, canChairCommittee, pickCommittee,
-  resolvePendingContests, cabinetAuthorityPressure,
+  resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
@@ -735,8 +735,11 @@ export function nextStep(state: GameState, rng: Rng): void {
         nextStep(state, rng);
         return;
       }
-      runReshuffle(state, rng);
-      if (state.forcedQueue.length > 0) {
+      // no pledged job to honour: the new leader forms their government and decides the
+      // player's fate — kept on, moved, promoted, sacked, or (from the benches) brought in
+      const { fate, officeId } = decideFormationFate(state, rng);
+      if (fate !== 'none') {
+        state.forcedQueue.push({ kind: 'governmentFormation', payload: { leaderId, fate, officeId } });
         nextStep(state, rng);
         return;
       }

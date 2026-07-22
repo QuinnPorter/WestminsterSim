@@ -1094,6 +1094,144 @@ export function cabinetAuthorityPressure(state: GameState): number {
   return clamp(raw, -12, 14);
 }
 
+/** The shared heterogeneous churn engine. For a set of vacated seats on `party`'s
+ *  bench it drops the outgoing holders, elevates sitting ministers into the senior
+ *  vacancies (a lateral or a promotion, one hop only) and backfills the rest with
+ *  fresh blood from the bench pool. Never touches the player (their seat is handled
+ *  separately) or a coalition partner's ministers. Re-decides the deputy PM in
+ *  government. Returns up to three headline strings describing the moves. Shared by
+ *  the player-led reshuffle and a new NPC leader forming their government. */
+function runBenchChurn(
+  state: GameState, rng: Rng,
+  opts: { side: 'cabinet' | 'shadowCabinet'; party: PartyId; churnPosts: CabinetPost[]; tilt: ReshuffleTilt }
+): string[] {
+  const { side, party, churnPosts, tilt } = opts;
+  const inGov = side === 'cabinet';
+  const titleOf = (officeId: OfficeId) => inGov ? OFFICES[officeId].title : OFFICES[officeId].shadowTitle;
+  const ownPosts = state.government[side].filter((p) =>
+    p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party);
+  const pool = benchPoolFor(state, party);
+  // sitting own-party ministers who could be MOVED into a vacated seat (a lateral, or
+  // a promotion) — everyone not being churned out, not the player, not the deputy PM.
+  const churnSet = new Set(churnPosts.map((p) => p.officeId));
+  const movable = ownPosts
+    .filter((p) => !churnSet.has(p.officeId) && p.characterId !== state.government.deputyPmId)
+    .map((p) => ({ officeId: p.officeId, c: state.characters[p.characterId] }))
+    .filter((x): x is { officeId: OfficeId; c: Character } => !!x.c);
+  // pecking order of a seat: great offices sit above the rest, then by tier/rank
+  const seniority = (officeId: OfficeId) => {
+    const o = OFFICES[officeId];
+    return (GREAT_OFFICES.includes(officeId) ? 100 : 0) + (o?.tier ?? 0) * 10 + (o?.rank ?? 0);
+  };
+  const moverScore = (c: Character) =>
+    tilt === 'loyalty' ? (c.loyalty ?? 0) * 1.2 + c.competence * 0.4 + rng.normal(0, 8)
+    : tilt === 'talent' ? c.competence * 1.2 + (c.loyalty ?? 0) * 0.2 + rng.normal(0, 8)
+    : c.competence * 0.7 + (c.loyalty ?? 0) * 0.5 + rng.normal(0, 10);
+  const lateralChance = (officeId: OfficeId) => {
+    let base = GREAT_OFFICES.includes(officeId) ? 0.6 : 0.35;
+    if (tilt === 'talent') base += 0.12;
+    else if (tilt === 'loyalty') base += 0.04;
+    return base;
+  };
+  const LATERAL_CAP = 3; // keep it bounded, and the outcome text readable
+
+  const moves: string[] = [];
+  let lateralCount = 0;
+  let strongAmbitiousDropped: Character | undefined;
+  // fill the most senior vacancies first, so promotions flow UP into the top jobs
+  const ordered = [...churnPosts].sort((a, b) => seniority(b.officeId) - seniority(a.officeId));
+  for (const post of ordered) {
+    const old = state.characters[post.characterId];
+    if (old) {
+      old.officeId = null;
+      old.active = true;
+      // being dropped stings — the more so if you were loyal and still got the chop
+      old.loyalty = Math.round(clamp((old.loyalty ?? 0) - 20, -100, 100));
+      if (old.competence > 70 && old.traits.includes('ambitious') && !strongAmbitiousDropped) {
+        strongAmbitiousDropped = old;
+      }
+    }
+    // a lateral/promotion: elevate a sitting minister from a no-more-senior seat into
+    // this vacancy, then backfill THEIR old seat with fresh blood. One hop only.
+    const eligible = movable.filter((m) => seniority(post.officeId) >= seniority(m.officeId));
+    if (eligible.length > 0 && lateralCount < LATERAL_CAP && rng.chance(lateralChance(post.officeId))) {
+      const mover = [...eligible].sort((a, b) => moverScore(b.c) - moverScore(a.c))[0];
+      const fromOffice = mover.officeId;
+      const promotion = seniority(post.officeId) > seniority(fromOffice);
+      mover.c.officeId = post.officeId;
+      mover.c.loyalty = Math.round(clamp((mover.c.loyalty ?? 0) + (promotion ? 8 : 3), -100, 100));
+      setFrontbenchPost(state, side, post.officeId, mover.c.id);
+      movable.splice(movable.indexOf(mover), 1); // no longer sitting where they were
+      const fill = pickAppointee(state, rng, party, fromOffice, tilt, pool);
+      fill.officeId = fromOffice;
+      setFrontbenchPost(state, side, fromOffice, fill.id);
+      lateralCount += 1;
+      if (moves.length < 3) {
+        moves.push(promotion
+          ? `${mover.c.name} is promoted from ${titleOf(fromOffice)} to ${titleOf(post.officeId)}`
+          : `${mover.c.name} moves from ${titleOf(fromOffice)} to ${titleOf(post.officeId)}`);
+      }
+      continue;
+    }
+    // otherwise, fresh blood from the back benches
+    const fresh = pickAppointee(state, rng, party, post.officeId, tilt, pool);
+    fresh.officeId = post.officeId;
+    setFrontbenchPost(state, side, post.officeId, fresh.id);
+    if (moves.length < 3 && old) moves.push(`${fresh.name} replaces ${old.name} as ${titleOf(post.officeId)}`);
+  }
+
+  // a strong, ambitious minister dumped to the backbenches becomes the natural rival —
+  // the seed of a future leadership challenge (only meaningful for the player's own party)
+  if (strongAmbitiousDropped && party === state.player.partyId && rng.chance(0.4)) {
+    const rivalRel = state.relationships.find((r) => r.kind === 'rival');
+    if (rivalRel) { rivalRel.characterId = strongAmbitiousDropped.id; rivalRel.value = clamp(rivalRel.value - 20, -100, 100); }
+  }
+  // a remake of the governing cabinet may add, drop or move the deputy PM
+  if (inGov) reshuffleNpcDeputyPm(state, rng);
+  return moves;
+}
+
+export type FormationFate = 'retained' | 'moved' | 'promoted' | 'sacked' | 'broughtIn' | 'none';
+
+/** When a new NPC leader forms their government, decide what becomes of the player,
+ *  keyed off their (just-reseeded) standing with the incoming leader, their eligibility
+ *  for the job, scandal, and noise. A sitting minister is kept, moved sideways, promoted
+ *  or sacked; a backbencher of the party may be brought in. `none` = leave them be (a
+ *  backbencher who doesn't get the call — no card is shown). Returns a target office for
+ *  the moved / promoted / broughtIn cases. */
+export function decideFormationFate(state: GameState, rng: Rng): { fate: FormationFate; officeId?: OfficeId } {
+  const leaderVal = getRelationship(state, 'leader')?.value ?? 0;
+  const cur = state.player.officeId;
+  const scandal = !!state.player.flags.scandal;
+
+  if (cur && CABINET_OFFICES.includes(cur)) {
+    const score = eligibilityScore(state, cur) + leaderVal * 0.25 + rng.normal(0, 8) - (scandal ? 18 : 0);
+    if (score < 44 || (scandal && rng.chance(0.6))) return { fate: 'sacked' };
+    if (score >= 58) {
+      // strong: usually retained, occasionally promoted into a bigger job
+      if (rng.chance(0.3)) {
+        const target = nextOfficeFor(state, rng);
+        if (target && target !== cur) return { fate: 'promoted', officeId: target };
+      }
+      return { fate: 'retained' };
+    }
+    // middling: kept, or shuffled sideways
+    if (rng.chance(0.5)) {
+      const target = nextOfficeFor(state, rng);
+      if (target && target !== cur) return { fate: 'moved', officeId: target };
+    }
+    return { fate: 'retained' };
+  }
+
+  // a backbencher of the party: a chance the new leader plucks them into the team
+  const target = nextOfficeFor(state, rng);
+  if (target) {
+    const score = eligibilityScore(state, target) + leaderVal * 0.25 + rng.normal(0, 8) - (scandal ? 18 : 0);
+    if (score >= 52 && rng.chance(0.5)) return { fate: 'broughtIn', officeId: target };
+  }
+  return { fate: 'none' };
+}
+
 /** Raise the player-led reshuffle decision card (the "Reshuffle" button on the
  *  Cabinet screen). Surfaces immediately as the current decision, replacing a plain
  *  deck card ('normal') the player hasn't answered yet — reshuffling is a deliberate
@@ -1952,7 +2090,8 @@ export function resolveNpcLeadership(
   state: GameState,
   rng: Rng,
   party: PartyId,
-  forcedWinnerId?: string
+  forcedWinnerId?: string,
+  opts: { skipReshape?: boolean } = {}
 ): Character {
   // the field: front-benchers lead, but Ministers of State and even backbenchers can
   // win (rivalStrengthOf makes the senior names the likely victors), else fresh blood
@@ -2056,15 +2195,35 @@ export function resolveNpcLeadership(
     }
   }
 
-  // a new NPC leader usually remakes their front bench
-  const isFrontbench =
-    party === state.government.governingParty || party === state.government.oppositionParty;
-  if (isFrontbench && rng.chance(0.65)) {
-    npcReshuffle(state, rng, party);
+  // a new NPC leader forms their own government: a heterogeneous remaking of the front
+  // bench — some kept, some promoted or moved sideways, some dropped, some fresh faces.
+  // A slightly bigger deal than a routine reshuffle (the Blair→Brown / May→Johnson
+  // moment). Skipped only when a general election is already rebuilding the bench in the
+  // same breath (reconcileFrontbenches). Minor/coalition parties have no tracked bench.
+  const inGov = party === state.government.governingParty;
+  const isFrontbench = inGov || party === state.government.oppositionParty;
+  if (isFrontbench && !opts.skipReshape) {
+    const side: 'cabinet' | 'shadowCabinet' = inGov ? 'cabinet' : 'shadowCabinet';
+    const ownPosts = state.government[side].filter((p) =>
+      p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party);
+    // ~30% of the bench: a bit more than a routine NPC reshuffle, well under a full purge.
+    // Bias to the weakest, with noise, so the churn set is heterogeneous.
+    const churnCount = Math.max(1, Math.round(ownPosts.length * (0.25 + rng.next() * 0.12)));
+    const churnPosts = [...ownPosts]
+      .sort((a, b) =>
+        (state.characters[a.characterId]?.competence ?? 100) + rng.normal(0, 14)
+        - ((state.characters[b.characterId]?.competence ?? 100) + rng.normal(0, 14)))
+      .slice(0, churnCount);
+    const moves = runBenchChurn(state, rng, { side, party, churnPosts, tilt: 'balance' });
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${winner.name} reshuffles the ${party === state.government.governingParty ? 'cabinet' : 'shadow cabinet'}`,
+      headline: inGov
+        ? `${winner.name} forms a new government`
+        : `${winner.name} reshapes the shadow cabinet`,
     });
+    for (const m of moves.slice(0, 2)) {
+      state.history.push({ kind: 'event', date: state.day, headline: m });
+    }
   }
   // an NPC won the PLAYER'S OWN party's contest: the player lost, so any job they
   // promised evaporates; a job promised TO them survives only if THIS winner is the
@@ -2413,7 +2572,9 @@ export function applyElectionAftermath(
       // close the career-timeline span (PM / LO / minor leader) — without this the
       // Profile keeps showing the old role running "…–now" after they've left
       state.history.push({ kind: 'roleChange', date: state.day, officeId: null, how: 'leftOffice' });
-      resolveNpcLeadership(state, rng, state.player.partyId);
+      // the general-election aftermath (reconcileFrontbenches) already rebuilds the
+      // bench, so skip the new-leader reshaping here to avoid churning it twice
+      resolveNpcLeadership(state, rng, state.player.partyId, undefined, { skipReshape: true });
     } else if (state.player.officeId) {
       stripOffice(state, rng, 'leftOffice');
     }
@@ -3469,6 +3630,53 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         choices,
         payload: { hasTargetDept: !!weakDeptName, advance: rng.int(5, 12) },
       };
+    }
+    case 'governmentFormation': {
+      const fate = (ev.payload?.fate as FormationFate) ?? 'retained';
+      const targetOffice = ev.payload?.officeId as OfficeId | undefined;
+      const leaderId = ev.payload?.leaderId as string | undefined;
+      const inGov = playerInGovernment(state);
+      const leaderName = leaderId ? characterName(state, leaderId) : (inGov ? 'The new Prime Minister' : 'The new leader');
+      const leaderTitle = inGov ? 'Prime Minister' : 'Leader of the Opposition';
+      const teamWord = inGov ? 'government' : 'shadow cabinet';
+      const curTitle = state.player.officeId ? officeTitle(state.player.officeId, inGov) : 'your post';
+      const newTitle = targetOffice ? officeTitle(targetOffice, inGov) : '';
+      const card = (title: string, body: string, choices: { label: string; sublabel?: string }[]): DrawnCard => ({
+        cardId: `forced_govformation_${state.day}`, kind: 'governmentFormation',
+        title, body, choices, payload: { ...(ev.payload ?? {}), advance: rng.int(5, 12) },
+      });
+      if (fate === 'sacked') {
+        return card(
+          `${leaderName} lets you go`,
+          `${leaderName} is forming a ${teamWord}, and you are not in it. The call comes early — a short, careful conversation — and then the red box is gone. After ${curTitle}, you are out. How you leave is up to you.`,
+          [{ label: 'Leave with grace', sublabel: 'the loyal soldier; a debt the new leader may remember' },
+           { label: 'Go out fighting', sublabel: 'a parting shot the papers will love' }]
+        );
+      }
+      if (fate === 'retained') {
+        return card(
+          `${leaderName} keeps you on`,
+          `The new ${leaderTitle} is assembling a ${teamWord} — and, to relief or surprise, there is a place in it for you. ${leaderName} wants you to stay on as ${curTitle}. Serve the new regime, or make a point of going?`,
+          [{ label: 'Serve on', sublabel: `stay as ${curTitle}` },
+           { label: 'Resign in protest', sublabel: 'principle over position — back to the benches' }]
+        );
+      }
+      if (fate === 'moved' || fate === 'promoted') {
+        const promoted = fate === 'promoted';
+        return card(
+          promoted ? `${leaderName} promotes you` : `${leaderName} moves you`,
+          `${leaderName}'s new ${teamWord} takes shape, and there is a job in it for you — ${promoted ? 'a step up' : 'a fresh brief'}: ${newTitle}, in place of ${curTitle}. Take it, or refuse and take your chances on the back benches?`,
+          [{ label: promoted ? 'Accept the promotion' : 'Accept the move', sublabel: `become ${newTitle}` },
+           { label: 'Refuse — back to the benches', sublabel: 'no thank you' }]
+        );
+      }
+      // broughtIn
+      return card(
+        `${leaderName} wants you in`,
+        `${leaderName} is building a ${teamWord}, and the call you did not quite expect comes anyway: they want you in it, as ${newTitle}. The back benches, or the front?`,
+        [{ label: inGov ? 'Accept — join the government' : 'Accept — join the front bench', sublabel: `become ${newTitle}` },
+         { label: 'Decline — stay on the benches', sublabel: 'bide your time' }]
+      );
     }
     case 'pmPressure': {
       const severe = ev.payload?.severe === true;
@@ -5369,7 +5577,6 @@ export function resolveForcedChoice(
       const inGov = playerInGovernment(state);
       const side = inGov ? 'cabinet' : 'shadowCabinet';
       const party = state.player.partyId;
-      const titleOf = (officeId: OfficeId) => inGov ? OFFICES[officeId].title : OFFICES[officeId].shadowTitle;
       const headline = (t: string) => state.history.push({ kind: 'event', date: state.day, headline: t });
       const hasTargetDept = card.payload?.hasTargetDept === true;
       const holdIndex = hasTargetDept ? 4 : 3;
@@ -5411,90 +5618,8 @@ export function resolveForcedChoice(
         churnPosts = [...ownPosts].sort((a, b) => priority(a) - priority(b)).slice(0, churnCount);
       }
 
-      const pool = benchPoolFor(state, party);
-      // sitting own-party ministers who could be MOVED into a vacated seat (a lateral,
-      // or a promotion into a more senior brief) — everyone not being churned out, not
-      // the player, and not the deputy PM (whose overlay is re-decided separately).
-      const churnSet = new Set(churnPosts.map((p) => p.officeId));
-      const movable = ownPosts
-        .filter((p) => !churnSet.has(p.officeId) && p.characterId !== state.government.deputyPmId)
-        .map((p) => ({ officeId: p.officeId, c: state.characters[p.characterId] }))
-        .filter((x): x is { officeId: OfficeId; c: Character } => !!x.c);
-      // pecking order of a seat: great offices sit above the rest, then by tier/rank
-      const seniority = (officeId: OfficeId) => {
-        const o = OFFICES[officeId];
-        return (GREAT_OFFICES.includes(officeId) ? 100 : 0) + (o?.tier ?? 0) * 10 + (o?.rank ?? 0);
-      };
-      // who to elevate, by emphasis
-      const moverScore = (c: Character) =>
-        tilt === 'loyalty' ? (c.loyalty ?? 0) * 1.2 + c.competence * 0.4 + rng.normal(0, 8)
-        : tilt === 'talent' ? c.competence * 1.2 + (c.loyalty ?? 0) * 0.2 + rng.normal(0, 8)
-        : c.competence * 0.7 + (c.loyalty ?? 0) * 0.5 + rng.normal(0, 10);
-      // how likely a vacated seat is filled by moving a sitting minister up rather than
-      // by fresh blood — likelier for the great offices, and when promoting on merit
-      const lateralChance = (officeId: OfficeId) => {
-        let base = GREAT_OFFICES.includes(officeId) ? 0.6 : 0.35;
-        if (tilt === 'talent') base += 0.12;
-        else if (tilt === 'loyalty') base += 0.04;
-        return base;
-      };
-      const LATERAL_CAP = 3; // keep it bounded, and the outcome text readable
-
-      const moves: string[] = [];
-      let lateralCount = 0;
-      let strongAmbitiousDropped: Character | undefined;
-      // fill the most senior vacancies first, so promotions flow UP into the top jobs
-      const ordered = [...churnPosts].sort((a, b) => seniority(b.officeId) - seniority(a.officeId));
-      for (const post of ordered) {
-        const old = state.characters[post.characterId];
-        if (old) {
-          old.officeId = null;
-          old.active = true;
-          // being dropped stings — the more so if you were loyal and still got the chop
-          old.loyalty = Math.round(clamp((old.loyalty ?? 0) - 20, -100, 100));
-          if (old.competence > 70 && old.traits.includes('ambitious') && !strongAmbitiousDropped) {
-            strongAmbitiousDropped = old;
-          }
-        }
-        // a lateral/promotion: elevate a sitting minister from a no-more-senior seat into
-        // this vacancy, then backfill THEIR old seat from the bench. One hop only — the
-        // backfill is always fresh blood, never a second mover — so chains can't run away.
-        const eligible = movable.filter((m) => seniority(post.officeId) >= seniority(m.officeId));
-        if (eligible.length > 0 && lateralCount < LATERAL_CAP && rng.chance(lateralChance(post.officeId))) {
-          const mover = [...eligible].sort((a, b) => moverScore(b.c) - moverScore(a.c))[0];
-          const fromOffice = mover.officeId;
-          const promotion = seniority(post.officeId) > seniority(fromOffice);
-          mover.c.officeId = post.officeId;
-          mover.c.loyalty = Math.round(clamp((mover.c.loyalty ?? 0) + (promotion ? 8 : 3), -100, 100));
-          setFrontbenchPost(state, side, post.officeId, mover.c.id);
-          movable.splice(movable.indexOf(mover), 1); // no longer sitting where they were
-          const fill = pickAppointee(state, rng, party, fromOffice, tilt, pool);
-          fill.officeId = fromOffice;
-          setFrontbenchPost(state, side, fromOffice, fill.id);
-          lateralCount += 1;
-          if (moves.length < 3) {
-            moves.push(promotion
-              ? `${mover.c.name} is promoted from ${titleOf(fromOffice)} to ${titleOf(post.officeId)}`
-              : `${mover.c.name} moves from ${titleOf(fromOffice)} to ${titleOf(post.officeId)}`);
-          }
-          continue;
-        }
-        // otherwise, fresh blood from the back benches
-        const fresh = pickAppointee(state, rng, party, post.officeId, tilt, pool);
-        fresh.officeId = post.officeId;
-        setFrontbenchPost(state, side, post.officeId, fresh.id);
-        if (moves.length < 3 && old) moves.push(`${fresh.name} replaces ${old.name} as ${titleOf(post.officeId)}`);
-      }
-
-      // a strong, ambitious minister dumped to the backbenches becomes the natural
-      // rival — the seed of a future leadership challenge
-      if (strongAmbitiousDropped && rng.chance(0.4)) {
-        const rivalRel = state.relationships.find((r) => r.kind === 'rival');
-        if (rivalRel) { rivalRel.characterId = strongAmbitiousDropped.id; rivalRel.value = clamp(rivalRel.value - 20, -100, 100); }
-      }
-
-      // a PM remaking the cabinet may add, drop or move their deputy
-      if (inGov) reshuffleNpcDeputyPm(state, rng);
+      // drop / promote / lateral / backfill — the shared heterogeneous churn engine
+      const moves = runBenchChurn(state, rng, { side, party, churnPosts, tilt });
 
       // capital cost scales with how much of the bench moved
       const scale = churnPosts.length / Math.max(1, ownPosts.length);
@@ -5530,6 +5655,71 @@ export function resolveForcedChoice(
       gain('partyStanding', 2, 'Standing');
       headline(`${state.player.name} reshuffles the ${inGov ? 'cabinet' : 'shadow cabinet'} to balance the party`);
       return { text: `A reshuffle designed to keep everyone just onside: a nod to every wing, a job for each faction's favourite.${summary} Nobody is thrilled; nobody is mortally offended. In a broad church, that is sometimes the whole art.`, deltas };
+    }
+
+    case 'governmentFormation': {
+      const fate = (card.payload?.fate as FormationFate) ?? 'retained';
+      const targetOffice = card.payload?.officeId as OfficeId | undefined;
+      const leaderId = card.payload?.leaderId as string | undefined;
+      const leaderName = leaderId ? characterName(state, leaderId) : 'the new leader';
+      const inGov = playerInGovernment(state);
+      const benchWord = inGov ? 'cabinet' : 'shadow cabinet';
+
+      if (fate === 'sacked') {
+        const graceful = choiceIndex === 0;
+        const oldTitle = state.player.officeId ? officeTitle(state.player.officeId, inGov) : 'office';
+        stripOffice(state, rng, 'dismissed');
+        state.player.flags._timesSacked = (((state.player.flags._timesSacked as number) ?? 0) + 1);
+        if (graceful) {
+          gain('partyStanding', 2, 'Standing');
+          adjustRelationship(state, 'leader', 5); push('Leader', 5);
+          return { text: `You take it on the chin. A dignified statement, a handshake for the cameras, and out — no bridges burned. ${leaderName} owes you a quiet debt now, and the party notes that you put it above yourself.`, deltas };
+        }
+        gain('profile', 5, 'Profile');
+        adjustRelationship(state, 'leader', -12); push('Leader', -12);
+        return { text: `You do not go quietly. A wounded resignation letter "to friends", a pointed round of interviews, and the unmistakable sense of a rival-in-waiting on the back benches. Losing ${oldTitle} this way, ${leaderName} has made an enemy — which was, perhaps, the point.`, deltas };
+      }
+
+      if (fate === 'retained') {
+        if (choiceIndex === 0) {
+          gain('partyStanding', 3, 'Standing');
+          adjustRelationship(state, 'leader', 6); push('Leader', 6);
+          return { text: `You stay at your post. Continuity, the new ${inGov ? 'PM' : 'leader'} calls it; survival, the sketch-writers call it. Either way the red box is still yours, and a leader who kept you is a leader you now, cautiously, owe.`, deltas };
+        }
+        stripOffice(state, rng, 'resigned');
+        gain('integrity', 5, 'Integrity'); gain('profile', 4, 'Profile');
+        adjustRelationship(state, 'leader', -8); push('Leader', -8);
+        return { text: `You could have stayed. Instead you go — a resignation on principle that the papers can't quite decode, and a reputation for putting conviction over the ministerial car. ${leaderName} did not expect it, and will not forget it.`, deltas };
+      }
+
+      if (fate === 'moved' || fate === 'promoted') {
+        const promoted = fate === 'promoted';
+        if (choiceIndex === 0 && targetOffice) {
+          giveOffice(state, rng, targetOffice, promoted ? 'promoted' : 'appointed');
+          const title = officeTitle(targetOffice, inGov);
+          gain('profile', promoted ? 6 : 3, 'Profile');
+          if (promoted) gain('partyStanding', 4, 'Standing');
+          adjustRelationship(state, 'leader', 4); push('Leader', 4);
+          return { text: promoted
+            ? `You take the step up. ${leaderName} wanted a big name in ${title}, and chose you. The brief is heavier, the scrutiny fiercer — but this is how careers are made.`
+            : `You accept the move. A new brief, a new department, the same red box in a different colour. ${title} it is; the civil service welcome pack is already on the desk.`, deltas };
+        }
+        stripOffice(state, rng, 'resigned');
+        gain('integrity', 3, 'Integrity'); gain('profile', 2, 'Profile');
+        adjustRelationship(state, 'leader', -6); push('Leader', -6);
+        return { text: `You refuse the ${promoted ? 'job' : 'move'} and take the back benches instead. A gamble: freedom and a free hand, traded for the ministerial car. ${leaderName} shrugs and moves on — but the door does not always open twice.`, deltas };
+      }
+
+      // broughtIn
+      if (choiceIndex === 0 && targetOffice) {
+        giveOffice(state, rng, targetOffice, 'appointed');
+        const title = officeTitle(targetOffice, inGov);
+        gain('profile', 5, 'Profile'); gain('partyStanding', 3, 'Standing');
+        adjustRelationship(state, 'leader', 6); push('Leader', 6);
+        return { text: `You take the call. From the back benches to the ${benchWord} in a single conversation — ${title}, and a seat at the table you have been watching from the cheap seats. ${leaderName}'s gamble on you starts now.`, deltas };
+      }
+      gain('integrity', 2, 'Integrity');
+      return { text: `You thank ${leaderName} and decline. The back benches suit you for now — free of collective responsibility, free to pick your fights. There will, you tell yourself, be other offers.`, deltas };
     }
 
     case 'pmPressure': {
