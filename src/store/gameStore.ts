@@ -11,7 +11,7 @@ import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
   callForLeaderResignationCore, setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
   continueAsProtegeCore, backfillCabinetOffices, reconcileCharacterOffices,
-  withdrawFromCoalitionCore,
+  withdrawFromCoalitionCore, openPlayerReshuffle,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
 import { Era, OfficeId, PartyId } from '../types/game';
@@ -44,7 +44,10 @@ interface GameStore {
   acknowledgeElection: () => void;
   crossFloor: (partyId: PartyId) => void;
   resignOffice: () => void;
-  sackMinister: (officeId: OfficeId) => void;
+  /** the player (as PM / LO) sacks a minister; optionally names their replacement */
+  sackMinister: (officeId: OfficeId, replacementId?: string) => void;
+  /** the player (as PM / LO) opens a reshuffle: surfaces a decision card in Play */
+  reshuffleCabinet: () => void;
   /** player-PM names a cabinet Secretary of State as Deputy PM / First Secretary */
   setDeputyPm: (characterId: string) => void;
   callForPmResignation: () => void;
@@ -313,8 +316,15 @@ export const useGameStore = create<GameStore>()(
       resignOffice: () =>
         mutateGame(get, set, (game, rng) => resignOfficeCore(game, rng)),
 
-      sackMinister: (officeId) =>
-        mutateGame(get, set, (game, rng) => sackMinisterCore(game, rng, officeId)),
+      sackMinister: (officeId, replacementId) =>
+        mutateGame(get, set, (game, rng) => sackMinisterCore(game, rng, officeId, replacementId)),
+
+      reshuffleCabinet: () => {
+        mutateGame(get, set, (game, rng) => openPlayerReshuffle(game, rng));
+        // take the player to Play only if the reshuffle card actually came up (it
+        // won't interrupt a forced decision already in flight)
+        if (get().game?.currentCard?.kind === 'playerReshuffle') useUiStore.getState().setTab('play');
+      },
 
       setDeputyPm: (characterId) =>
         mutateGame(get, set, (game, rng) => setDeputyPmCore(game, rng, characterId)),

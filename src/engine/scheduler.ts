@@ -10,7 +10,7 @@ import {
   playerTier, nextOfficeFor, eligibilityScore, OFFER_THRESHOLDS, offerThreshold,
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, canChairCommittee, pickCommittee,
-  resolvePendingContests,
+  resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
@@ -735,10 +735,18 @@ export function nextStep(state: GameState, rng: Rng): void {
         nextStep(state, rng);
         return;
       }
-      runReshuffle(state, rng);
-      if (state.forcedQueue.length > 0) {
-        nextStep(state, rng);
-        return;
+      // no pledged job to honour: the new leader forms their government and decides the
+      // player's fate — kept on, moved, promoted, sacked, or (from the benches) brought in.
+      // Re-check circumstances: the card was scheduled 7–35 days ago and things may have
+      // moved on (seat lost to an election, floor crossed, party dropped out of the top
+      // two), in which case a "new PM decides your fate" beat no longer applies.
+      if (state.player.hasSeat && onFrontbenchTrack(state) && canHoldOffice(state)) {
+        const { fate, officeId } = decideFormationFate(state, rng);
+        if (fate !== 'none') {
+          state.forcedQueue.push({ kind: 'governmentFormation', payload: { leaderId, fate, officeId } });
+          nextStep(state, rng);
+          return;
+        }
       }
     }
   }
@@ -820,7 +828,9 @@ export function nextStep(state: GameState, rng: Rng): void {
     pressure += state.player.rebellionCount * 6;
     if (tenureYears > 4) pressure += (tenureYears - 4) * 5;
     pressure += softMandatePressure(state);
-    const hazard = Math.min(0.16, pressure / 150);
+    // a strong, loyal cabinet is a shield; a weak or mutinous one, a liability
+    pressure += cabinetAuthorityPressure(state);
+    const hazard = Math.min(0.16, Math.max(0, pressure) / 150);
     if (hazard > 0 && rng.chance(hazard)) {
       // most authority crises are survivable; a "brutal" one can topple even a strong
       // PM. The worse the polling, the more likely this is the toppling kind — at a true
@@ -855,7 +865,9 @@ export function nextStep(state: GameState, rng: Rng): void {
     if (tenureYears > 3) pressure += (tenureYears - 3) * 3;
     if (polls < tookOver - 2) pressure += (tookOver - polls) * 0.9;
     pressure += softMandatePressure(state);
-    const hazard = Math.min(0.1, pressure / 280);
+    // the shadow cabinet counts too: a strong, loyal team steadies a LO / minor leader
+    pressure += cabinetAuthorityPressure(state);
+    const hazard = Math.min(0.1, Math.max(0, pressure) / 280);
     if (hazard > 0 && rng.chance(hazard)) {
       if (rng.chance(0.4)) state.forcedQueue.push({ kind: 'resignPledge' });
       else state.forcedQueue.push({ kind: 'partyCoup' });
