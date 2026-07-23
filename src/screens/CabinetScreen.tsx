@@ -4,7 +4,7 @@ import { CABINET_OFFICES, OFFICES } from '../data/offices';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
-import { playerIsLeader, playerIsPM, cabinetTitleFor, benchPoolFor } from '../engine/career';
+import { playerIsLeader, playerIsPM, cabinetTitleFor, benchPoolFor, isReshuffleBlocking } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import { tap } from '../native/haptics';
 import './CabinetScreen.css';
@@ -29,10 +29,9 @@ export function CabinetScreen({ game }: { game: GameState }) {
   const canSack = (isGov && playerIsPM(game)) || (!isGov && leadsOpposition);
   // only a sitting Prime Minister names the Deputy PM
   const canMakeDeputy = isGov && playerIsPM(game);
-  // a reshuffle can't interrupt a forced decision already in play (a contest, an
-  // election, a confidence vote) or a resolved card still being read
-  const reshuffleBlocked = !!game.currentCard
-    && (game.currentCard.kind !== 'normal' || !!game.currentCard.outcome);
+  // a reshuffle only waits on genuinely vital business (a contest, an election, a
+  // confidence vote, a multi-step set-piece) — not on routine cards
+  const reshuffleBlocked = isReshuffleBlocking(game.currentCard);
 
   return (
     <div className="screen">

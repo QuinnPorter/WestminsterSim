@@ -320,6 +320,12 @@ export const useGameStore = create<GameStore>()(
         mutateGame(get, set, (game, rng) => sackMinisterCore(game, rng, officeId, replacementId)),
 
       reshuffleCabinet: () => {
+        // a card the player has already answered is dismissed through the NORMAL continue
+        // path first, so its day-advance and world update still happen — superseding it
+        // outright would hand the player free time
+        if (get().game?.currentCard?.outcome) {
+          mutateGame(get, set, (game, rng) => continueCore(game, rng));
+        }
         mutateGame(get, set, (game, rng) => openPlayerReshuffle(game, rng));
         // take the player to Play only if the reshuffle card actually came up (it
         // won't interrupt a forced decision already in flight)

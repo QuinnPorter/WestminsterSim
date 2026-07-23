@@ -319,6 +319,37 @@ function newFrontbencher(state: GameState, rng: Rng, party: PartyId, officeId: O
   return c;
 }
 
+/** Seat a named character in a front-bench post, safely. Any OTHER post they already
+ *  hold on that side is vacated and backfilled with a fresh NPC, so one character can
+ *  never appear in two cabinet seats; whoever held the target seat is dropped to the
+ *  back benches (never the player). Use this for every direct appointment of a named
+ *  figure — honouring a contest pledge, bringing a beaten rival into the tent, etc.
+ *  (`runBenchChurn` does the same vacate-then-backfill for its movers.) */
+function seatCharacter(
+  state: GameState,
+  rng: Rng,
+  side: 'cabinet' | 'shadowCabinet',
+  party: PartyId,
+  officeId: OfficeId,
+  characterId: string
+): void {
+  // vacate any other seat this character holds on this bench, backfilling it
+  for (const p of state.government[side]) {
+    if (p.characterId === characterId && p.officeId !== officeId) {
+      p.characterId = newFrontbencher(state, rng, party, p.officeId).id;
+    }
+  }
+  // displace the incumbent of the target seat (the player is never displaced this way)
+  const target = state.government[side].find((p) => p.officeId === officeId);
+  if (target && target.characterId !== characterId && target.characterId !== 'player') {
+    const displaced = state.characters[target.characterId];
+    if (displaced) displaced.officeId = null;
+  }
+  const c = state.characters[characterId];
+  if (c) c.officeId = officeId;
+  setFrontbenchPost(state, side, officeId, characterId);
+}
+
 /** Fill any CABINET_OFFICES post missing from the stored benches with a fresh NPC.
  *  Used by the save migration when new cabinet offices are introduced (newGame
  *  builds the full roster, but older saves and post-election reconcile iterate the
@@ -1257,16 +1288,56 @@ export function decideFormationFate(state: GameState, rng: Rng): { fate: Formati
   return { fate: 'none' };
 }
 
+/** Does the card currently in play stop the player opening a reshuffle? Only an ordinary
+ *  deck card ('normal') is safe to supersede. Everything else is business that would be
+ *  destroyed by swapping it out: forced decisions (a leadership contest, an election, a
+ *  confidence vote, an office offer…), the multi-step set-pieces ('budget' | 'pmqs' |
+ *  'conference'), and calendar beats — `nextStep` rolls `calendarDone` forward to the
+ *  NEXT occurrence before the card is shown, so discarding one silently loses that
+ *  year's budget / local elections / snap-election prompt.
+ *
+ *  A card that is merely showing its OUTCOME is not blocked here: the store dismisses it
+ *  through the normal continue path first (so its day-advance is never skipped) and then
+ *  opens the reshuffle. That was the most frequent false-block on the button.
+ *
+ *  Shared by the Cabinet screen's button and openPlayerReshuffle so the greying and the
+ *  guard can never disagree. */
+export function isReshuffleBlocking(card: DrawnCard | null | undefined): boolean {
+  if (!card) return false;
+  if (card.outcome) return false; // resolved — the store continues it, then reshuffles
+  return card.kind !== 'normal';
+}
+
+/** Remember that a reshuffle beat just fired, so the periodic reshuffle hazards don't
+ *  stack a second one on top days later (a new leader's remake followed immediately by
+ *  a routine reshuffle read as two reshuffles in two months). */
+export function noteReshuffle(state: GameState, rng: Rng): void {
+  state.player.flags._reshuffleCooldownUntil = state.day + rng.int(75, 150);
+}
+
+/** True while a recent reshuffle still suppresses the periodic reshuffle hazards. */
+export function reshuffleOnCooldown(state: GameState): boolean {
+  return state.day < ((state.player.flags._reshuffleCooldownUntil as number) ?? 0);
+}
+
 /** Raise the player-led reshuffle decision card (the "Reshuffle" button on the
- *  Cabinet screen). Surfaces immediately as the current decision, replacing a plain
- *  deck card ('normal') the player hasn't answered yet — reshuffling is a deliberate
- *  act and time has not advanced, so swapping which prompt they face is safe. It will
- *  NOT interrupt a forced/critical decision already in play (a leadership contest, an
- *  election, a confidence vote) or a resolved card the player is still reading. */
+ *  Cabinet screen). Surfaces immediately as the current decision, superseding an
+ *  unanswered ordinary deck card — reshuffling is a deliberate act and time has not
+ *  advanced, so swapping which prompt they face is safe. It will NOT interrupt the vital
+ *  business covered by isReshuffleBlocking, and it refuses a card that already carries an
+ *  outcome: only the normal continue path may dismiss that, or the card's day-advance
+ *  would be skipped (the caller does this first — see gameStore.reshuffleCabinet). */
 export function openPlayerReshuffle(state: GameState, rng: Rng): void {
   if (!playerControlsOwnBench(state)) return;
-  if (state.currentCard && (state.currentCard.kind !== 'normal' || state.currentCard.outcome)) return;
+  // an election result waiting to be acknowledged (or a finished game) owns the screen:
+  // the card would be overwritten unseen, and arming a cooldown here would re-impose the
+  // very suppression the post-election reset just cleared
+  if (state.pendingElectionId || state.gameOver) return;
+  if (state.currentCard?.outcome) return;
+  if (isReshuffleBlocking(state.currentCard)) return;
   state.currentCard = materializeForced(state, rng, { kind: 'playerReshuffle' });
+  // NB: the cooldown is armed when the reshuffle is RESOLVED, not here — opening the
+  // card and then picking "Hold off" must not cost the player months of world events.
 }
 
 // ---------- leadership ----------
@@ -2218,7 +2289,9 @@ export function resolveNpcLeadership(
     // a new leader of the player's own party soon remakes the team — schedule a
     // player-facing reshuffle so they are more likely to be moved, promoted or sacked
     if (state.player.hasSeat && onFrontbenchTrack(state) && !playerIsLeader(state)) {
-      state.player.flags._npcLeaderReshuffleBy = state.day + rng.int(7, 35);
+      // promptly — the same month the contest concludes, so the player learns their
+      // fate as part of the same event rather than weeks later
+      state.player.flags._npcLeaderReshuffleBy = state.day + rng.int(3, 12);
     }
   }
 
@@ -2253,6 +2326,10 @@ export function resolveNpcLeadership(
     for (const m of moves.slice(0, 2)) {
       state.history.push({ kind: 'event', date: state.day, headline: m });
     }
+    // NB: no cooldown is armed here. This remake is world texture the player may never
+    // be part of; the cooldown belongs to beats the player actually SEES, and is set
+    // where those are raised (the new-leader handlers in the scheduler). Arming it here
+    // suppressed the player's own reshuffle/promotion churn for months on end.
   }
   // an NPC won the PLAYER'S OWN party's contest: the player lost, so any job they
   // promised evaporates; a job promised TO them survives only if THIS winner is the
@@ -2360,9 +2437,9 @@ function makePlayerLeader(state: GameState, rng: Rng, opts: { softMandate?: bool
   else delete state.player.flags._softMandate;
   // reaching the leadership spends any near-miss credit
   delete state.player.flags._nearMiss;
-  // a new leader remakes the bench quickly — usually within a few weeks
+  // a new leader remakes the bench at once — the same month they take over
   if (rng.chance(0.80)) {
-    state.player.flags._newLeaderReshuffleBy = state.day + rng.int(7, 35);
+    state.player.flags._newLeaderReshuffleBy = state.day + rng.int(3, 12);
   }
   recordPeakTier(state);
   // re-taking the JUNIOR coalition partner's leadership reclaims the Deputy PM overlay
@@ -2591,6 +2668,8 @@ export function applyElectionAftermath(
   delete state.player.flags.defected;
   // a new parliament re-opens the once-per-parliament "chosen exit" offer
   delete state.player.flags._exitOfferParliament;
+  // …and a reshuffle cooldown armed before dissolution must not choke the new parliament
+  delete state.player.flags._reshuffleCooldownUntil;
   // start a fresh polling tracker for the new parliament
   state.pollHistory = [{ day: state.day, shares: { ...state.polling.shares } }];
 
@@ -3575,8 +3654,11 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     }
     case 'pmReshuffle': {
       const side = playerInGovernment(state) ? 'cabinet' : 'shadowCabinet';
+      // seats just filled to honour a contest debt are protected from this reshuffle
+      const honoured = (ev.payload?.honouredOffices as OfficeId[] | undefined) ?? [];
       const posts = state.government[side].filter((p) =>
-        p.characterId !== 'player' && state.characters[p.characterId]?.partyId === state.player.partyId);
+        p.characterId !== 'player' && state.characters[p.characterId]?.partyId === state.player.partyId
+        && !honoured.includes(p.officeId));
       const members = posts
         .map((p) => state.characters[p.characterId])
         .filter((c): c is Character => Boolean(c));
@@ -3602,20 +3684,25 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       if (defeated?.active) {
         baseChoices.push({ label: `Bring ${defeated.name} into the tent`, sublabel: 'unity — a great office for the one you beat' });
       }
-      if (madePledges.length > 0) {
+      // With debts outstanding the reshuffle runs in two steps: settle the IOUs first,
+      // then remake the rest of the bench. They are separate decisions — honouring your
+      // word shouldn't cost you the choice of how to shape the team.
+      const pledgesSettled = ev.payload?.pledgesSettled === true;
+      if (madePledges.length > 0 && !pledgesSettled) {
         const debts = madePledges.slice(0, 3)
           .map((p) => `${characterName(state, p.characterId)} (${officeTitle(p.officeId, playerInGovernment(state))})`).join(', ');
         return {
-          cardId: `forced_pmreshuffle_${state.day}`,
+          cardId: `forced_pmreshuffle_debts_${state.day}`,
           kind: 'pmReshuffle',
           title: 'Reshuffle day — the debts come due',
-          body: `You did not get here for nothing. There are debts to settle from the contest — you promised jobs to ${debts} — and the corridor outside knows it. Honour the deals and hand out the offices you pledged, or tear up the IOUs and build the team YOU want? Politics remembers either way.`,
+          body: `You did not get here for nothing. There are debts to settle from the contest — you promised jobs to ${debts} — and the corridor outside knows it. Honour the deals and hand out the offices you pledged, or tear up the IOUs? Settle that first; the rest of the bench comes after. Politics remembers either way.`,
           choices: [
             { label: 'Honour your debts — pay what you promised', sublabel: 'loyalty banked; a bench you did not fully choose' },
             { label: 'Break them — your bench, your rules', sublabel: 'freedom now; enemies who never forget' },
-            ...baseChoices,
           ],
-          payload: { weakestId: weakest?.id, advance: rng.int(7, 14), pledgeChoices: true },
+          // a short beat: the two cards read as one reshuffle day, not two events.
+          // (No weakestId — this card only settles debts; the tilt is the next card's job.)
+          payload: { advance: rng.int(1, 3), pledgeStep: true },
         };
       }
       return {
@@ -3624,7 +3711,9 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         title: 'Reshuffle day',
         body: `The corridor outside your office contains, at various distances, hope, dread, and ${rivalName} pretending to read their phone. The ${playerInGovernment(state) ? 'cabinet' : 'shadow cabinet'} is yours to remake — whose career do you make today, and whose do you end?`,
         choices: baseChoices,
-        payload: { weakestId: weakest?.id, advance: rng.int(7, 14) },
+        // carry the debt-paid seats through to the resolve, or this reshuffle could
+        // sack the very minister the player was just told they had paid
+        payload: { weakestId: weakest?.id, advance: rng.int(7, 14), honouredOffices: honoured },
       };
     }
     case 'playerReshuffle': {
@@ -3691,8 +3780,8 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         return card(
           `${leaderName} keeps you on`,
           `The new ${leaderTitle} is assembling a ${teamWord} — and, to relief or surprise, there is a place in it for you. ${leaderName} wants you to stay on as ${curTitle}. Serve the new regime, or make a point of going?`,
-          [{ label: 'Serve on', sublabel: `stay as ${curTitle}` },
-           { label: 'Resign in protest', sublabel: 'principle over position — back to the benches' }]
+          [{ label: 'Serve on' },
+           { label: 'Resign in protest' }]
         );
       }
       if (fate === 'moved' || fate === 'promoted') {
@@ -5444,34 +5533,37 @@ export function resolveForcedChoice(
       const inGov = playerInGovernment(state);
       const side = inGov ? 'cabinet' : 'shadowCabinet';
       const party = state.player.partyId;
+      // seats just filled to honour a contest debt are protected — this reshuffle must
+      // not sack the very minister the player was told they had paid
+      const honoured = (card.payload?.honouredOffices as OfficeId[] | undefined) ?? [];
       // a coalition partner's ministers are theirs to keep — don't reshuffle them
       const posts = state.government[side].filter((p) =>
-        p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party);
+        p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party
+        && !honoured.includes(p.officeId));
       const titleOf = (officeId: OfficeId) =>
         inGov ? OFFICES[officeId].title : OFFICES[officeId].shadowTitle;
       const headline = (text: string) =>
         state.history.push({ kind: 'event', date: state.day, headline: text });
 
-      // when this reshuffle carries contest debts, the first two choices are honour/break;
-      // the ordinary three follow, so their logic is reached at choiceIndex - 2
-      const pledgeChoices = card.payload?.pledgeChoices === true;
-      if (pledgeChoices && (choiceIndex === 0 || choiceIndex === 1)) {
+      // step one of a reshuffle that carries contest debts: settle the IOUs, then queue
+      // the ordinary reshuffle card so the player still chooses how to shape the bench
+      const pledgeStep = card.payload?.pledgeStep === true;
+      if (pledgeStep && (choiceIndex === 0 || choiceIndex === 1)) {
         const madePledges = (state.player.promises ?? []).filter(
           (p) => p.direction === 'made' && state.characters[p.characterId]?.active
         );
+        // seats filled to pay a debt are OFF-LIMITS to the reshuffle that follows —
+        // otherwise the second card could sack the very minister you just paid
+        const honouredOffices: OfficeId[] = [];
         if (choiceIndex === 0) {
           // honour: appoint each pledge-holder to the office you promised them
           const appointed: string[] = [];
           for (const p of madePledges) {
             if (!CABINET_OFFICES.includes(p.officeId)) continue;
-            const existing = state.government[side].find((post) => post.officeId === p.officeId);
-            if (existing && existing.characterId !== p.characterId) {
-              const displaced = state.characters[existing.characterId];
-              if (displaced && displaced.id !== 'player') displaced.officeId = null;
-            }
-            const holder = state.characters[p.characterId];
-            if (holder) holder.officeId = p.officeId;
-            setFrontbenchPost(state, side, p.officeId, p.characterId);
+            // vacates any seat they already hold, so paying a debt to a sitting
+            // minister never leaves them double-booked
+            seatCharacter(state, rng, side, party, p.officeId, p.characterId);
+            honouredOffices.push(p.officeId);
             appointed.push(`${characterName(state, p.characterId)} to ${titleOf(p.officeId)}`);
           }
           // debts cleared
@@ -5484,6 +5576,8 @@ export function resolveForcedChoice(
             headline: `${state.player.name} honours the deals struck during the leadership contest`,
           });
           if (inGov) reshuffleNpcDeputyPm(state, rng);
+          // step two: the ordinary reshuffle, with the debt-paid seats protected
+          state.forcedQueue.push({ kind: 'pmReshuffle', payload: { pledgesSettled: true, honouredOffices } });
           return {
             text: appointed.length
               ? `You pay your debts in full: ${appointed.join('; ')}. It is not the cabinet you would have picked on merit — but a leader who honours their word banks a loyalty that outlasts any single reshuffle.`
@@ -5510,6 +5604,8 @@ export function resolveForcedChoice(
           headline: `${state.player.name} breaks the promises made to win the leadership`,
         });
         if (inGov) reshuffleNpcDeputyPm(state, rng);
+        // step two: the ordinary reshuffle (nothing was promised, so nothing to protect)
+        state.forcedQueue.push({ kind: 'pmReshuffle', payload: { pledgesSettled: true } });
         return {
           text: jilted
             ? `You tear up the IOUs. The jobs you promised go to people you actually rate, and ${jilted.name} — passed over, publicly humiliated — becomes exactly the enemy you would expect. "They gave me their word," they tell anyone who will listen. Everyone listens.`
@@ -5517,7 +5613,8 @@ export function resolveForcedChoice(
           deltas,
         };
       }
-      const baseIndex = pledgeChoices ? choiceIndex - 2 : choiceIndex;
+      // the base card carries only the reshuffle tilts now — no honour/break offset
+      const baseIndex = choiceIndex;
 
       const text = (() => {
         if (baseIndex === 3) {
@@ -5526,14 +5623,14 @@ export function resolveForcedChoice(
           const defeated = defeatedId ? state.characters[defeatedId] : undefined;
           delete state.player.flags._defeatedFinalistId;
           if (defeated?.active) {
-            const officeId: OfficeId = 'sos_foreign';
-            const post = state.government[side].find((p) => p.officeId === officeId);
-            if (post) {
-              const old = state.characters[post.characterId];
-              if (old && old.id !== 'player') old.officeId = null;
-            }
-            defeated.officeId = officeId;
-            setFrontbenchPost(state, side, officeId, defeated.id);
+            // the Foreign Office is the usual olive branch, but if it was just handed
+            // over to pay a contest debt, reach for another great office instead
+            const officeId: OfficeId = !honoured.includes('sos_foreign')
+              ? 'sos_foreign'
+              : (GREAT_OFFICES.find((o) => !honoured.includes(o)) ?? 'sos_foreign');
+            // vacates any seat the rival already holds — bringing a sitting minister
+            // into the tent must not duplicate them across two posts
+            seatCharacter(state, rng, side, party, officeId, defeated.id);
             const rivalRel = state.relationships.find((r) => r.kind === 'rival');
             if (rivalRel && rivalRel.characterId === defeated.id) rivalRel.value = clamp(rivalRel.value + 25, -100, 100);
             adjustRelationship(state, 'ally', 4);
@@ -5622,8 +5719,11 @@ export function resolveForcedChoice(
         p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party);
 
       if (choiceIndex === holdIndex) {
+        // backing out costs nothing — no cooldown, no churn
         return { text: 'You look at the names, the factions, the debts owed and owing — and decide the moment is not ripe. The knife goes back in the drawer. For now.', deltas };
       }
+      // a reshuffle actually happens: hold the periodic ones off for a few months
+      noteReshuffle(state, rng);
 
       // resolve emphasis + churn set
       let tilt: ReshuffleTilt = 'balance';
