@@ -53,14 +53,65 @@ describe('honouring and breaking contest debts at the reshuffle', () => {
   it('honouring appoints the pledged character to the promised office and clears the debt', () => {
     const { game, debtor } = leaderWithDebt(11);
     const rng = new Rng(3);
+    // step one: debts only — the reshuffle tilt is a separate, later decision
     const card = materializeForced(game, rng, { kind: 'pmReshuffle' });
-    expect(card.payload?.pledgeChoices).toBe(true);
+    expect(card.payload?.pledgeStep).toBe(true);
+    expect(card.choices).toHaveLength(2);
     expect(card.choices[0].label).toContain('Honour');
     resolveForcedChoice(game, rng, card, 0); // honour
     expect(debtor.officeId).toBe('sos_home');
     const post = game.government.cabinet.find((p) => p.officeId === 'sos_home');
     expect(post?.characterId).toBe(debtor.id);
     expect(game.player.promises.some((p) => p.direction === 'made')).toBe(false);
+    // step two is queued: the ordinary reshuffle card, with the tilt choices
+    const next = game.forcedQueue.find((e) => e.kind === 'pmReshuffle');
+    expect(next?.payload?.pledgesSettled).toBe(true);
+    const second = materializeForced(game, rng, next!);
+    expect(second.payload?.pledgeStep).toBeUndefined();
+    expect(second.choices[0].label).toContain('Promote your loyalists');
+  });
+
+  // Regression: splitting the card into two steps made the decisions sequential rather
+  // than exclusive, so the follow-up reshuffle could sack the very minister you just
+  // paid. Every tilt on the second card must leave an honoured debtor in post.
+  it('the reshuffle that follows cannot undo a debt you just honoured', () => {
+    for (const pledged of ['sos_foreign', 'sos_home'] as const) {
+      const game = makeGame(11);
+      game.player.officeId = 'leader';
+      game.government.pmId = 'player';
+      const npcs = Object.values(game.characters).filter(
+        (x) => x.active && x.partyId === game.government.governingParty && x.id !== 'player'
+      );
+      const debtor = npcs[0];
+      // a beaten finalist is waiting for the unity olive branch — which targets sos_foreign
+      game.player.flags._defeatedFinalistId = npcs[1].id;
+      game.player.promises = [{
+        characterId: debtor.id, officeId: pledged, madeDay: game.day,
+        context: 'endorsement', direction: 'made',
+      }];
+
+      const rng = new Rng(3);
+      const step1 = materializeForced(game, rng, { kind: 'pmReshuffle' });
+      resolveForcedChoice(game, rng, step1, 0); // honour
+      expect(debtor.officeId).toBe(pledged);
+
+      const queued = game.forcedQueue.find((e) => e.kind === 'pmReshuffle')!;
+      expect(queued.payload?.honouredOffices).toContain(pledged);
+      const step2 = materializeForced(game, rng, queued);
+
+      // Resolve EVERY tilt on the second card independently, across many seeds — the
+      // churn picks posts at random, so a single seed can miss an eviction entirely
+      // (that weakness let a broken build pass). None may ever evict the debtor.
+      for (let i = 0; i < step2.choices.length; i++) {
+        for (let seed = 1; seed <= 50; seed++) {
+          const branch = structuredClone(game);
+          resolveForcedChoice(branch, new Rng(seed * 7 + i), structuredClone(step2), i);
+          const seat = branch.government.cabinet.find((p) => p.officeId === pledged);
+          expect(seat?.characterId).toBe(debtor.id);
+          expect(branch.characters[debtor.id].officeId).toBe(pledged);
+        }
+      }
+    }
   });
 
   it('breaking sets the broken-promise flag and makes the jilted colleague a rival', () => {

@@ -11,6 +11,7 @@ import {
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, canChairCommittee, pickCommittee,
   resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
+  noteReshuffle, reshuffleOnCooldown,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
@@ -694,6 +695,7 @@ export function nextStep(state: GameState, rng: Rng): void {
     if (playerIsLeader(state) && due !== undefined && state.day >= due) {
       delete state.player.flags._newLeaderReshuffleBy;
       state.forcedQueue.push({ kind: 'pmReshuffle' });
+      noteReshuffle(state, rng); // no routine reshuffle straight on top of this one
       nextStep(state, rng);
       return;
     }
@@ -720,6 +722,7 @@ export function nextStep(state: GameState, rng: Rng): void {
         state.player.promises.splice(pledgeIdx, 1);
         if (rng.chance(0.85)) {
           state.forcedQueue.push({ kind: 'reshuffleOffer', payload: { officeId: pledge.officeId, fromPledge: true } });
+          noteReshuffle(state, rng);
           nextStep(state, rng);
           return;
         }
@@ -737,13 +740,15 @@ export function nextStep(state: GameState, rng: Rng): void {
       }
       // no pledged job to honour: the new leader forms their government and decides the
       // player's fate — kept on, moved, promoted, sacked, or (from the benches) brought in.
-      // Re-check circumstances: the card was scheduled 7–35 days ago and things may have
-      // moved on (seat lost to an election, floor crossed, party dropped out of the top
-      // two), in which case a "new PM decides your fate" beat no longer applies.
+      // Re-check circumstances: the card was scheduled days ago and things may have moved
+      // on (seat lost to an election, floor crossed, party dropped out of the top two), in
+      // which case a "new PM decides your fate" beat no longer applies.
       if (state.player.hasSeat && onFrontbenchTrack(state) && canHoldOffice(state)) {
         const { fate, officeId } = decideFormationFate(state, rng);
         if (fate !== 'none') {
           state.forcedQueue.push({ kind: 'governmentFormation', payload: { leaderId, fate, officeId } });
+          state.player.flags._lastReshuffleOfferDay = state.day; // counts as this month's approach
+          noteReshuffle(state, rng);
           nextStep(state, rng);
           return;
         }
@@ -948,19 +953,32 @@ export function nextStep(state: GameState, rng: Rng): void {
     }
   }
 
-  // reshuffles — the player-leader runs their own; everyone else is subject to them
-  if (onFrontbenchTrack(state) && playerIsLeader(state) && rng.chance(PM_RESHUFFLE_HAZARD)) {
+  // reshuffles — the player-leader runs their own; everyone else is subject to them.
+  // A recent reshuffle (a new leader's remake, a fate beat) suppresses these for a few
+  // months so two reshuffles never land on top of each other. A new-leader beat that is
+  // merely SCHEDULED counts too: it fires within days, and a hazard firing in the gap is
+  // exactly the "two reshuffles inside a fortnight" the cooldown exists to prevent.
+  const newLeaderBeatPending =
+    state.player.flags._npcLeaderReshuffleBy !== undefined
+    || state.player.flags._newLeaderReshuffleBy !== undefined;
+  if (onFrontbenchTrack(state) && playerIsLeader(state)
+      && !reshuffleOnCooldown(state) && !newLeaderBeatPending
+      && rng.chance(PM_RESHUFFLE_HAZARD)) {
     state.forcedQueue.push({ kind: 'pmReshuffle' });
+    noteReshuffle(state, rng);
     nextStep(state, rng);
     return;
   }
-  if (onFrontbenchTrack(state) && !playerIsLeader(state) && canHoldOffice(state) && !reshuffleOfferThisMonth(state)) {
+  if (onFrontbenchTrack(state) && !playerIsLeader(state) && canHoldOffice(state)
+      && !reshuffleOfferThisMonth(state) && !reshuffleOnCooldown(state)
+      && !newLeaderBeatPending) {
     // a party deep in the polling mire reshuffles in desperation
     const inTheMire = partyPolling(state, state.player.partyId) < 28;
     const hazard = RESHUFFLE_HAZARD + (inTheMire ? EMERGENCY_RESHUFFLE_BONUS : 0);
     if (rng.chance(hazard)) {
       runReshuffle(state, rng, inTheMire);
       if (state.forcedQueue.length > 0) {
+        noteReshuffle(state, rng);
         nextStep(state, rng);
         return;
       }

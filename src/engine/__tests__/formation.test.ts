@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createNewGame, CreationInput } from '../newGame';
 import {
   resolveNpcLeadership, decideFormationFate, materializeForced, resolveForcedChoice,
-  openNpcContest,
+  openNpcContest, isReshuffleBlocking, noteReshuffle, reshuffleOnCooldown,
+  openPlayerReshuffle,
 } from '../career';
+import { DrawnCard, Character } from '../../types/game';
 import { nextStep } from '../scheduler';
 import { GameState, OfficeId } from '../../types/game';
 import { CABINET_OFFICES } from '../../data/offices';
@@ -262,5 +264,100 @@ describe('fix pass — audit follow-ups', () => {
     const longDelay = elongated.pendingContests![0].resolveDay - elongated.day;
     // same seed + identical code path before the additive delay → exactly +20
     expect(longDelay - baseDelay).toBe(20);
+  });
+});
+
+describe('follow-up fixes', () => {
+  const card = (kind: string, outcome?: boolean) => ({
+    cardId: 'x', kind, title: '', body: '', choices: [],
+    ...(outcome ? { outcome: { text: '', deltas: [] } } : {}),
+  } as unknown as DrawnCard);
+
+  const asLeader = (pending?: DrawnCard) => {
+    const g = makeGame();
+    g.player.officeId = 'leader';
+    g.government.pmId = 'player';
+    g.currentCard = pending ?? null;
+    return g;
+  };
+
+  // Fix 5 — only genuinely vital business blocks; a resolved card is the store's job
+  it('blocks on vital business and calendar beats, but not a plain deck card', () => {
+    expect(isReshuffleBlocking(null)).toBe(false);
+    expect(isReshuffleBlocking(card('normal'))).toBe(false);
+    // a calendar beat IS protected: nextStep rolls calendarDone forward before showing
+    // the card, so discarding it silently loses that year's event
+    expect(isReshuffleBlocking(card('calendar'))).toBe(true);
+    for (const k of ['leadershipStand', 'electionNight', 'confidenceVote', 'governmentFormation',
+                     'budget', 'pmqs', 'conference', 'reshuffleOffer']) {
+      expect(isReshuffleBlocking(card(k))).toBe(true);
+    }
+    // a card showing its outcome doesn't grey the button — the store continues it first
+    expect(isReshuffleBlocking(card('normal', true))).toBe(false);
+  });
+
+  it('a pending calendar beat SURVIVES a reshuffle press', () => {
+    const g = asLeader(card('calendar'));
+    openPlayerReshuffle(g, new Rng(2));
+    // superseding it would consume that year's budget / local elections / snap-election
+    expect(g.currentCard?.kind).toBe('calendar');
+  });
+
+  it('a resolved card is left for the normal continue path, never superseded', () => {
+    const g = asLeader(card('normal', true));
+    openPlayerReshuffle(g, new Rng(2));
+    // swapping it out would skip continueCore's day-advance — free time for the player
+    expect(g.currentCard?.kind).toBe('normal');
+    expect(g.currentCard?.outcome).toBeTruthy();
+  });
+
+  it('opens over an unanswered plain deck card', () => {
+    const g = asLeader(card('normal'));
+    openPlayerReshuffle(g, new Rng(2));
+    expect(g.currentCard?.kind).toBe('playerReshuffle');
+  });
+
+  // Fix 4 — a reshuffle beat suppresses the periodic ones for a few months
+  it('a reshuffle sets a cooldown that lapses', () => {
+    const g = makeGame();
+    expect(reshuffleOnCooldown(g)).toBe(false);
+    noteReshuffle(g, new Rng(1));
+    expect(reshuffleOnCooldown(g)).toBe(true);
+    g.day += 151; // beyond the longest cooldown
+    expect(reshuffleOnCooldown(g)).toBe(false);
+  });
+
+  // Fix 3 — the new-leader beat lands the same month the contest ends
+  it('schedules the new-leader fate beat within days, not weeks', () => {
+    const g = makeGame();
+    g.player.officeId = 'sos_home';
+    resolveNpcLeadership(g, new Rng(5), 'lab');
+    const due = g.player.flags._npcLeaderReshuffleBy as number;
+    expect(due - g.day).toBeGreaterThanOrEqual(3);
+    expect(due - g.day).toBeLessThanOrEqual(12);
+  });
+
+  // Fix 2 — appointing a sitting minister never duplicates them
+  it('bringing an already-seated rival into the tent does not double-book them', () => {
+    const g = makeGame();
+    g.player.officeId = 'leader';
+    g.government.pmId = 'player';
+    // the beaten finalist is ALREADY a sitting minister (the duplication case)
+    const seated = g.government.cabinet.find((p) => p.officeId === 'sos_health')!;
+    const rival: Character = g.characters[seated.characterId];
+    g.player.flags._defeatedFinalistId = rival.id;
+    const c = materializeForced(g, new Rng(1), { kind: 'pmReshuffle' });
+    const unity = c.choices.findIndex((ch) => ch.label.includes('into the tent'));
+    expect(unity).toBeGreaterThanOrEqual(0);
+    resolveForcedChoice(g, new Rng(1), c, unity);
+    // they hold exactly one seat, and no seat is empty or double-booked
+    const held = g.government.cabinet.filter((p) => p.characterId === rival.id);
+    expect(held).toHaveLength(1);
+    const ids = g.government.cabinet.map((p) => p.characterId);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const p of g.government.cabinet) {
+      if (p.characterId === 'player') continue;
+      expect(g.characters[p.characterId]).toBeTruthy();
+    }
   });
 });
