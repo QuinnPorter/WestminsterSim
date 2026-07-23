@@ -1336,7 +1336,8 @@ export function openPlayerReshuffle(state: GameState, rng: Rng): void {
   if (state.currentCard?.outcome) return;
   if (isReshuffleBlocking(state.currentCard)) return;
   state.currentCard = materializeForced(state, rng, { kind: 'playerReshuffle' });
-  noteReshuffle(state, rng);
+  // NB: the cooldown is armed when the reshuffle is RESOLVED, not here — opening the
+  // card and then picking "Hold off" must not cost the player months of world events.
 }
 
 // ---------- leadership ----------
@@ -5718,8 +5719,11 @@ export function resolveForcedChoice(
         p.characterId !== 'player' && state.characters[p.characterId]?.partyId === party);
 
       if (choiceIndex === holdIndex) {
+        // backing out costs nothing — no cooldown, no churn
         return { text: 'You look at the names, the factions, the debts owed and owing — and decide the moment is not ripe. The knife goes back in the drawer. For now.', deltas };
       }
+      // a reshuffle actually happens: hold the periodic ones off for a few months
+      noteReshuffle(state, rng);
 
       // resolve emphasis + churn set
       let tilt: ReshuffleTilt = 'balance';

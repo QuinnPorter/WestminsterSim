@@ -692,12 +692,18 @@ export function nextStep(state: GameState, rng: Rng): void {
   // a newly-installed player leader remakes the front bench shortly after
   {
     const due = state.player.flags._newLeaderReshuffleBy as number | undefined;
-    if (playerIsLeader(state) && due !== undefined && state.day >= due) {
+    if (due !== undefined && state.day >= due) {
+      // ALWAYS clear a due flag, even if the player is no longer leader (a coup or an
+      // election can intervene inside the few days before it fires). A stale flag would
+      // otherwise linger for the rest of the career and — because the reshuffle hazards
+      // below treat a pending beat as a reason to hold off — suppress them forever.
       delete state.player.flags._newLeaderReshuffleBy;
-      state.forcedQueue.push({ kind: 'pmReshuffle' });
-      noteReshuffle(state, rng); // no routine reshuffle straight on top of this one
-      nextStep(state, rng);
-      return;
+      if (playerIsLeader(state)) {
+        state.forcedQueue.push({ kind: 'pmReshuffle' });
+        noteReshuffle(state, rng); // no routine reshuffle straight on top of this one
+        nextStep(state, rng);
+        return;
+      }
     }
   }
 
@@ -705,6 +711,12 @@ export function nextStep(state: GameState, rng: Rng): void {
   // player-facing reshuffle (offer / move / dismissal) shortly after they take over
   {
     const due = state.player.flags._npcLeaderReshuffleBy as number | undefined;
+    // ALWAYS clear a due flag, even if the player has since become leader themselves — a
+    // stale flag would linger for the rest of the career and, because the reshuffle
+    // hazards treat a pending beat as a reason to hold off, suppress them forever.
+    if (due !== undefined && state.day >= due && playerIsLeader(state)) {
+      delete state.player.flags._npcLeaderReshuffleBy;
+    }
     if (!playerIsLeader(state) && due !== undefined && state.day >= due) {
       delete state.player.flags._npcLeaderReshuffleBy;
       // a job pledged TO the player during a contest comes due when the debtor now leads.

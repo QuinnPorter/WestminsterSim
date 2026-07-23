@@ -317,6 +317,23 @@ describe('follow-up fixes', () => {
     expect(g.currentCard?.kind).toBe('playerReshuffle');
   });
 
+  // Opening the card must be free; only an actual reshuffle arms the cooldown, or
+  // "Hold off — not today" would silently cost months of world events.
+  it('holding off costs no cooldown, but reshuffling arms one', () => {
+    const held = asLeader();
+    openPlayerReshuffle(held, new Rng(2));
+    expect(held.currentCard?.kind).toBe('playerReshuffle');
+    expect(reshuffleOnCooldown(held)).toBe(false); // merely opening it is free
+    const holdCard = held.currentCard!;
+    resolveForcedChoice(held, new Rng(2), holdCard, holdCard.choices.length - 1); // hold off
+    expect(reshuffleOnCooldown(held)).toBe(false);
+
+    const done = asLeader();
+    openPlayerReshuffle(done, new Rng(2));
+    resolveForcedChoice(done, new Rng(2), done.currentCard!, 0); // actually reshuffle
+    expect(reshuffleOnCooldown(done)).toBe(true);
+  });
+
   // Fix 4 — a reshuffle beat suppresses the periodic ones for a few months
   it('a reshuffle sets a cooldown that lapses', () => {
     const g = makeGame();
@@ -325,6 +342,30 @@ describe('follow-up fixes', () => {
     expect(reshuffleOnCooldown(g)).toBe(true);
     g.day += 151; // beyond the longest cooldown
     expect(reshuffleOnCooldown(g)).toBe(false);
+  });
+
+  // A pending new-leader beat holds the periodic hazards off — so a flag that can never
+  // fire (the player gained/lost the leadership inside its few-day window) must still be
+  // cleared, or it would suppress every reshuffle for the rest of the career.
+  it('clears a due new-leader flag even when it can no longer fire', () => {
+    // scheduled as a non-leader, but the player has since become leader
+    const a = makeGame();
+    a.player.officeId = 'leader';
+    a.government.pmId = 'player';
+    a.player.flags._npcLeaderReshuffleBy = a.day - 1;
+    a.currentCard = null;
+    a.forcedQueue.length = 0;
+    nextStep(a, new Rng(4));
+    expect(a.player.flags._npcLeaderReshuffleBy).toBeUndefined();
+
+    // scheduled as leader, but the player has since lost the leadership
+    const b = makeGame();
+    b.player.officeId = 'sos_home';
+    b.player.flags._newLeaderReshuffleBy = b.day - 1;
+    b.currentCard = null;
+    b.forcedQueue.length = 0;
+    nextStep(b, new Rng(4));
+    expect(b.player.flags._newLeaderReshuffleBy).toBeUndefined();
   });
 
   // Fix 3 — the new-leader beat lands the same month the contest ends
