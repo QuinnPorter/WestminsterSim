@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'uk.co.westminstersim.app',
+  appId: 'com.meridiananalytica.westminstersim',
   appName: 'WestminsterSim',
   webDir: 'dist',
   plugins: {

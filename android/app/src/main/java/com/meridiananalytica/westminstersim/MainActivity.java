@@ -1,4 +1,4 @@
-package uk.co.westminstersim.app;
+package com.meridiananalytica.westminstersim;
 
 import com.getcapacitor.BridgeActivity;
 

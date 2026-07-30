@@ -10,10 +10,10 @@ if (keystorePropsFile.exists()) {
 }
 
 android {
-    namespace = "uk.co.westminstersim.app"
+    namespace = "com.meridiananalytica.westminstersim"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "uk.co.westminstersim.app"
+        applicationId "com.meridiananalytica.westminstersim"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
