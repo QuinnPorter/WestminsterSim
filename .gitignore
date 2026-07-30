@@ -22,3 +22,8 @@ npm-debug.log*
 
 # store assets — uploaded manually to App Store Connect / Play Console, not shipped in the binary
 marketing/
+
+# Android upload key — never commit; losing it means a new app listing
+android/keystore.properties
+*.jks
+*.keystore

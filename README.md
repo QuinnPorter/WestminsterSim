@@ -55,6 +55,51 @@ reshuffles, leadership vacancies, max stats).
 | `npm test` | engine test suite (data integrity, election calibration, balance sims) |
 | `npm run build` | production build |
 
+## Mobile release
+
+Capacitor wraps `dist/` for both stores. `npm run android` / `npm run ios` build the
+web bundle, sync it into the native project, and open the IDE.
+
+### Android toolchain
+
+Building from the command line needs a JDK 17+ and the Android SDK. Android Studio
+bundles both if you use its UI; for terminal builds, the SDK lives at the path in
+`android/local.properties` (gitignored) and Java comes from Studio's bundled runtime:
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+```
+
+SDK packages required: `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`.
+
+### Signing
+
+Android release builds are signed with an upload key that lives outside the repo.
+Create it once, then keep the `.jks` and its passwords in a password manager — lose
+them and the Play listing can't be updated:
+
+```bash
+keytool -genkey -v -keystore android/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+Then write `android/keystore.properties` (gitignored):
+
+```
+storeFile=upload-keystore.jks
+storePassword=…
+keyAlias=upload
+keyPassword=…
+```
+
+Build the bundle to upload to the Play Console:
+
+```bash
+npm run build && npx cap sync android && (cd android && ./gradlew bundleRelease)
+```
+
+Output lands at `android/app/build/outputs/bundle/release/app-release.aab`. Bump
+`versionCode` in `android/app/build.gradle` for every upload.
+
 ## Stack
 
 React 18 + TypeScript + Vite, Zustand (persisted), plain CSS, hand-rolled
