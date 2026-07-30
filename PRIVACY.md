@@ -1,6 +1,6 @@
 # WestminsterSim — Privacy Policy
 
-**Effective date:** 18 June 2026
+**Effective date:** 30 July 2026
 
 WestminsterSim ("the app") is a single‑player political simulation game developed by Meridian Analytica LTD.
 This is the whole policy, and the short version is the whole story: **the app collects no data.**
@@ -19,10 +19,22 @@ information. There are:
 ## Your game save stays on your device
 
 Your career progress is saved **locally on your device** using standard on‑device app storage.
-This save never leaves your device, is never sent to us or anyone else, and cannot be accessed by
-the developer. Deleting the app removes the save.
+It is never sent to us, never sent to anyone else, and cannot be accessed by the developer.
+
+One clarification for Android: if you have Google's system‑level "Back up to Google Drive" setting
+turned on, your device's operating system may include this save in your personal device backup, the
+same way it backs up other apps. That backup is made by Android to **your own Google account** — we
+neither trigger it nor have any access to it. You can switch it off in your device's backup settings.
+
+Deleting the app removes the save from your device.
 
 ## Device permissions
+
+The app declares two permissions, neither of which reveals anything about you:
+
+- **Vibration** — for the small haptic tap when you make a choice.
+- **Internet access** — required because the game's interface runs in a system WebView served from
+  your own device. The game makes no network requests of its own.
 
 The app does not request access to sensitive device features such as your location, camera,
 microphone, contacts, photos, or files.
