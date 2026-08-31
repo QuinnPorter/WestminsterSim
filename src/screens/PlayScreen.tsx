@@ -12,7 +12,7 @@ export function PlayScreen({ game }: { game: GameState }) {
   const continueAfterOutcome = useGameStore((s) => s.continueAfterOutcome);
 
   return (
-    <div className="screen">
+    <div className="screen screen-play">
       <TopBar game={game} />
       <div style={{ marginBottom: 12 }}>
         <StatChips stats={game.player.stats} />

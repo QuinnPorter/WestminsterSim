@@ -5,6 +5,28 @@
   padding: 18px;
 }
 
+/* On the play tab the card is the whole screen's content, so it grows into the
+   space below the stat header instead of leaving a third of the phone empty.
+   The choices then sit at the bottom of the card — inside the thumb zone, and
+   in a consistent place from one card to the next.
+   Scoped to phone-width viewports that are also tall enough for the space to be
+   worth claiming. On a short one (landscape phone) the card already overflows,
+   and stretching it would push the choices further under the fixed tab bar; at
+   tablet width and up the shell is a deliberately narrow centred column, where
+   a card sized to its content reads better than one stretched full of white. */
+@media (min-width: 0px) and (max-width: 767px) and (min-height: 600px) {
+  .screen-play > .dcard,
+  .screen-play > .card {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .screen-play > .dcard > .dcard-choices,
+  .screen-play > .dcard > .dcard-continue {
+    margin-top: auto;
+  }
+}
+
 .dcard-key {
   border: 2px solid var(--danger);
   box-shadow: 0 0 0 4px rgba(192, 57, 43, 0.12), var(--shadow);
