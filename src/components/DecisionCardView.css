@@ -7,17 +7,24 @@
 
 /* On the play tab the card is the whole screen's content, so it grows into the
    space below the stat header instead of leaving a third of the phone empty.
-   The choices then sit at the bottom of the card — inside the thumb zone, and
-   in a consistent place from one card to the next.
+   The choices ride at the bottom of the card, which lifts them out of the top
+   third of the screen and keeps them in the same place from card to card.
+   The grow factor is deliberately below 1: the card takes most of the leftover
+   space but not all of it, so the choices settle nearer the middle of the
+   screen than the very bottom, and what's left reads as page background under
+   the card rather than a hole inside it.
    Scoped to phone-width viewports that are also tall enough for the space to be
    worth claiming. On a short one (landscape phone) the card already overflows,
    and stretching it would push the choices further under the fixed tab bar; at
    tablet width and up the shell is a deliberately narrow centred column, where
    a card sized to its content reads better than one stretched full of white. */
 @media (min-width: 0px) and (max-width: 767px) and (min-height: 600px) {
+  /* the decision card and the "The House is quiet…" placeholder that replaces
+     it — but NOT other cards on this screen (the leader's situation panel is a
+     .card too, and must stay sized to its own content) */
   .screen-play > .dcard,
-  .screen-play > .card {
-    flex: 1 1 auto;
+  .screen-play > .card:not(.sit-panel) {
+    flex: 0.6 1 auto;
     min-height: 0;
   }
 
