@@ -86,6 +86,15 @@ p {
   overflow-y: auto;
 }
 
+/* The play tab is the one screen whose content is a single card rather than a
+   list, so it doesn't fill the viewport on its own — a short decision card left
+   ~35% of a phone screen empty above the tab bar. Laying the screen out as a
+   flex column lets the card claim that space (see DecisionCardView.css). */
+.screen-play {
+  display: flex;
+  flex-direction: column;
+}
+
 .card {
   background: var(--surface);
   border-radius: var(--radius);

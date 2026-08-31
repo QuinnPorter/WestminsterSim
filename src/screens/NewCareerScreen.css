@@ -5,21 +5,32 @@
   min-height: 100dvh;
 }
 
+/* Six uppercase labels don't fit across a 375px phone — "BACKGROUND" and
+   "AGENDA" collided. The row scrolls sideways instead of clipping, and still
+   spreads to fill the width once there's room for all six. */
 .nc-steps {
   display: flex;
   gap: 4px;
   margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nc-steps::-webkit-scrollbar {
+  display: none;
 }
 
 .nc-step {
-  flex: 1;
+  flex: 1 0 auto;
   text-align: center;
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--muted);
-  padding: 5px 0;
+  padding: 5px 6px;
   border-bottom: 3px solid var(--line);
 }
 
