@@ -186,15 +186,10 @@
   line-height: 1.5;
 }
 
-/* Two columns, dropping to one when the grid is too narrow for two readable
-   cards (under ~248px: the agenda editor's modal on a 320px phone, where a
-   two-up card was ~75px across and even "Immigration" snapped mid-word). The
-   max() floor stops it ever going to three on a wide screen. */
 .nc-bgs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(7.5rem, calc((100% - 8px) / 2))), 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  container-type: inline-size;
 }
 
 .nc-bg {
@@ -209,33 +204,13 @@
 }
 
 .nc-bg strong {
-  /* clamp the name to two lines. One line cut half the names to "The…",
-     "Armed…", "NHS &…" in a 320px phone's two-column grid; two lets them wrap,
-     and the grid row stretches the neighbouring card to match, so the pair stays
-     even. A name that still can't fit in two lines ends in an ellipsis rather
-     than bloating the card. */
+  /* clamp the name to a single line so a long label (e.g. "Political Advisor")
+     never wraps and bloats the card past its neighbour in the grid */
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
-  -webkit-hyphens: auto;
-  hyphens: auto;
-}
-
-/* In a grid this narrow (a 320px phone, or the agenda editor's modal on a small
-   phone) a card is ~100–110px across, and a long single word — "Businessperson",
-   "Immigration" — is wider than that at full size and snapped mid-word. A notch
-   smaller keeps the whole word on its line. */
-@container (max-width: 299px) {
-  /* (qualified so it beats .card's 16px, which global.css applies after this file) */
-  .nc-bgs .nc-bg {
-    padding: 10px;
-  }
-
-  .nc-bg strong {
-    font-size: 0.8125rem;
-  }
 }
 
 .nc-bg span {

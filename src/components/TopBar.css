@@ -5,24 +5,17 @@
   margin-bottom: 12px;
 }
 
-/* The date and the office badge share a row when they fit. When they don't — a
-   320px phone can't hold "September 2024" beside even "Backbench MP", and a long
-   title like "Chancellor of the Exchequer" doesn't fit beside the date on any
-   phone — the badge drops to its own line and shows the whole title, rather
-   than the date breaking over two lines and the badge shrinking to "Backbench …". */
 .topbar-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 8px;
+  gap: 8px;
 }
 
 .topbar-date {
   font-size: var(--fs-lg);
   font-weight: 800;
   letter-spacing: -0.01em;
-  white-space: nowrap;
 }
 
 .topbar-role {
@@ -33,8 +26,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
-  max-width: 100%;
+  max-width: 55%;
 }
 
 .topbar-ticker {
