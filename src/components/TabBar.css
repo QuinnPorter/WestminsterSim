@@ -25,6 +25,15 @@
   font-weight: 600;
 }
 
+/* on a 320px phone each tab is 64px wide and "Parliament" at 12px nearly fills
+   it — the labels of neighbouring tabs ran together ("Cabinet Parliament") */
+@media (max-width: 359px) {
+  .tabbar-item {
+    font-size: 0.6875rem;
+    letter-spacing: -0.01em;
+  }
+}
+
 .tabbar-item.active {
   color: var(--party);
 }
