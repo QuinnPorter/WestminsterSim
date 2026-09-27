@@ -95,27 +95,6 @@ p {
   flex-direction: column;
 }
 
-/* Text-link buttons ("Change ›", "Mentors ›", the PM title on the Cabinet tab)
-   are visually a single line of small type — ~26px tall, well under a thumb.
-   On a touch screen this gives them an invisible hit area of at least 44×44,
-   centred on the link, without changing how they look or moving the layout.
-   Only use it where neighbours are far enough apart that the areas don't overlap. */
-.tap-target {
-  position: relative;
-}
-
-@media (pointer: coarse) {
-  .tap-target::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: max(100%, 44px);
-    height: max(100%, 44px);
-    transform: translate(-50%, -50%);
-  }
-}
-
 .card {
   background: var(--surface);
   border-radius: var(--radius);

@@ -67,7 +67,6 @@ export function NewCareerScreen() {
   const [step, setStep] = useState(0);
   const stepName: StepName = steps[Math.min(step, steps.length - 1)] as StepName;
   const rootRef = useRef<HTMLDivElement>(null);
-  const stepsRef = useRef<HTMLDivElement>(null);
 
   // each stage should open at the top, like a fresh game — otherwise stepping in
   // (e.g. into the Agenda list) keeps the previous step's scroll offset. The window
@@ -75,18 +74,6 @@ export function NewCareerScreen() {
   useEffect(() => {
     window.scrollTo(0, 0);
     rootRef.current?.scrollTo(0, 0);
-  }, [step]);
-
-  // the step labels scroll sideways on a narrow phone, and the later steps start
-  // off-screen — at 320–360px "LOOK" is out of view while you're on it. Keep the
-  // current step centred in the row (only the row scrolls, never the page).
-  useEffect(() => {
-    const row = stepsRef.current;
-    const active = row?.querySelector<HTMLElement>('.nc-step.active');
-    if (!row || !active) return;
-    const r = row.getBoundingClientRect();
-    const a = active.getBoundingClientRect();
-    row.scrollLeft += a.left + a.width / 2 - (r.left + r.width / 2);
   }, [step]);
 
   const [era, setEra] = useState<Era>(protege?.era ?? '2024');
@@ -136,7 +123,7 @@ export function NewCareerScreen() {
 
   return (
     <div className="screen nc" ref={rootRef}>
-      <div className="nc-steps" ref={stepsRef}>
+      <div className="nc-steps">
         {steps.map((s, i) => (
           <span key={s} className={`nc-step${i === step ? ' active' : ''}${i < step ? ' done' : ''}`}>
             {s}

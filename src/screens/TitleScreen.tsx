@@ -86,7 +86,7 @@ export function TitleScreen() {
         A political simulator · All political figures are fictional
         <br />
         <a
-          className="title-privacy tap-target"
+          className="title-privacy"
           href={PRIVACY_URL}
           target="_blank"
           rel="noreferrer"

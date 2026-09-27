@@ -223,7 +223,6 @@ export function ProfileScreen({ game }: { game: GameState }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)' }}>Your Agenda</h3>
           <button
-            className="tap-target"
             onClick={() => setAgendaEditorOpen(true)}
             style={{
               background: 'none', border: 'none', padding: '6px 0',
@@ -256,7 +255,6 @@ export function ProfileScreen({ game }: { game: GameState }) {
           <h3 style={{ fontSize: 'var(--fs-sm)', margin: 0 }}>Career</h3>
           {(game.mentors?.length ?? 0) > 0 && (
             <button
-              className="tap-target"
               onClick={() => setMentorHistoryOpen(true)}
               style={{
                 background: 'none', border: 'none', padding: 0,
@@ -490,7 +488,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
           aria-label="Settings"
           onClick={() => useUiStore.getState().setSettingsOpen(true)}
           style={{
-            background: 'none', border: 'none', padding: 12, cursor: 'pointer',
+            background: 'none', border: 'none', padding: 8, cursor: 'pointer',
             color: 'var(--muted)', opacity: 0.5, lineHeight: 0,
           }}
         >

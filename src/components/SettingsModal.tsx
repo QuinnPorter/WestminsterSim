@@ -42,7 +42,6 @@ export function SettingsModal() {
             href={PRIVACY_URL}
             target="_blank"
             rel="noreferrer"
-            className="tap-target"
             style={{ fontWeight: 700, fontSize: 'var(--fs-sm)', color: 'var(--party)', textDecoration: 'underline' }}
           >
             Privacy Policy

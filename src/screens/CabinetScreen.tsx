@@ -151,7 +151,7 @@ function FeaturedMember({ game, characterId, title, onTitleClick, titleColour, o
         </div>
         {onTitleClick ? (
           <button
-            className="cab-featured-title cab-title-link tap-target"
+            className="cab-featured-title cab-title-link"
             onClick={onTitleClick}
             style={titleColour ? { color: titleColour } : undefined}
           >

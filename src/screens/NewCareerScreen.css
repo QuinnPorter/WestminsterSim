@@ -24,7 +24,7 @@
 .nc-step {
   flex: 1 0 auto;
   text-align: center;
-  font-size: 0.6875rem;
+  font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -109,7 +109,7 @@
 
 .nc-seg button {
   flex: 1;
-  padding: 12px 9px;
+  padding: 9px;
   border-radius: 999px;
   font-weight: 700;
   font-size: var(--fs-sm);
@@ -125,15 +125,6 @@
 .nc-range {
   width: 100%;
   accent-color: #33415c;
-}
-
-/* the track is only 16px tall; on a touch screen give the thumb a finger-sized
-   band to land in (the track stays centred in it) */
-@media (pointer: coarse) {
-  .nc-range {
-    height: 44px;
-    margin: 0;
-  }
 }
 
 .nc-era {
@@ -266,7 +257,7 @@
 .nc-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 6px;
+  gap: 6px;
   justify-content: center;
   margin-top: 14px;
 }
@@ -274,10 +265,7 @@
 .nc-pill {
   font-size: var(--fs-xs);
   font-weight: 700;
-  /* 40px tall: a comfortable tap in a wrapped row that's too tightly packed
-     to give each pill an overlapping invisible hit area */
-  min-height: 40px;
-  padding: 7px 14px;
+  padding: 7px 12px;
   border-radius: 999px;
   background: var(--surface);
   border: 1.5px solid var(--line);

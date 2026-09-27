@@ -110,7 +110,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
           disabled={sharing}
           style={{
             width: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            padding: '12px 16px', opacity: sharing ? 0.6 : 1,
+            padding: '9px 16px', opacity: sharing ? 0.6 : 1,
           }}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"

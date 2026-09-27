@@ -64,11 +64,8 @@ export function ParliamentScreen({ game }: { game: GameState }) {
               ? `minority, with ${PARTIES[gov.confidencePartner].shortName} support`
               : 'minority government'}
       </p>
-      {/* rowGap 18: each link is ~26px of text with a 44px touch area (.tap-target),
-          so when the row wraps on a narrow phone the areas meet without overlapping */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 18, alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 8, alignItems: 'center', marginBottom: 12 }}>
         <button
-          className="tap-target"
           onClick={() => setPmHistoryOpen(true)}
           style={{
             background: 'none', border: 'none', padding: '6px 0',
@@ -78,7 +75,6 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           Prime Ministers ›
         </button>
         <button
-          className="tap-target"
           onClick={() => setLoHistoryOpen(true)}
           style={{
             background: 'none', border: 'none', padding: '6px 0',
@@ -88,7 +84,6 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           Opposition Leaders ›
         </button>
         <button
-          className="tap-target"
           onClick={() => setElectionsOpen(true)}
           style={{
             background: 'none', border: 'none', padding: '6px 0',
@@ -99,7 +94,6 @@ export function ParliamentScreen({ game }: { game: GameState }) {
         </button>
         {isPM && !electionImminent && (
           <button
-            className="tap-target"
             onClick={() => requestConfirm({
               title: 'Call a snap election?',
               message: 'You dissolve Parliament and go to the country. The campaign begins at your next decision.',
@@ -116,7 +110,6 @@ export function ParliamentScreen({ game }: { game: GameState }) {
         )}
         {inCoalition && (
           <button
-            className="tap-target"
             onClick={() => requestConfirm({
               title: 'Withdraw from the coalition?',
               message: isJuniorPartner
@@ -157,7 +150,6 @@ export function ParliamentScreen({ game }: { game: GameState }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
           <button
-            className="tap-target"
             onClick={() => setSeatHistoryOpen(true)}
             style={{
               background: 'none', border: 'none', padding: '6px 0',
