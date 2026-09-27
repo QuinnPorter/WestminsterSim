@@ -3,6 +3,7 @@
   gap: 4px;
   padding: 2px 0;
   scrollbar-width: none;
+  container: statchips / inline-size;
 }
 
 .statchips::-webkit-scrollbar {
@@ -23,8 +24,15 @@
   min-width: 0;
 }
 
+/* Five uppercase labels at a legible size need ~380px of row, and a phone gives
+   the row 288–398px. At 0.5rem they were unreadable, and still clipped to
+   "PROF…", "STAND…" on a 320px phone. So the size is fixed at something readable
+   and the wording steps down with the room available: full words where they fit,
+   a hair smaller where they nearly do (375–390px phones), and short forms below
+   that. Short forms are the default so a browser without container queries gets
+   the version that fits anywhere. */
 .statchip-label {
-  font-size: 0.5rem;
+  font-size: 0.625rem;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
@@ -32,6 +40,38 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.statchip-label-full {
+  display: none;
+}
+
+@container statchips (min-width: 340px) {
+  .statchip {
+    padding: 5px 4px;
+  }
+
+  .statchip-label {
+    font-size: 0.5625rem;
+  }
+
+  .statchip-label-full {
+    display: inline;
+  }
+
+  .statchip-label-short {
+    display: none;
+  }
+}
+
+@container statchips (min-width: 380px) {
+  .statchip {
+    padding: 5px;
+  }
+
+  .statchip-label {
+    font-size: 0.625rem;
+  }
 }
 
 .statchip-bar {

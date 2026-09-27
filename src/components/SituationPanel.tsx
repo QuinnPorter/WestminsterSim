@@ -23,7 +23,7 @@ export function SituationPanel({ game }: { game: GameState }) {
 
   return (
     <div className="card sit-panel">
-      <button className="sit-head" onClick={() => setOpen((o) => !o)}>
+      <button className="sit-head tap-target" onClick={() => setOpen((o) => !o)}>
         <span>The Lie of the Land</span>
         <span className="sit-toggle">{open ? '▾' : '▸'}</span>
       </button>

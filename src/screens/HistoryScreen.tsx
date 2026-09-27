@@ -46,6 +46,7 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
     return (
       <div className="card" style={{ marginBottom: 8, padding: 12 }}>
         <button
+          className="tap-target"
           onClick={() => setOpen(!open)}
           style={{ width: '100%', textAlign: 'left', fontWeight: 700, fontSize: 'var(--fs-sm)' }}
         >

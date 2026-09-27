@@ -24,7 +24,7 @@
 .nc-step {
   flex: 1 0 auto;
   text-align: center;
-  font-size: 0.62rem;
+  font-size: 0.6875rem;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -109,7 +109,7 @@
 
 .nc-seg button {
   flex: 1;
-  padding: 9px;
+  padding: 12px 9px;
   border-radius: 999px;
   font-weight: 700;
   font-size: var(--fs-sm);
@@ -125,6 +125,15 @@
 .nc-range {
   width: 100%;
   accent-color: #33415c;
+}
+
+/* the track is only 16px tall; on a touch screen give the thumb a finger-sized
+   band to land in (the track stays centred in it) */
+@media (pointer: coarse) {
+  .nc-range {
+    height: 44px;
+    margin: 0;
+  }
 }
 
 .nc-era {
@@ -186,10 +195,15 @@
   line-height: 1.5;
 }
 
+/* Two columns, dropping to one when the grid is too narrow for two readable
+   cards (under ~248px: the agenda editor's modal on a 320px phone, where a
+   two-up card was ~75px across and even "Immigration" snapped mid-word). The
+   max() floor stops it ever going to three on a wide screen. */
 .nc-bgs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(7.5rem, calc((100% - 8px) / 2))), 1fr));
   gap: 8px;
+  container-type: inline-size;
 }
 
 .nc-bg {
@@ -204,13 +218,33 @@
 }
 
 .nc-bg strong {
-  /* clamp the name to a single line so a long label (e.g. "Political Advisor")
-     never wraps and bloats the card past its neighbour in the grid */
+  /* clamp the name to two lines. One line cut half the names to "The…",
+     "Armed…", "NHS &…" in a 320px phone's two-column grid; two lets them wrap,
+     and the grid row stretches the neighbouring card to match, so the pair stays
+     even. A name that still can't fit in two lines ends in an ellipsis rather
+     than bloating the card. */
   display: -webkit-box;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+}
+
+/* In a grid this narrow (a 320px phone, or the agenda editor's modal on a small
+   phone) a card is ~100–110px across, and a long single word — "Businessperson",
+   "Immigration" — is wider than that at full size and snapped mid-word. A notch
+   smaller keeps the whole word on its line. */
+@container (max-width: 299px) {
+  /* (qualified so it beats .card's 16px, which global.css applies after this file) */
+  .nc-bgs .nc-bg {
+    padding: 10px;
+  }
+
+  .nc-bg strong {
+    font-size: 0.8125rem;
+  }
 }
 
 .nc-bg span {
@@ -232,7 +266,7 @@
 .nc-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px 6px;
   justify-content: center;
   margin-top: 14px;
 }
@@ -240,7 +274,10 @@
 .nc-pill {
   font-size: var(--fs-xs);
   font-weight: 700;
-  padding: 7px 12px;
+  /* 40px tall: a comfortable tap in a wrapped row that's too tightly packed
+     to give each pill an overlapping invisible hit area */
+  min-height: 40px;
+  padding: 7px 14px;
   border-radius: 999px;
   background: var(--surface);
   border: 1.5px solid var(--line);

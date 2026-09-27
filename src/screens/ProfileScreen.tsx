@@ -223,6 +223,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)' }}>Your Agenda</h3>
           <button
+            className="tap-target"
             onClick={() => setAgendaEditorOpen(true)}
             style={{
               background: 'none', border: 'none', padding: '6px 0',
@@ -255,6 +256,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
           <h3 style={{ fontSize: 'var(--fs-sm)', margin: 0 }}>Career</h3>
           {(game.mentors?.length ?? 0) > 0 && (
             <button
+              className="tap-target"
               onClick={() => setMentorHistoryOpen(true)}
               style={{
                 background: 'none', border: 'none', padding: 0,
@@ -271,17 +273,20 @@ export function ProfileScreen({ game }: { game: GameState }) {
           </p>
         ) : (
           rows.map((row, i) => (
+            // the title and its dates share a line when there's room; on a narrow
+            // phone the dates wrap beneath the title instead of squeezing it to a
+            // word per line and running off the card ("September 2039 – December 2039")
             <div
               key={i}
               style={{
-                display: 'flex', justifyContent: 'space-between', gap: 10,
+                display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '2px 10px',
                 padding: '6px 0',
                 borderBottom: i < rows.length - 1 ? '1px solid var(--line)' : 'none',
                 fontSize: 'var(--fs-xs)',
               }}
             >
-              <span style={{ fontWeight: 700 }}>{row.title}</span>
-              <span style={{ color: 'var(--muted)', flexShrink: 0 }}>
+              <span style={{ fontWeight: 700, flex: '1 1 9rem' }}>{row.title}</span>
+              <span style={{ color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                 {formatMonthYear(row.start)} – {row.end ? formatMonthYear(row.end) : 'now'}
               </span>
             </div>
@@ -485,7 +490,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
           aria-label="Settings"
           onClick={() => useUiStore.getState().setSettingsOpen(true)}
           style={{
-            background: 'none', border: 'none', padding: 8, cursor: 'pointer',
+            background: 'none', border: 'none', padding: 12, cursor: 'pointer',
             color: 'var(--muted)', opacity: 0.5, lineHeight: 0,
           }}
         >
