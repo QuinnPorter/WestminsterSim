@@ -3156,7 +3156,11 @@ function settleNpcLeaderships(
   // usually ends them, while a genuine advance or denying the winner a majority earns real
   // credit. A leader DEMOTED from official-opposition status by a third party almost
   // always goes: that humiliation is rarely survived.
-  if (!changeOfGov && prevOpp !== state.player.partyId && leaderOf(prevOpp) !== 'player') {
+  // This includes the player's own party when an NPC leads it — the player then gets
+  // the usual own-party contest (stand, or back a candidate) — so a defeated opposition
+  // leader answers for the result whichever side of the House the player sits on. Only a
+  // player who IS the leader is exempt (their fate is decided by their own choices).
+  if (!changeOfGov && leaderOf(prevOpp) !== 'player') {
     const demoted = prevOpp !== state.government.oppositionParty;
     let p: number;
     if (demoted) {
@@ -3174,10 +3178,12 @@ function settleNpcLeaderships(
   }
 
   // minor parties churn their leaders on a gentler performance gradient too:
-  // a real advance buys credit, a heavy loss invites a challenge
+  // a real advance buys credit, a heavy loss invites a challenge. The player's own minor
+  // party is included unless the player leads it.
   const oppParty = state.government.oppositionParty;
   for (const [p, seats] of Object.entries(result.seats) as [PartyId, number][]) {
-    if (p === newGov || p === oppParty || p === state.player.partyId) continue;
+    if (p === newGov || p === oppParty) continue;
+    if (p === state.player.partyId && playerIsLeader(state)) continue;
     if (p === 'sf' || p === 'spk' || p === 'ind' || !PARTIES[p]) continue;
     const gained = seats - (prevSeats[p] ?? 0);
     let prob = 0.45;

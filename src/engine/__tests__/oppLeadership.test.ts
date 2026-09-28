@@ -140,6 +140,57 @@ describe('opposition leadership — post-election turnover is performance-depend
   });
 });
 
+describe("opposition leadership — the player's own party answers for a defeat too", () => {
+  // Same aftermath as above, but the player is a LABOUR backbencher: their own party
+  // loses again and stays in opposition. Previously the player's party was skipped
+  // outright, so its NPC leader never went; it must now churn like any other.
+  const OWN_CONTEST = /^leadership(Backing|Stand|Nomination)$/;
+  function ownPartyChurnRate(labSeatsBefore: number, labSeatsAfter: number, seeds = 120): number {
+    let churned = 0;
+    for (let s = 0; s < seeds; s++) {
+      const g = makeGame(5000 + s, 'lab');
+      g.seats = { con: 360, lab: labSeatsBefore, ld: 20, sf: 7, spk: 1 };
+      const result: ElectionResult = {
+        id: 'e', date: g.day, seats: { con: 360, lab: labSeatsAfter, ld: 20, sf: 7, spk: 1 },
+        voteShares: { con: 0.44, lab: 0.32, ld: 0.10 },
+        playerResult: null, outcome: 'majority', governingParty: 'con', playerHeldSeat: true,
+      };
+      g.elections[result.id] = result;
+      applyElectionAftermath(g, new Rng(s), result, true);
+      // the player's own party opens a contest they take part in (stand or back a candidate)
+      if (g.forcedQueue.some((e) => OWN_CONTEST.test(e.kind))
+        || (g.pendingContests ?? []).some((c) => c.party === 'lab')) churned++;
+    }
+    return churned / seeds;
+  }
+
+  it("a heavy defeat usually ends the player's own NPC leader", () => {
+    expect(ownPartyChurnRate(220, 180)).toBeGreaterThan(0.7);
+  });
+
+  it("a big advance still earns the player's own leader the benefit of the doubt", () => {
+    expect(ownPartyChurnRate(180, 230)).toBeLessThan(0.35);
+  });
+
+  it('never opens a contest against a player who IS the opposition leader', () => {
+    for (let s = 0; s < 40; s++) {
+      const g = makeGame(6000 + s, 'lab');
+      g.player.officeId = 'leader';
+      g.government.loId = 'player';
+      g.seats = { con: 360, lab: 220, ld: 20, sf: 7, spk: 1 };
+      const result: ElectionResult = {
+        id: 'e', date: g.day, seats: { con: 360, lab: 180, ld: 20, sf: 7, spk: 1 },
+        voteShares: { con: 0.44, lab: 0.32, ld: 0.10 },
+        playerResult: null, outcome: 'majority', governingParty: 'con', playerHeldSeat: true,
+      };
+      g.elections[result.id] = result;
+      applyElectionAftermath(g, new Rng(s), result, true);
+      expect(g.forcedQueue.some((e) => OWN_CONTEST.test(e.kind))).toBe(false);
+      expect((g.pendingContests ?? []).some((c) => c.party === 'lab')).toBe(false);
+    }
+  });
+});
+
 describe('opposition leadership — a rare, earned mid-term coup', () => {
   // Park the player as a Conservative backbencher (out of the opposition's affairs) and
   // drive the world for a stretch, counting how often the NPC Labour leader is couped.
