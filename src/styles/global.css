@@ -10,17 +10,6 @@ body {
   padding: 0;
 }
 
-/* On a phone the type is sized up an eighth (16px base → 18px) so the game
-   reads at a comfortable size instead of looking zoomed out. Every size in the
-   app is in rem or a --fs-* token, so this scales all text evenly. Tablet and
-   desktop, where the app sits in a centred column, keep the 16px base. A
-   percentage keeps the player's own browser text-size setting in effect. */
-@media (max-width: 767px) {
-  html {
-    font-size: 112.5%;
-  }
-}
-
 body {
   background: var(--bg);
   color: var(--ink);

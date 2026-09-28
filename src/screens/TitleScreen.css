@@ -13,8 +13,7 @@
 }
 
 .title-name {
-  /* never wider than the screen: 36px on most phones, a little less on a 320px one */
-  font-size: min(2rem, 10vw);
+  font-size: 2rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   margin-bottom: 28px;

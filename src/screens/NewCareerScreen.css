@@ -223,20 +223,18 @@
   hyphens: auto;
 }
 
-/* A long single word ("Businessperson") is wider than a card on most phones and
-   snapped mid-word. The name shrinks with the grid's width just enough to keep
-   whole words on a line; on a wide enough grid (430px phones and up) it stays at
-   full size. */
-.nc-bg strong {
-  font-size: min(1em, max(0.875em, 4.2cqi));
-}
-
-/* In a very narrow grid (a 320px phone, or the agenda editor's modal on a small
-   phone) the card's padding gives a little back to the text.
-   (qualified so it beats .card's 16px, which global.css applies after this file) */
+/* In a grid this narrow (a 320px phone, or the agenda editor's modal on a small
+   phone) a card is ~100–110px across, and a long single word — "Businessperson",
+   "Immigration" — is wider than that at full size and snapped mid-word. A notch
+   smaller keeps the whole word on its line. */
 @container (max-width: 299px) {
+  /* (qualified so it beats .card's 16px, which global.css applies after this file) */
   .nc-bgs .nc-bg {
     padding: 10px;
+  }
+
+  .nc-bg strong {
+    font-size: 0.8125rem;
   }
 }
 
