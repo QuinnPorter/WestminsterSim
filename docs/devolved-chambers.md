@@ -542,13 +542,53 @@ Commons-only in its model too, and Holyrood committees matter more than Canadian
 
 ---
 
-## 6. Decisions to take before starting
+## 6. Decisions taken
 
-1. **Party identity** (3.2): reuse the UK `PartyId`s with chamber-aware names (recommended), or
-   widen them as HillSim did.
-2. **Eras** (3.9): 2011/2016/2021/2026 only, or add a 2005 Commons to reach 2007.
-3. **Senedd 2026** (3.1): build `listPr` in the port, or ship Holyrood AMS first and let the Senedd
-   run on the pre-2026 AMS map until the list-PR stage lands.
-4. **Scope of Phase 2**: whether the list safety net (lose the constituency, return on the list)
-   is in the first cut. It is the most Holyrood thing in the design and ~30 lines once d'Hondt
-   exists, so the recommendation is yes.
+1. **Party identity** (3.2): the UK `PartyId`s are reused in every chamber. `partyNameIn` renders
+   "Scottish Labour" at Holyrood and "Welsh Conservatives" in the Senedd; `sgp` (Scottish Greens)
+   and `alba` are the only new ids, flagged `devolvedOnly` so they never stand for Westminster.
+2. **Eras** (3.9): 2011, 2016 and 2021 for both chambers. 2007 predates the 2010 Commons and 2026 is
+   not guessed; a career that starts in 2021 fights the 2026 election in the simulation.
+3. **Senedd 2026** (3.1): built. `seatSystemAt('wales', day)` returns AMS before 7 May 2026 and
+   closed-list PR in sixteen six-member constituencies from it; `runElection` rebuilds the map on
+   the day, carrying each new constituency's politics from the old region its voters came from.
+4. **The list safety net**: built. A constituency member whose seat falls is returned from the
+   regional list when the party's allocation reaches their rank; a Scottish Green player is a list
+   member from the start.
+
+## 7. What landed
+
+Everything in Phases 0 to 3 of the plan above, on branch `claude/devolved-chambers`:
+
+| Area | Where |
+|---|---|
+| Arena scaffold: freeze/thaw, lazy catch-up with the ghost player, leader retirement and a devolved formation-partner pick in dormant chambers, incoming seniority, the jump, devolved starts, `ukEraFor` | `src/engine/arena.ts` |
+| Chamber profiles, fixed-term flag, seat systems by date, the Welsh renames (AM to MS in May 2020; Minister to Cabinet Secretary in March 2024), first-Thursday-in-May scheduling | `src/data/chambers.ts` |
+| Holyrood 2011/2016/2021 and Senedd 2011/2016/2021 with per-region constituency matrices, list and constituency vote, per-party list ratios | `src/data/devolved.ts` |
+| 73 Holyrood constituencies by region, 40 old Senedd constituencies, the 16 constituencies of the 2026 Senedd | `src/data/devolvedSeats.ts` |
+| d'Hondt, the list stage, the safety net, list ranks, list-PR districts | `src/engine/listSeats.ts`, `src/engine/election.ts`, `src/generation/constituency.ts` |
+| HillSim's regional-swing fix: a regional party's national move is divided by its seat coverage before swinging; polling noise scales with party size | `src/engine/election.ts`, `src/engine/polling.ts` |
+| Devolved departments, the two-tier `cabsec`/`min` ladder, Scotland-only justice, shared rungs with chamber titles, `translateOffice` both ways (no Welsh tier 1) | `src/data/offices.ts` |
+| The chamber's voice over generated prose, with the "Scottish National Party" shield | `src/engine/chamberVoice.ts` |
+| Chamber tokens (`{house}`, `{member}`, `{head}`, `{government}`, `{nation}`, `{speaker}`, `{otherleader}`, `{otherparty}`, `{othergov}`) and Westminster-only default gating | `src/engine/cardEngine.ts` |
+| "Westminster is asking" and "a devolved party wants you to lead", fixed-term guards, per-chamber fallback pool | `src/engine/scheduler.ts`, `src/engine/career.ts` |
+| Save migration v10, `jumpChamber`, floor-crossing kept within the chamber | `src/store/gameStore.ts` |
+| Chamber step at creation; jump panel on the Profile; arena filters on the Cabinet, Parliament, History, Elections, poll and seat graphs; list-seat lines on election night; First Minister on the end screen | `src/screens/*`, `src/components/*` |
+| Shared devolved deck plus Scotland and Wales decks | `src/content/cards/devolved.ts`, `src/content/cards/nations/*.ts` |
+| Tests | `src/engine/__tests__/arena.test.ts`, `src/engine/__tests__/listSeats.test.ts` |
+
+### Still open
+
+- The seat counts and vote shares in `data/devolved.ts` were written from memory and are guarded
+  for arithmetic, not for truth. They should be checked against the official returns.
+- 2026 results for both chambers, once entered, would add a fourth era to each.
+- The independence meter and referendum sequence (3.8), the extraordinary election after a failed
+  nomination (3.3), leading from outside the chamber (3.12), Holyrood and Senedd committees, and
+  the two-chair rewrite of `devolvedScenery.ts` (the `{otherleader}` tokens it needs now exist).
+- Relationships do not survive a round trip: only the mentor and the journalist follow a move.
+- A devolved chamber's ballot is fixed at the election the career walked into, so a 2016 start
+  keeps UKIP on the Senedd ballot for good while a 2021 start has Reform. Party systems being
+  rebuilt is a real-world event the simulation does not model, as HillSim's doc also notes.
+- Lost confidence votes in a fixed-term chamber end the First Minister, not the parliament; the
+  successor is nominated from the same party. The opposition forming a government instead, and
+  the extraordinary election after 28 days without a nomination, are not modelled.

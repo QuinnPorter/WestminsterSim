@@ -32,7 +32,7 @@ function makeGame(seed = 7, causes: CreationInput['causes'] = ['publicServices']
 describe('expansion — data model', () => {
   it('seeds pmHistory, causes and favours on a new game', () => {
     const g = makeGame();
-    expect(g.version).toBe(9);
+    expect(g.version).toBe(10);
     expect(g.pmHistory).toHaveLength(1);
     expect(g.pmHistory[0].endDay).toBeNull();
     expect(g.pmHistory[0].characterId).toBe(g.government.pmId);

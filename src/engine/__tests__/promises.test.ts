@@ -32,7 +32,7 @@ describe('promise ledger migration', () => {
     delete (game.player as { promises?: unknown }).promises;
     const migrated = migrateGameState(game);
     expect(migrated.player.promises).toEqual([]);
-    expect(migrated.version).toBe(9);
+    expect(migrated.version).toBe(10);
   });
 });
 

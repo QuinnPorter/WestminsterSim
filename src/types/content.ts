@@ -1,6 +1,6 @@
 import {
-  BackgroundId, CauseId, DepartmentId, Era, OfficeId, OfficeTier, PartyId, PlayerStats,
-  RegionId, RelationshipKind,
+  ArenaId, BackgroundId, CauseId, DepartmentId, Era, OfficeId, OfficeTier, PartyId,
+  PlayerStats, RegionId, RelationshipKind,
 } from './game';
 
 export type CardTag =
@@ -8,6 +8,10 @@ export type CardTag =
   | 'policy' | 'scandal' | 'crisis' | 'campaign' | 'funny' | 'serious';
 
 export interface Requirement {
+  /** the chambers this card can fire in. A card that does not say is for the
+   *  COMMONS ONLY — the existing corpus was written for Westminster and every
+   *  line of it says so, so silence must not mean "anywhere". */
+  arena?: ArenaId[];
   minTier?: OfficeTier;
   maxTier?: OfficeTier;
   inGovernment?: boolean;

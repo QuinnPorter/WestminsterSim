@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { GameState, OfficeId } from '../types/game';
-import { CABINET_OFFICES, OFFICES } from '../data/offices';
-import { PARTIES, partyTextColour } from '../data/parties';
+import { cabinetOfficesFor, OFFICES } from '../data/offices';
+import { PARTIES, partyNameIn, partyTextColour } from '../data/parties';
+import { chamberOf } from '../data/chambers';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
-import { playerIsLeader, playerIsPM, cabinetTitleFor, benchPoolFor, isReshuffleBlocking } from '../engine/career';
+import {
+  playerIsLeader, playerIsPM, cabinetTitleFor, deputyTitleFor, benchPoolFor, isReshuffleBlocking,
+} from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import { tap } from '../native/haptics';
 import './CabinetScreen.css';
@@ -32,6 +35,8 @@ export function CabinetScreen({ game }: { game: GameState }) {
   // a reshuffle only waits on genuinely vital business (a contest, an election, a
   // confidence vote, a multi-step set-piece) — not on routine cards
   const reshuffleBlocked = isReshuffleBlocking(game.currentCard);
+  const arena = game.arena ?? 'uk';
+  const chamber = chamberOf(arena);
 
   return (
     <div className="screen">
@@ -47,7 +52,9 @@ export function CabinetScreen({ game }: { game: GameState }) {
       <FeaturedMember
         game={game}
         characterId={leaderId}
-        title={isGov ? 'Prime Minister' : 'Leader of the Opposition'}
+        title={isGov
+          ? (arena === 'uk' ? 'Prime Minister' : `First Minister of ${chamber.place}`)
+          : 'Leader of the Opposition'}
         onTitleClick={isGov ? () => setPmHistoryOpen(true) : () => setLoHistoryOpen(true)}
         titleColour={isGov
           ? partyTextColour(game.government.governingParty)
@@ -74,12 +81,12 @@ export function CabinetScreen({ game }: { game: GameState }) {
           <MemberCard
             game={game}
             characterId="player"
-            title={game.government.deputyTitle === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister'}
+            title={deputyTitleFor(arena, game.government.deputyTitle)}
             coalitionOf={game.player.partyId !== game.government.governingParty
               ? PARTIES[game.player.partyId].shortName : undefined}
           />
         )}
-        {CABINET_OFFICES.map((officeId) => {
+        {cabinetOfficesFor(arena).map((officeId) => {
           const post = posts.find((p) => p.officeId === officeId);
           if (!post) return null;
           // the deputy PM / First Secretary doubles up an existing cabinet seat
@@ -92,13 +99,13 @@ export function CabinetScreen({ game }: { game: GameState }) {
           // deputy PM is a departmental Secretary of State — never the Chief Whip,
           // the Chief Secretary, or a coalition partner's minister
           const deputyEligible = (!!OFFICES[officeId]?.department || officeId === 'chancellor_duchy')
-            && officeId !== 'chief_sec' && !coalitionOf;
+            && officeId !== 'chief_sec' && officeId !== 'chiefWhip' && !coalitionOf;
           return (
             <MemberCard
               key={officeId}
               game={game}
               characterId={post.characterId}
-              title={cabinetTitleFor(officeId, isGov, isDeputy, game.government.deputyTitle)}
+              title={cabinetTitleFor(officeId, isGov, isDeputy, game.government.deputyTitle, arena, game.day)}
               coalitionOf={coalitionOf}
               onSack={canSack && isNpc
                 ? () => {
@@ -111,7 +118,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
                     const name = game.characters[post.characterId]?.name ?? 'this minister';
                     requestConfirm({
                       title: `Make ${name} your deputy?`,
-                      message: 'They will serve as Deputy Prime Minister / First Secretary alongside their brief.',
+                      message: `They will serve as ${deputyTitleFor(arena)} alongside their brief.`,
                       confirmLabel: 'Make deputy',
                       onConfirm: () => setDeputyPm(post.characterId),
                     });
@@ -124,7 +131,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
       <p style={{
         marginTop: 12, fontSize: 'var(--fs-xs)', color: 'var(--muted)', textAlign: 'center',
       }}>
-        {PARTIES[party].name}
+        {partyNameIn(party, arena)}
       </p>
     </div>
   );

@@ -18,8 +18,18 @@ reshuffles, leadership vacancies, max stats).
 
 ## How it works
 
+- **Chambers** — a career begins in the House of Commons, the Scottish Parliament
+  or the Senedd, and can move between Westminster and its own nation's parliament
+  in either direction by resigning one seat to stand for the other. Holyrood and
+  the pre-2026 Senedd are elected by the Additional Member System (constituencies
+  plus regional lists allocated by d'Hondt, so nobody wins a majority twice); the
+  Senedd becomes a 96-member closed-list chamber at the 2026 election. Devolved
+  terms are fixed at five years, the ladder runs Minister to Cabinet Secretary to
+  First Minister, and the UK parties are the same parties in every chamber under
+  their Scottish and Welsh names. See `docs/devolved-chambers.md`.
 - **Start dates** — first day of the 2019 parliament (Con majority 80) or the
-  2024 parliament (Lab landslide 411). Seat compositions are exact; history
+  2024 parliament (Lab landslide 411) at Westminster; the 2011, 2016 or 2021
+  elections at Holyrood or in the Senedd. Seat compositions are exact; history
   diverges procedurally from day one.
 - **The loop** — each ordinary decision advances the clock one or two months. A
   scheduler interleaves forced sequences (reshuffles, dismissals, leadership

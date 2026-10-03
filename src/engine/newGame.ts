@@ -1,15 +1,19 @@
 import {
-  AvatarConfig, BackgroundId, CabinetPost, CauseId, Character, Era, GameState, Gender,
-  PartyId, Player, RegionId, Relationship,
+  ArenaId, AvatarConfig, BackgroundId, CabinetPost, CauseId, Character, DevolvedArenaId, Era,
+  GameState, Gender, PartyId, Player, RegionId, Relationship,
 } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
+import { PARTIES } from '../data/parties';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { CABINET_OFFICES } from '../data/offices';
 import { generateSeatMap, countSeats } from '../generation/constituency';
 import { generateCharacter } from '../generation/characters';
 import { Rng, clamp } from './rng';
-import { isoToDay } from './clock';
+import { isoToDay, UK_TERM_DAYS } from './clock';
 import { seatCoalitionCabinet } from './career';
+import { catchUpArena, startInNation, ukEraFor } from './arena';
+import { polledPartiesForEra } from '../data/parties';
+import { workingMajority } from './seats';
 
 export interface CreationInput {
   name: string;
@@ -23,9 +27,14 @@ export interface CreationInput {
   /** broad causes chosen at the agenda step (0–3) */
   causes?: CauseId[];
   seed?: number;
+  /** the chamber the career begins in; omitted = the Commons */
+  arena?: ArenaId;
+  /** for a devolved start, the ISO polling day of the legislature chosen. `era`
+   *  is then derived: the Westminster parliament sitting on that date. */
+  devolvedElection?: string;
 }
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -59,18 +68,34 @@ function buildPlayer(input: CreationInput, seatId: string, startDay: number): Pl
 }
 
 export function createNewGame(input: CreationInput): GameState {
+  const originalParty = input.partyId;
   const seed = input.seed ?? ((Math.random() * 0xffffffff) >>> 0);
   const rng = new Rng(seed);
-  const data = PARLIAMENTS[input.era];
+  // A devolved career still needs a Commons behind it — it is the chamber they
+  // may one day move to, and the government they will spend their career arguing
+  // with. Build the Westminster parliament that was actually sitting on the day
+  // the devolved legislature was elected, then catch it up to that day.
+  const devolvedStart = input.arena && input.arena !== 'uk'
+    ? { arena: input.arena as DevolvedArenaId, day: isoToDay(input.devolvedElection!) }
+    : null;
+  const era = devolvedStart ? ukEraFor(devolvedStart.day) : input.era;
+  input = { ...input, era };
+  const data = PARLIAMENTS[era];
   const startDay = isoToDay(data.firstSitting);
 
+  // for a devolved start the player is not in this chamber at all, so seat the
+  // notional Westminster placeholder with a party that actually contests it
+  const ukParty: PartyId = devolvedStart
+    ? (PARTIES[input.partyId]?.devolvedOnly ? 'lab' : (input.partyId === 'snp' || input.partyId === 'pc' ? input.partyId : input.partyId))
+    : input.partyId;
+  const ukRegion: RegionId = devolvedStart ? devolvedStart.arena : input.region;
   const { seatMap, playerSeatId, playerRegion } = generateSeatMap(
-    rng, data.matrix, input.partyId, input.region, input.era
+    rng, data.matrix, ukParty, ukRegion, era
   );
   // a regional party (SNP/PC/…) may have been redirected to its real home nation;
   // adopt that region for the player and their cast so the home patch, the regional
   // cabinet office, and the constituency name all stay coherent with the party.
-  input = { ...input, region: playerRegion };
+  input = { ...input, region: playerRegion, partyId: ukParty };
   const seats = countSeats(seatMap);
 
   // ---- generate the political cast ----
@@ -179,17 +204,20 @@ export function createNewGame(input: CreationInput): GameState {
   const player = buildPlayer(input, playerSeatId, startDay);
 
   // working majority excluding SF + Speaker
-  const sfSeats = seats.sf ?? 0;
-  const voting = 650 - sfSeats - 1;
-  const govSeats = seats[govParty] ?? 0;
-  const majority = govSeats - (voting - govSeats);
+  const majority = workingMajority(seats, govParty);
 
   const state: GameState = {
     version: SAVE_VERSION,
     rngState: rng.state,
     day: startDay,
-    startEra: input.era,
+    startEra: era,
     startDay,
+    // a career begins in the Commons; a devolved chamber is only built when the
+    // player actually sits in one
+    arena: 'uk',
+    dormant: {},
+    anchorShares: { ...data.baselineShares },
+    polledParties: polledPartiesForEra(era),
     player,
     characters,
     relationships,
@@ -235,7 +263,7 @@ export function createNewGame(input: CreationInput): GameState {
     calendarDone: {},
     lastCardId: null,
     parliamentStart: startDay,
-    nextElectionBy: startDay + Math.round(4.75 * 365),
+    nextElectionBy: startDay + UK_TERM_DAYS,
     gameOver: null,
   };
 
@@ -249,6 +277,21 @@ export function createNewGame(input: CreationInput): GameState {
     state.government.deputyPmId = coalitionLeader.id;
     state.government.deputyTitle = 'dpm';
     seatCoalitionCabinet(state, rng);
+  }
+
+  if (devolvedStart) {
+    // run the Commons forward to the day the devolved legislature was elected,
+    // then freeze it behind the player and stand the devolved chamber up
+    state.day = devolvedStart.day;
+    catchUpArena(state, rng, devolvedStart.day);
+    state.startDay = devolvedStart.day;
+    state.player.enteredParliament = devolvedStart.day;
+    // the Westminster seat was a placeholder for a member who never sat there;
+    // clear the marker so a later move to the Commons does not hand them that seat
+    for (const seat of state.seatMap) delete seat.isPlayerSeat;
+    state.player.seatId = '';
+    startInNation(state, rng, devolvedStart.arena, originalParty);
+    state.rngState = rng.state;
   }
 
   return state;

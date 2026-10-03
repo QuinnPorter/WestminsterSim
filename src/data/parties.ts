@@ -1,4 +1,6 @@
-import { Era, Party, PartyId, RegionId } from '../types/game';
+import { ArenaId, DevolvedArenaId, Era, Party, PartyId, RegionId } from '../types/game';
+import { CHAMBERS } from './chambers';
+import { legislatureAt } from './devolved';
 
 const GB: RegionId[] = [
   'scotland', 'wales', 'london', 'southEast', 'southWest', 'east',
@@ -64,6 +66,17 @@ export const PARTIES: Record<PartyId, Party> = {
     id: 'uup', name: 'Ulster Unionist Party', shortName: 'UUP', colour: '#48A5EE',
     ideology: 45, contestsRegions: NI,
   },
+  // devolved-only parties. Neither stands for Westminster: the Scottish Greens
+  // are a separate party from the Green Party of England and Wales, and Alba's
+  // two MPs were defectors, never elected as such.
+  sgp: {
+    id: 'sgp', name: 'Scottish Greens', shortName: 'SGP', colour: '#00B140',
+    ideology: -72, contestsRegions: ['scotland'], devolvedOnly: 'scotland',
+  },
+  alba: {
+    id: 'alba', name: 'Alba Party', shortName: 'Alba', colour: '#005EB8',
+    ideology: -35, contestsRegions: ['scotland'], devolvedOnly: 'scotland',
+  },
   spk: {
     id: 'spk', name: 'Speaker', shortName: 'Spk', colour: '#909090',
     ideology: 0, contestsRegions: [],
@@ -116,4 +129,74 @@ export function partyColour(id: PartyId): string {
 
 export function partyTextColour(id: PartyId): string {
   return PARTIES[id].textColour ?? PARTIES[id].colour;
+}
+
+// ---------------------------------------------------------------------------
+// chambers
+// ---------------------------------------------------------------------------
+
+/** The UK parties are the same organisations in every chamber, so a Labour MP
+ *  who moves to Holyrood is still Labour. What changes is what the party is
+ *  called there: Scottish Labour, the Welsh Conservatives. The SNP and Plaid are
+ *  simply themselves everywhere. */
+const CHAMBER_NAMES: Record<DevolvedArenaId, Partial<Record<PartyId, { name: string; shortName?: string }>>> = {
+  scotland: {
+    lab: { name: 'Scottish Labour' },
+    con: { name: 'Scottish Conservatives' },
+    ld: { name: 'Scottish Liberal Democrats' },
+    green: { name: 'Scottish Greens', shortName: 'SGP' },
+  },
+  wales: {
+    lab: { name: 'Welsh Labour' },
+    con: { name: 'Welsh Conservatives' },
+    ld: { name: 'Welsh Liberal Democrats' },
+    green: { name: 'Wales Green Party' },
+  },
+};
+
+/** a party's name as it is known in a chamber */
+export function partyNameIn(id: PartyId, arena: ArenaId | undefined): string {
+  if (!arena || arena === 'uk') return PARTIES[id].name;
+  return CHAMBER_NAMES[arena][id]?.name ?? PARTIES[id].name;
+}
+
+/** The parties on a chamber's ballot. The Commons is era-dependent (the populist
+ *  slot); a devolved chamber's is whichever parties contested its most recent
+ *  election on or before `day`. */
+export function polledPartiesForArena(arena: ArenaId, era: Era, day?: number): PartyId[] {
+  if (arena === 'uk') return polledPartiesForEra(era);
+  if (day !== undefined) return legislatureAt(arena, day).parties;
+  return CHAMBERS[arena].parties;
+}
+
+/** The party a member of `from` would sit with in `to`: the same party, because
+ *  these are the same organisations — except that a Green Party of England and
+ *  Wales member joins the Scottish Greens at Holyrood (a separate party), and
+ *  Alba has no Westminster home at all. */
+export function counterpartParty(from: PartyId, to: ArenaId): PartyId | null {
+  if (from === 'spk' || from === 'ind') return null;
+  if (to === 'scotland') {
+    if (from === 'green') return 'sgp';
+    if (from === 'pc') return null;
+    return from;
+  }
+  if (to === 'wales') {
+    if (from === 'sgp') return 'green';
+    if (from === 'snp' || from === 'alba') return null;
+    return from;
+  }
+  // to Westminster
+  if (from === 'sgp') return 'green';
+  if (from === 'alba') return null;
+  return from;
+}
+
+/** The parties that alternate in government in a chamber: Con/Lab at
+ *  Westminster; at Holyrood the SNP, Labour and the Conservatives; in the Senedd
+ *  Labour, the Conservatives and Plaid. Everyone else converts a surge to seats a
+ *  little less efficiently and reverts harder toward its baseline. */
+export function isMajorIn(p: PartyId, arena: ArenaId | undefined): boolean {
+  if (!arena || arena === 'uk') return !!PARTIES[p]?.major;
+  if (arena === 'scotland') return p === 'snp' || p === 'lab' || p === 'con';
+  return p === 'lab' || p === 'con' || p === 'pc';
 }

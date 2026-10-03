@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AvatarConfig, BackgroundId, CauseId, Era, Gender, PartyId, RegionId,
+  ArenaId, AvatarConfig, BackgroundId, CauseId, DevolvedArenaId, Era, Gender, PartyId, RegionId,
 } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { CauseGrid, toggleCause as toggleCauseList, MAX_CAUSES } from '../components/CauseGrid';
-import { PARTIES, playablePartiesForEra, populistPartyForEra } from '../data/parties';
+import { PARTIES, partyNameIn, playablePartiesForEra, populistPartyForEra } from '../data/parties';
 import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
 import { PARLIAMENTS } from '../data/parliaments';
+import { CHAMBERS, DEVOLVED_ARENAS, chamberAt } from '../data/chambers';
+import { DEVOLVED_LEGISLATURES } from '../data/devolved';
+import { formatFull, isoToDay } from '../engine/clock';
 import { Avatar } from '../avatar/Avatar';
 import { SwipeCarousel } from '../components/SwipeCarousel';
 import { AVATAR_COUNTS, AvatarLayerKey } from '../avatar/palette';
@@ -16,8 +19,8 @@ import { Rng } from '../engine/rng';
 import { randomAvatar, generateName } from '../generation/characters';
 import './NewCareerScreen.css';
 
-const FULL_STEPS = ['Era', 'You', 'Party', 'Background', 'Agenda', 'Look'] as const;
-// continuing as a protégé locks the era and party (same world), so those steps drop
+const FULL_STEPS = ['Chamber', 'Era', 'You', 'Party', 'Background', 'Agenda', 'Look'] as const;
+// continuing as a protégé locks the chamber, era and party (same world), so those steps drop
 const PROTEGE_STEPS = ['You', 'Background', 'Agenda', 'Look'] as const;
 type StepName = (typeof FULL_STEPS)[number];
 
@@ -42,6 +45,12 @@ const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
     title: 'July 2024',
     blurb: 'A Labour landslide of 411 seats. A weary country wants delivery, and you have just been handed a green bench to sit on.',
   },
+};
+
+/** what each devolved chamber is FOR — why a career would begin there */
+const CHAMBER_BLURBS: Record<DevolvedArenaId, string> = {
+  scotland: 'Holyrood. A hundred and twenty-nine seats elected by the Additional Member System, so nobody wins a majority twice; a government that runs the NHS, the schools and the courts; and the constitutional question under every other question.',
+  wales: 'Cardiff Bay. Sixty members until 2026 and ninety-six after it, a Labour government since devolution began, and a nation arguing about whether it gets its fair share — and in which language.',
 };
 
 const LAYER_PILLS: { key: AvatarLayerKey; label: string }[] = [
@@ -76,7 +85,12 @@ export function NewCareerScreen() {
     rootRef.current?.scrollTo(0, 0);
   }, [step]);
 
+  const [arena, setArena] = useState<ArenaId>('uk');
   const [era, setEra] = useState<Era>(protege?.era ?? '2024');
+  /** for a devolved start, the ISO polling day of the legislature chosen */
+  const [devolvedElection, setDevolvedElection] = useState<string>(
+    DEVOLVED_LEGISLATURES.scotland[DEVOLVED_LEGISLATURES.scotland.length - 1].election
+  );
   const [name, setName] = useState('');
   const [gender, setGender] = useState<Gender>('f');
   const [age, setAge] = useState(38);
@@ -96,6 +110,33 @@ export function NewCareerScreen() {
     [partyId]
   );
 
+  /** the legislatures on offer in the chosen devolved chamber, newest first */
+  const devolvedEras = useMemo(
+    () => (arena === 'uk' ? [] : [...DEVOLVED_LEGISLATURES[arena]].reverse()),
+    [arena]
+  );
+  const devolvedSnap = useMemo(
+    () => devolvedEras.find((e) => e.election === devolvedElection) ?? devolvedEras[0],
+    [devolvedEras, devolvedElection]
+  );
+  /** the parties actually on the ballot in the chosen chamber and era */
+  const chamberParties: PartyId[] = arena === 'uk'
+    ? playablePartiesForEra(era)
+    : (devolvedSnap?.parties ?? []);
+
+  /** move to a chamber, carrying the selection somewhere valid */
+  const chooseArena = (a: ArenaId) => {
+    setArena(a);
+    if (a === 'uk') {
+      if (!playablePartiesForEra(era).includes(partyId)) setPartyId('lab');
+      return;
+    }
+    const latest = DEVOLVED_LEGISLATURES[a][DEVOLVED_LEGISLATURES[a].length - 1];
+    setDevolvedElection(latest.election);
+    if (!latest.parties.includes(partyId)) setPartyId(latest.governing);
+    setRegion(CHAMBERS[a].regions[0]);
+  };
+
   const canContinue =
     stepName !== 'You' || name.trim().length >= 2;
 
@@ -110,7 +151,10 @@ export function NewCareerScreen() {
   const toggleCause = (id: CauseId) => setCauses((cs) => toggleCauseList(cs, id));
 
   const finish = () => {
-    const input = { name: name.trim(), gender, age, region, background, partyId, avatar, era, causes };
+    const input = {
+      name: name.trim(), gender, age, region, background, partyId, avatar, era, causes,
+      ...(arena === 'uk' ? {} : { arena, devolvedElection }),
+    };
     if (protege) {
       continueAsProtege(input);
       setProtege(null);
@@ -120,6 +164,9 @@ export function NewCareerScreen() {
       setStarted(true);
     }
   };
+
+  const devolvedChamber = arena === 'uk' ? null
+    : chamberAt(arena, devolvedSnap ? isoToDay(devolvedSnap.election) : Number.MAX_SAFE_INTEGER);
 
   return (
     <div className="screen nc" ref={rootRef}>
@@ -131,7 +178,57 @@ export function NewCareerScreen() {
         ))}
       </div>
 
-      {stepName === 'Era' && (
+      {stepName === 'Chamber' && (
+        <div className="fade-in">
+          <h2 className="nc-h">Where does your story begin?</h2>
+          <button
+            className={`card nc-era${arena === 'uk' ? ' selected' : ''}`}
+            onClick={() => chooseArena('uk')}
+          >
+            <strong>The House of Commons</strong>
+            <span>
+              Westminster. Six hundred and fifty seats, the longest ladder in the
+              country and the hardest to climb — and a shot at Number 10 at the top of it.
+            </span>
+          </button>
+          <p className="nc-label" style={{ marginTop: 14 }}>The devolved parliaments</p>
+          {DEVOLVED_ARENAS.map((a) => (
+            <button
+              key={a}
+              className={`card nc-era${arena === a ? ' selected' : ''}`}
+              onClick={() => chooseArena(a)}
+            >
+              <strong>{CHAMBERS[a].house.replace(/^the /, '').replace(/^\w/, (c) => c.toUpperCase())}</strong>
+              <span>{CHAMBER_BLURBS[a]}</span>
+            </button>
+          ))}
+          <p className="nc-hint" style={{ marginTop: 10 }}>
+            A career can move between Westminster and its own nation’s parliament, in
+            either direction — but you resign one seat to stand for the other.
+          </p>
+        </div>
+      )}
+
+      {stepName === 'Era' && arena !== 'uk' && (
+        <div className="fade-in">
+          <h2 className="nc-h">Which {CHAMBERS[arena].place} do you walk into?</h2>
+          {devolvedEras.map((e) => (
+            <button
+              key={e.election}
+              className={`card nc-era${devolvedElection === e.election ? ' selected' : ''}`}
+              onClick={() => {
+                setDevolvedElection(e.election);
+                if (!e.parties.includes(partyId)) setPartyId(e.governing);
+              }}
+            >
+              <strong>{formatFull(isoToDay(e.election))}</strong>
+              <span>{e.blurb}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {stepName === 'Era' && arena === 'uk' && (
         <div className="fade-in">
           <h2 className="nc-h">When does your story begin?</h2>
           {(['2010', '2015', '2017', '2019', '2024'] as Era[]).map((e) => (
@@ -206,38 +303,52 @@ export function NewCareerScreen() {
         <div className="fade-in">
           <h2 className="nc-h">Pick your colours</h2>
           <div className="nc-parties">
-            {playablePartiesForEra(era).map((p) => (
+            {chamberParties.map((p) => (
               <button
                 key={p}
                 className={`nc-party${partyId === p ? ' selected' : ''}`}
                 style={{ ['--pc' as string]: PARTIES[p].colour }}
                 onClick={() => {
                   setPartyId(p);
-                  if (!PARTIES[p].contestsRegions.includes(region)) {
+                  if (arena === 'uk' && !PARTIES[p].contestsRegions.includes(region)) {
                     setRegion(PARTIES[p].contestsRegions[0] as RegionId);
                   }
                 }}
               >
                 <span className="nc-party-dot" />
-                {PARTIES[p].name}
+                {partyNameIn(p, arena)}
               </button>
             ))}
           </div>
-          {(partyId !== PARLIAMENTS[era].governingParty && partyId !== PARLIAMENTS[era].oppositionParty) && (
+          {(arena === 'uk'
+            ? partyId !== PARLIAMENTS[era].governingParty && partyId !== PARLIAMENTS[era].oppositionParty
+            : devolvedSnap && partyId !== devolvedSnap.governing && partyId !== devolvedSnap.opposition) && (
             <p className="nc-hint">
               A smaller party: a harder road to ministerial office, but your voice is your own.
             </p>
           )}
-          <label className="nc-label">Where do you stand?</label>
-          <select
-            className="nc-input"
-            value={region}
-            onChange={(e) => setRegion(e.target.value as RegionId)}
-          >
-            {validRegions.map((r) => (
-              <option key={r} value={r}>{REGIONS[r].name}</option>
-            ))}
-          </select>
+          {arena === 'uk' ? (
+            <>
+              <label className="nc-label">Where do you stand?</label>
+              <select
+                className="nc-input"
+                value={region}
+                onChange={(e) => setRegion(e.target.value as RegionId)}
+              >
+                {validRegions.map((r) => (
+                  <option key={r} value={r}>{REGIONS[r].name}</option>
+                ))}
+              </select>
+            </>
+          ) : devolvedChamber && (
+            <p className="nc-hint">
+              You will sit as {devolvedChamber.member === 'MSP' || devolvedChamber.member === 'MS' || devolvedChamber.member === 'AM' ? 'an' : 'a'}{' '}
+              {devolvedChamber.member} in {devolvedChamber.house}
+              {partyId === 'sgp' || partyId === 'alba'
+                ? ' — on a regional list, where your party actually wins its seats.'
+                : ', for a constituency your party holds — or the one it can most plausibly take.'}
+            </p>
+          )}
         </div>
       )}
 

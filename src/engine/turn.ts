@@ -6,6 +6,7 @@ import {
 import { resolveForcedChoice, dissolveCoalition, openPlayerChallenge } from './career';
 import { applyEffects } from './effects';
 import { resolveTokens } from './cardEngine';
+import { outcomeAsChamber, speakAsChamber } from './chamberVoice';
 import { updatePolling, samplePolling } from './polling';
 import { Rng } from './rng';
 
@@ -54,9 +55,19 @@ export function resolveChoiceCore(game: GameState, rng: Rng, choiceIndex: number
       : resolveCalendarChoice(game, rng, card, choiceIndex);
     card.outcome = { text: resolveTokens(game, outcome.text), deltas: outcome.deltas };
   } else {
-    const outcome = resolveForcedChoice(game, rng, card, choiceIndex);
+    const outcome = outcomeAsChamber(game, resolveForcedChoice(game, rng, card, choiceIndex));
+    // A resolution that changes chambers (accepting a Westminster nomination,
+    // winning a devolved leadership) resets the transient play state, and that
+    // includes currentCard — so the outcome would be written onto a card the
+    // screen no longer held. The player still has to be shown the outcome of
+    // the choice they just made; continueCore draws the next card in the NEW
+    // chamber straight afterwards.
+    if (!game.currentCard) game.currentCard = card;
     card.outcome = { text: resolveTokens(game, outcome.text), deltas: outcome.deltas };
   }
+  // a resolution may have replaced the card (a leadership vacancy opening, a
+  // reshuffle sequence starting); whatever is showing now speaks for the chamber
+  if (game.currentCard && game.currentCard.kind !== 'normal') speakAsChamber(game, game.currentCard);
 }
 
 /** dismiss the outcome: advance the clock, update the world, draw what's next */
@@ -64,7 +75,12 @@ export function continueCore(game: GameState, rng: Rng): void {
   const card = game.currentCard;
   if (!card || !card.outcome) return;
 
-  const advance = (card.payload?.advance as number) ?? rng.int(21, 42);
+  let advance = (card.payload?.advance as number) ?? rng.int(21, 42);
+  // a fixed polling day is a fixed polling day: while the campaign that leads to
+  // it is running, the clock does not run past it, so the count falls on the day
+  const night = game.forcedQueue.find((e) => e.kind === 'electionNight');
+  const pollingDay = night?.payload?.pollingDay as number | undefined;
+  if (pollingDay !== undefined) advance = Math.max(1, Math.min(advance, pollingDay - game.day));
   const before = game.day;
   game.day += advance;
   updatePolling(game, rng, game.day);

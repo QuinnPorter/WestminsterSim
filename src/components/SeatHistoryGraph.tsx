@@ -1,7 +1,9 @@
 import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { PARLIAMENTS, nationalTotals } from '../data/parliaments';
-import { formatMonthYear } from '../engine/clock';
+import { formatMonthYear, isoToDay } from '../engine/clock';
+import { legislatureAt } from '../data/devolved';
+import { arenaElections } from '../engine/arena';
 
 interface SeatPoint {
   day: number;
@@ -17,12 +19,24 @@ interface SeatPoint {
 export function SeatHistoryGraph({ game, width = 320, height = 172 }: {
   game: GameState; width?: number; height?: number;
 }) {
-  const start = PARLIAMENTS[game.startEra];
+  // The graph shows the chamber you are LOOKING AT, not every chamber you have
+  // ever sat in: state.elections spans them all, and an unfiltered series would
+  // draw a 129-seat Holyrood result and a 650-seat Commons one on the same axis.
+  const arena = game.arena ?? 'uk';
+  const own = arenaElections(game);
+  const anchor = arena === 'uk'
+    ? {
+        day: game.startDay,
+        seats: nationalTotals(PARLIAMENTS[game.startEra].matrix),
+        gov: PARLIAMENTS[game.startEra].governingParty,
+      }
+    : (() => {
+        const snap = legislatureAt(arena, own[0]?.date ?? game.day);
+        return { day: isoToDay(snap.election), seats: snap.seats, gov: snap.governing };
+      })();
   const points: SeatPoint[] = [
-    { day: game.startDay, seats: nationalTotals(start.matrix), gov: start.governingParty, isElection: false },
-    ...Object.values(game.elections)
-      .sort((a, b) => a.date - b.date)
-      .map((e) => ({ day: e.date, seats: e.seats, gov: e.governingParty, isElection: true })),
+    { ...anchor, isElection: false },
+    ...own.map((e) => ({ day: e.date, seats: e.seats, gov: e.governingParty, isElection: true })),
   ];
 
   // plot every party that ever held a seat (start matrix or any election), not just the
@@ -32,11 +46,14 @@ export function SeatHistoryGraph({ game, width = 320, height = 172 }: {
   );
 
   const padL = 24, padR = 8, padT = 10, padB = 26;
-  const x0 = game.startDay;
+  const x0 = points[0].day;
   const x1 = Math.max(game.day, x0 + 1);
   const span = x1 - x0;
   const maxEver = Math.max(0, ...points.flatMap((pt) => parties.map((p) => pt.seats[p] ?? 0)));
-  const maxSeats = Math.max(350, Math.ceil(maxEver / 50) * 50);
+  // scale to the House being drawn: a fixed 350-seat ceiling flattens Holyrood
+  const step = maxEver > 120 ? 50 : maxEver > 40 ? 10 : 5;
+  const floor = arena === 'uk' ? 350 : step * 2;
+  const maxSeats = Math.max(floor, Math.ceil(maxEver / step) * step);
   const px = (day: number) => padL + ((day - x0) / span) * (width - padL - padR);
   const py = (seats: number) => padT + (1 - seats / maxSeats) * (height - padT - padB);
 
@@ -74,7 +91,7 @@ export function SeatHistoryGraph({ game, width = 320, height = 172 }: {
     return d;
   };
 
-  const gridYs = [100, 200, 300].filter((s) => s < maxSeats);
+  const gridYs = (arena === 'uk' ? [100, 200, 300] : [20, 40, 60, 80, 100]).filter((s) => s < maxSeats);
 
   return (
     <div>

@@ -3,6 +3,7 @@ import { GameState, HistoryEntry, PartyId } from '../types/game';
 import { PARTIES } from '../data/parties';
 import { yearOf, formatMonthYear } from '../engine/clock';
 import { playerOfficeLabel } from '../engine/career';
+import { chamberAt, chamberOf } from '../data/chambers';
 import { ResultBar } from '../components/ResultBar';
 
 export function HistoryScreen({ game }: { game: GameState }) {
@@ -49,14 +50,14 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
           onClick={() => setOpen(!open)}
           style={{ width: '100%', textAlign: 'left', fontWeight: 700, fontSize: 'var(--fs-sm)' }}
         >
-          🗳️ General election — {PARTIES[result.governingParty].shortName}{' '}
+          🗳️ {(result.arena ?? 'uk') === 'uk' ? 'General election' : `${chamberOf(result.arena).seat} election`} — {PARTIES[result.governingParty].shortName}{' '}
           {result.outcome === 'majority' ? 'majority' : 'minority'} ·{' '}
           {entry.heldSeat ? 'seat held' : 'seat lost'} {open ? '▾' : '▸'}
         </button>
         {open && (
           <div style={{ marginTop: 10 }}>
             {sorted.slice(0, 7).map(([p, n]) => (
-              <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={420} partyId={p} />
+              <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={(result.arena ?? 'uk') === 'uk' ? 420 : Object.values(result.seats).reduce((a, b) => a + (b ?? 0), 0)} partyId={p} />
             ))}
           </div>
         )}
@@ -67,7 +68,11 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
   let icon = '•';
   let text = '';
   if (entry.kind === 'roleChange') {
-    if (entry.how === 'becamePM') { icon = '👑'; text = 'Became Prime Minister'; }
+    if (entry.how === 'becamePM') {
+      const a = entry.arena ?? 'uk';
+      icon = '👑';
+      text = a === 'uk' ? 'Became Prime Minister' : `Became First Minister of ${chamberOf(a).place}`;
+    }
     else if (entry.how === 'electedLeader') { icon = '🏆'; text = 'Elected party leader'; }
     else if (entry.officeId) {
       icon = '📋';
@@ -75,7 +80,7 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
         : entry.how === 'continued' ? 'Continued as'
         : 'Appointed';
       // party-aware, and historically correct for gov/shadow at that date
-      text = `${verb} ${playerOfficeLabel(game, entry.officeId, entry.date, { roleSide: entry.roleSide, partyId: entry.partyId })}`;
+      text = `${verb} ${playerOfficeLabel(game, entry.officeId, entry.date, { roleSide: entry.roleSide, partyId: entry.partyId, arena: entry.arena })}`;
     } else {
       icon = entry.how === 'dismissed' ? '✂️' : entry.how === 'resigned' ? '✉️' : '↩️';
       text = entry.how === 'dismissed' ? 'Dismissed in a reshuffle'
@@ -87,7 +92,10 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
     text = entry.headline;
   } else if (entry.kind === 'enteredParliament') {
     icon = '🏛️';
-    text = `Elected MP for ${entry.seatName}`;
+    text = `Elected ${chamberAt(entry.arena ?? 'uk', entry.date).member} for ${entry.seatName.replace(' (regional list)', ' (list)')}`;
+  } else if (entry.kind === 'arenaChange') {
+    icon = '🧭';
+    text = `Left ${chamberOf(entry.from).house} for ${chamberOf(entry.to).house}`;
   } else if (entry.kind === 'leadershipContest') {
     icon = entry.won ? '🏆' : '🥈';
     text = entry.won ? 'Won the party leadership' : 'Lost a leadership contest';

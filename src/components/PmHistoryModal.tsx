@@ -27,7 +27,7 @@ export function PmHistoryModal({ game }: { game: GameState }) {
   return (
     <div className="modal-backdrop" onClick={close}>
       <div className="modal-card card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className="modal-title">Prime Ministers</h3>
+        <h3 className="modal-title">{(game.arena ?? 'uk') === 'uk' ? 'Prime Ministers' : 'First Ministers'}</h3>
         <div className="pmh-list">
           {tenures.map((t, i) => {
             const isPlayer = t.characterId === 'player';

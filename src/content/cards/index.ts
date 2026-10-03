@@ -28,8 +28,19 @@ import { REGION_CARDS } from './regionCards';
 import { DEVOLVED_SCENERY_CARDS } from './devolvedScenery';
 import { EVENTS_EXTRA_CARDS } from './eventsExtra';
 
-/** the fallback pool: always-eligible cards that keep the engine from stalling */
+import { DEVOLVED_CARDS } from './devolved';
+import { SCOTLAND_CARDS } from './nations/scotland';
+import { WALES_CARDS } from './nations/wales';
+
+/** the fallback pool: always-eligible cards that keep the engine from stalling.
+ *  Per-chamber, because the last-resort branch of `drawCard` ignores eligibility
+ *  entirely — a shared fallback would put Commons cards in a devolved chamber. */
 export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
+export const DEVOLVED_FALLBACK: DecisionCard[] = DEVOLVED_CARDS;
+
+export function fallbackPoolFor(arena: string): DecisionCard[] {
+  return arena === 'uk' ? FALLBACK_POOL : DEVOLVED_FALLBACK;
+}
 
 export const ALL_CARDS: DecisionCard[] = [
   ...PERSONAL_CARDS,
@@ -60,6 +71,9 @@ export const ALL_CARDS: DecisionCard[] = [
   ...REGION_CARDS,
   ...DEVOLVED_SCENERY_CARDS,
   ...EVENTS_EXTRA_CARDS,
+  ...DEVOLVED_CARDS,
+  ...SCOTLAND_CARDS,
+  ...WALES_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {

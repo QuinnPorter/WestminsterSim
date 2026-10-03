@@ -42,3 +42,7 @@ export const DAYS_PER_YEAR = 365.25;
 export function yearsBetween(a: GameDay, b: GameDay): number {
   return Math.abs(b - a) / DAYS_PER_YEAR;
 }
+
+/** the Commons term the engine has always used: five years on paper, a shade
+ *  under in practice because governments go early */
+export const UK_TERM_DAYS = Math.round(4.75 * 365);
