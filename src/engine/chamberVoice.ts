@@ -105,6 +105,18 @@ function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
     [/\bgeneral election\b/g, `${c.houseThe.replace(/^the /, '')} election`],
     [/\bGeneral election\b/g, `${c.houseThe.replace(/^the /, '')} election`],
 
+    // the parties, as they are known here: generated prose names the UK party
+    [/\b[Tt]he Labour Party\b/g, `${c.placeAdjective} Labour`],
+    [/\bLabour Party\b/g, `${c.placeAdjective} Labour`],
+    [/\b[Tt]he Conservative Party\b/g, `the ${c.placeAdjective} Conservatives`],
+    [/\bConservative Party\b/g, `${c.placeAdjective} Conservatives`],
+    [/\b[Tt]he Liberal Democrats\b/g, `the ${c.placeAdjective} Liberal Democrats`],
+    [/\bLiberal Democrats\b/g, `${c.placeAdjective} Liberal Democrats`],
+    ...(scottish ? [
+      [/\b[Tt]he Green Party\b/g, 'the Scottish Greens'] as [RegExp, string],
+      [/\bGreen Party\b/g, 'Scottish Greens'] as [RegExp, string],
+    ] : []),
+
     // the members
     [/\bMPs\b/g, c.members],
     [/\bMP\b/g, c.member],
@@ -140,6 +152,10 @@ function tidy(text: string): string {
     .replace(/\bthe the\b/g, 'the')
     .replace(/\bThe the\b/g, 'The')
     .replace(/\ba the\b/g, 'the')
+    // "Scottish Labour" and "Welsh Labour" take no article; a doubled adjective
+    // means the name was already the chamber's
+    .replace(/\b([Tt])he (Scottish|Welsh) Labour\b/g, (_m, t: string, adj: string) => `${t === 'T' ? '' : ''}${adj} Labour`)
+    .replace(/\b(Scottish|Welsh) (Scottish|Welsh) /g, '$1 ')
     .replace(/\bin the Holyrood\b/g, 'at Holyrood')
     .replace(/\bin the Cardiff Bay\b/g, 'in Cardiff Bay')
     .replace(/^the\b/, 'The')

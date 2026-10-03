@@ -11,7 +11,7 @@ import {
   isGreatOffice, officeArena, officeTitle, officeTitleFor, officeTitleIn, translateOffice,
 } from '../data/offices';
 import { chamberAt, chamberOf, nextFixedElectionDay } from '../data/chambers';
-import { partyNameIn } from '../data/parties';
+import { leaderOfTitle, partyNameIn, partyNameWithArticle } from '../data/parties';
 import { seatsForMajority, workingMajority } from './seats';
 import { incomingSeniorityBonus, installPlayerAsLeader, jumpToArena } from './arena';
 import { BACKGROUNDS } from '../data/backgrounds';
@@ -196,63 +196,59 @@ function minorPartyNameOf(state: GameState): string | undefined {
   return onMinorPartyTrack(state) ? partyNameIn(state.player.partyId, state.arena) : undefined;
 }
 
+/** an office's title for the player in the live chamber: the Westminster title
+ *  at Westminster, the chamber's own rank nouns (dated) in a devolved parliament */
+function titleInLiveChamber(state: GameState, officeId: OfficeId, inGovernment: boolean): string {
+  const arena = state.arena ?? 'uk';
+  return arena === 'uk'
+    ? officeTitleFor(officeId, { inGovernment, minorPartyName: minorPartyNameOf(state) })
+    : officeTitleIn(officeId, inGovernment, arena, state.day, minorPartyNameOf(state));
+}
+
 export function playerOfficeTitle(state: GameState): string {
   const arena = state.arena ?? 'uk';
   // the Speaker is non-partisan — neither government nor opposition framing
   if (state.player.officeId === 'speaker') return chamberOf(arena).speakerTitle;
 
-  // every devolved title goes through officeTitleIn, which knows the chamber's
-  // rank nouns and the date they changed
-  if (arena !== 'uk') {
-    if (state.player.officeId === null) return `Backbench ${chamberAt(arena, state.day).member}`;
-    const base = officeTitleIn(
-      state.player.officeId, playerInGovernmentBloc(state), arena, state.day, minorPartyNameOf(state)
-    );
-    if (
-      state.player.flags._isDeputyPM && playerInGovernmentBloc(state) &&
-      OFFICES[state.player.officeId]?.tier === 4
-    ) {
-      return `${deputyPrefix(undefined, arena)} and ${base}`;
+  if (state.player.officeId === null) {
+    // a select-committee chairmanship is a prestige backbench role (held with no
+    // frontbench office) — it takes over the title pill from "Backbench MP"
+    if (arena === 'uk' && state.player.committeeChair) {
+      return committeeChairTitle(state.player.committeeChair);
     }
-    return base;
-  }
-
-  // a select-committee chairmanship is a prestige backbench role (held with no
-  // frontbench office) — it takes over the title pill from "Backbench MP"
-  if (state.player.officeId === null && state.player.committeeChair) {
-    return committeeChairTitle(state.player.committeeChair);
+    return `Backbench ${chamberAt(arena, state.day).member}`;
   }
 
   // the leader of a JUNIOR coalition partner keeps leading their party while
-  // holding a government overlay — they are never "Prime Minister"
+  // holding a government overlay — they are never "Prime Minister" or "First
+  // Minister", in either kind of chamber
   if (state.player.officeId === 'leader'
     && state.government.coalitionPartner === state.player.partyId
     && state.player.partyId !== state.government.governingParty) {
-    const leaderTitle = `Leader of the ${partyNameIn(state.player.partyId, state.arena)}`;
+    const leaderTitle = leaderOfTitle(state.player.partyId, arena);
     // the brief (if any) the player holds in the government cabinet
     const briefPost = state.government.cabinet.find((p) => p.characterId === 'player');
-    const briefTitle = briefPost && OFFICES[briefPost.officeId] ? OFFICES[briefPost.officeId].title : null;
+    const briefTitle = briefPost && OFFICES[briefPost.officeId]
+      ? titleInLiveChamber(state, briefPost.officeId, true)
+      : null;
     if (state.player.flags._isDeputyPM) {
       // Deputy PM (+ optional department brief), Raab/Clegg-style
       return briefTitle
-        ? `${deputyPrefix(state.government.deputyTitle)} and ${briefTitle}`
-        : deputyPrefix(state.government.deputyTitle);
+        ? `${deputyPrefix(state.government.deputyTitle, arena)} and ${briefTitle}`
+        : deputyPrefix(state.government.deputyTitle, arena);
     }
     if (briefTitle) return `${briefTitle} and ${leaderTitle}`;
     return leaderTitle;
   }
 
-  const base = officeTitleFor(state.player.officeId, {
-    inGovernment: playerInGovernmentBloc(state),
-    minorPartyName: minorPartyNameOf(state),
-  });
-  // Deputy-PM / First-Secretary overlay on a sitting Secretary of State — only ever in
+  const base = titleInLiveChamber(state, state.player.officeId, playerInGovernmentBloc(state));
+  // Deputy-PM / First-Secretary overlay on a sitting cabinet minister — only ever in
   // government (never a "shadow Deputy PM")
   if (
     state.player.flags._isDeputyPM && playerInGovernmentBloc(state) &&
-    state.player.officeId && OFFICES[state.player.officeId]?.tier === 4
+    OFFICES[state.player.officeId]?.tier === 4
   ) {
-    return `${deputyPrefix(state.government.deputyTitle)} and ${base}`;
+    return `${deputyPrefix(state.government.deputyTitle, arena)} and ${base}`;
   }
   return base;
 }
@@ -855,7 +851,7 @@ function clearPlayerDeputyPM(state: GameState): void {
 export function reconcilePlayerDeputy(state: GameState): void {
   if ((state.player.flags._isDeputyPM || state.player.flags._govOverlayOpen) && !playerInGovernmentBloc(state)) {
     const role = state.player.flags._isDeputyPM
-      ? `the office of ${deputyPrefix(state.government.deputyTitle)}`
+      ? `the office of ${deputyPrefix(state.government.deputyTitle, state.arena ?? 'uk')}`
       : 'their government office';
     clearPlayerDeputyPM(state);
     state.history.push({
@@ -2368,7 +2364,7 @@ export function resolveNpcLeadership(
     }
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
+      headline: `${winner.name} elected ${partyNameIn(party, state.arena)} leader`,
     });
   } else if (party === state.government.coalitionPartner) {
     // the junior coalition partner's leadership changed — the Deputy PM overlay
@@ -2376,14 +2372,14 @@ export function resolveNpcLeadership(
     reassignJuniorPartnerDeputy(state, party, winner.id);
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
+      headline: `${winner.name} elected ${partyNameIn(party, state.arena)} leader`,
     });
   } else {
     // any other party (a minor/third party that is neither the government, the official
     // opposition, nor the coalition partner) — record it so no leadership change is silent
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${winner.name} elected leader of the ${PARTIES[party].name}`,
+      headline: `${winner.name} elected ${partyNameIn(party, state.arena)} leader`,
     });
   }
 
@@ -2592,7 +2588,7 @@ function makePlayerLeader(state: GameState, rng: Rng, opts: { softMandate?: bool
     }
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${state.player.name} elected leader of the ${PARTIES[party].name}`,
+      headline: `${state.player.name} elected ${partyNameIn(party, state.arena)} leader`,
     });
   }
   const rel = getRelationship(state, 'leader');
@@ -3117,17 +3113,13 @@ export function seatPlayerJuniorPartner(state: GameState, rng: Rng, forceBrief =
   }
   // hand the official opposition to the largest party outside the new government bloc
   recomputeOpposition(state, rng);
-  // The player REMAINS their party's leader. The timeline shows that as the office span
-  // ("Leader of [Party]"), with the government job (Deputy PM, or a department brief) on
-  // the concurrent overlay track — so both read at once, regardless of party size.
-  const leaderTitle = `Leader of the ${PARTIES[state.player.partyId].name}`;
-  state.history.push({
-    kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: 'leader', how: 'continued',
-    roleSide: 'gov', partyId: state.player.partyId, label: leaderTitle,
-  });
+  // The player REMAINS their party's leader, and the timeline keeps the ONE leader
+  // span it already has: joining a coalition is not a new job. The government
+  // role (Deputy PM, or a department brief) goes on the concurrent overlay track,
+  // so both read at once without a second "party leader" entry.
   const govRole = deputy
-    ? 'Deputy Prime Minister'
-    : (post ? officeTitleFor(post.officeId, { inGovernment: true }) : playerOfficeTitle(state));
+    ? deputyPrefix('dpm', state.arena ?? 'uk')
+    : (post ? titleInLiveChamber(state, post.officeId, true) : playerOfficeTitle(state));
   state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', label: govRole });
   if (!deputy) state.player.flags._govOverlayOpen = true; // the DPM case uses _isDeputyPM
   state.history.push({
@@ -3211,24 +3203,18 @@ export function withdrawFromCoalitionCore(state: GameState, rng: Rng): void {
   if (!isJunior && !isSenior) return;
   const govParty = state.government.governingParty;
 
+  // closing the government-role overlay is the whole of the timeline change: the
+  // leader span the player already has runs on, and leaving a coalition does not
+  // open a second "party leader" entry
   if (isJunior) clearPlayerDeputyPM(state); // close the gov-role overlay; stays party leader
   dissolveCoalition(state, rng);
 
-  if (isJunior) {
-    // close the (now-ended) government-leader span and reopen an opposition-leader one
-    const oppLabel = state.government.loId === 'player'
-      ? 'Leader of the Opposition'
-      : `Leader of the ${PARTIES[state.player.partyId].name}`;
-    state.history.push({
-      kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: 'leader', how: 'continued',
-      roleSide: 'opp', partyId: state.player.partyId, label: oppLabel,
-    });
-  }
+  const arena = state.arena ?? 'uk';
   state.history.push({
     kind: 'event', date: state.day,
     headline: isJunior
-      ? `${state.player.name} withdraws the ${PARTIES[state.player.partyId].name} from the coalition; ${PARTIES[govParty].name} governs as a minority`
-      : `${state.player.name} ends the coalition; the ${PARTIES[govParty].name} government continues as a minority`,
+      ? `${state.player.name} withdraws ${partyNameWithArticle(state.player.partyId, arena)} from the coalition; ${partyNameIn(govParty, arena)} governs as a minority`
+      : `${state.player.name} ends the coalition; the ${partyNameIn(govParty, arena)} government continues as a minority`,
   });
 }
 
@@ -5068,7 +5054,7 @@ export function resolveForcedChoice(
             ? 'You are the leader of the party — and Prime Minister.'
             : leaderRole === 'lo'
               ? 'You are the leader of the party — and Leader of the Opposition.'
-              : `You are the leader of the ${PARTIES[state.player.partyId].name}.`;
+              : `You are the leader of ${partyNameWithArticle(state.player.partyId, state.arena)}.`;
           const finalistFace = finalist ? `${finalist.name}` : 'your opponent';
           // distinct win copy by margin + arc + record — never the same closer twice
           const verdict =
@@ -7047,7 +7033,7 @@ export function resignOfficeCore(state: GameState, rng: Rng): void {
     state.history.push({ kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: null, how: 'resigned' });
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${state.player.name} resigns the leadership of the ${PARTIES[party].name}`,
+      headline: `${state.player.name} resigns as ${partyNameIn(party, state.arena)} leader`,
     });
     gainStat(state, 'integrity', 3);
     resolveNpcLeadership(state, rng, party);
@@ -7417,7 +7403,7 @@ export function continueAsProtegeCore(state: GameState, rng: Rng, input: Creatio
   });
   state.history.push({
     kind: 'event', date: state.day,
-    headline: `${input.name} wins a by-election and enters Parliament for the ${PARTIES[input.partyId].name}`,
+    headline: `${input.name} wins a by-election and enters ${chamberAt(state.arena, state.day).houseThe} for ${partyNameWithArticle(input.partyId, state.arena)}`,
   });
   // 5. reset all player-specific transient state and resume play
   state.gameOver = null;
@@ -7473,7 +7459,7 @@ export function changeParty(state: GameState, rng: Rng, newParty: PartyId): void
     kind: 'event', date: state.day,
     headline: newParty === 'ind'
       ? `${state.player.name} resigns the whip to sit as an Independent`
-      : `${state.player.name} crosses the floor to join the ${PARTIES[newParty].name}`,
+      : `${state.player.name} crosses the floor to join ${partyNameWithArticle(newParty, state.arena)}`,
   });
 }
 

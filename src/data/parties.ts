@@ -160,6 +160,25 @@ export function partyNameIn(id: PartyId, arena: ArenaId | undefined): string {
   return CHAMBER_NAMES[arena][id]?.name ?? PARTIES[id].name;
 }
 
+/** names that take no article mid-sentence: "Scottish Labour", "Plaid Cymru",
+ *  "Reform UK" — against "the Labour Party", "the Scottish Conservatives" */
+const NO_ARTICLE = /(^|\s)Labour$|^Plaid Cymru$|^Reform UK$/;
+
+/** a party name with the article it actually takes: "the Labour Party",
+ *  "Scottish Labour", "the Scottish Greens", "Plaid Cymru" */
+export function withArticle(name: string): string {
+  return NO_ARTICLE.test(name) ? name : `the ${name}`;
+}
+
+export function partyNameWithArticle(id: PartyId, arena: ArenaId | undefined): string {
+  return withArticle(partyNameIn(id, arena));
+}
+
+/** "Leader of the Labour Party", "Leader of Scottish Labour", "Leader of Plaid Cymru" */
+export function leaderOfTitle(id: PartyId, arena: ArenaId | undefined): string {
+  return `Leader of ${partyNameWithArticle(id, arena)}`;
+}
+
 /** The parties on a chamber's ballot. The Commons is era-dependent (the populist
  *  slot); a devolved chamber's is whichever parties contested its most recent
  *  election on or before `day`. */

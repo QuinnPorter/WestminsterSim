@@ -9,7 +9,7 @@ import { PARTIES, partyNameIn, playablePartiesForEra, populistPartyForEra } from
 import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
 import { PARLIAMENTS } from '../data/parliaments';
-import { CHAMBERS, DEVOLVED_ARENAS, chamberAt } from '../data/chambers';
+import { CHAMBERS, DEVOLVED_ARENAS, chamberAt, houseHeading } from '../data/chambers';
 import { DEVOLVED_LEGISLATURES } from '../data/devolved';
 import { formatFull, isoToDay } from '../engine/clock';
 import { Avatar } from '../avatar/Avatar';
@@ -198,7 +198,7 @@ export function NewCareerScreen() {
               className={`card nc-era${arena === a ? ' selected' : ''}`}
               onClick={() => chooseArena(a)}
             >
-              <strong>{CHAMBERS[a].house.replace(/^the /, '').replace(/^\w/, (c) => c.toUpperCase())}</strong>
+              <strong>{houseHeading(a)}</strong>
               <span>{CHAMBER_BLURBS[a]}</span>
             </button>
           ))}

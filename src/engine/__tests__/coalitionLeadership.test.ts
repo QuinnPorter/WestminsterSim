@@ -51,6 +51,11 @@ function makeJuniorPartner(seed: number): { g: GameState; rng: Rng } {
   g.player.partyId = 'ld';
   g.player.officeId = 'leader';
   g.player.hasSeat = true;
+  // the leadership is recorded once, when it was won — the game never records it again
+  g.history.push({
+    kind: 'roleChange', arena: 'uk', date: g.day - 30, officeId: 'leader', how: 'electedLeader',
+    roleSide: 'minor', partyId: 'ld',
+  });
   g.government.governingParty = 'con';
   g.government.arrangement = 'coalition';
   g.government.coalitionPartner = 'ld';
@@ -67,6 +72,20 @@ describe('junior-coalition leader shows Leader of [Party] + government role', ()
     expect(titles).toContain('Leader of the Liberal Democrats');
     // the government role is on the concurrent overlay track (DPM here, ≥15 seats)
     expect(titles).toContain('Deputy Prime Minister');
+    // and joining the coalition did NOT open a second "party leader" entry
+    expect(titles.filter((t) => t === 'Leader of the Liberal Democrats')).toHaveLength(1);
+    expect(g.history.filter((h) => h.kind === 'roleChange' && h.officeId === 'leader')).toHaveLength(1);
+  });
+
+  it('leaving the coalition closes the government role and leaves the one leader entry alone', () => {
+    const { g, rng } = makeJuniorPartner(9);
+    seatPlayerJuniorPartner(g, rng);
+    withdrawFromCoalitionCore(g, rng);
+    const titles = timelineRows(g).map((r) => r.title);
+    expect(titles.filter((t) => t === 'Leader of the Liberal Democrats')).toHaveLength(1);
+    expect(g.history.filter((h) => h.kind === 'roleChange' && h.officeId === 'leader')).toHaveLength(1);
+    const overlay = g.history.filter((h) => h.kind === 'deputyOverlay');
+    expect(overlay.map((h) => (h as { action: string }).action)).toEqual(['start', 'end']);
   });
 });
 
@@ -121,7 +140,7 @@ describe('no silent leader switches', () => {
     resolveNpcLeadership(g, rng, 'green');
     const events = g.history.filter((h) => h.kind === 'event') as { headline: string }[];
     expect(events.length).toBeGreaterThan(before);
-    expect(events.some((e) => /leader of the Green/i.test(e.headline))).toBe(true);
+    expect(events.some((e) => /Green Party leader/i.test(e.headline))).toBe(true);
   });
 });
 

@@ -4,7 +4,7 @@ import { Hemicycle } from '../components/Hemicycle';
 import { PollGraph } from '../components/PollGraph';
 import { arenaPolledParties, partyPolling } from '../engine/polling';
 import { partyNameIn } from '../data/parties';
-import { chamberAt, chamberOf } from '../data/chambers';
+import { chamberOf, houseHeading } from '../data/chambers';
 import { seatsForMajority, totalSeats } from '../engine/seats';
 import { useUiStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
@@ -24,7 +24,6 @@ export function ParliamentScreen({ game }: { game: GameState }) {
 
   const gov = game.government;
   const arena = game.arena ?? 'uk';
-  const chamber = chamberAt(arena, game.day);
   const sfSeats = game.seats.sf ?? 0;
   const house = totalSeats(game.seats);
   const workingTarget = seatsForMajority(game.seats);
@@ -59,9 +58,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
 
   return (
     <div className="screen">
-      <h2 style={{ marginBottom: 4 }}>
-        {chamber.house.charAt(0).toUpperCase() + chamber.house.slice(1)}
-      </h2>
+      <h2 style={{ marginBottom: 4 }}>{houseHeading(arena, game.day)}</h2>
       <p style={{ color: 'var(--muted)', fontSize: 'var(--fs-sm)', marginBottom: 12 }}>
         {partyNameIn(gov.governingParty, arena)}{' '}
         {gov.majority > 0

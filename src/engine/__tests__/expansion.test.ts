@@ -398,9 +398,12 @@ describe('wave 14 — coalition junior partner & leader fixes', () => {
     expect(lo?.partyId).toBe('reform');
     expect(lo?.officeId).toBe('leader');
     expect(playerOfficeTitle(g)).toContain('Deputy Prime Minister');
-    // a roleChange capturing the government role was recorded for the timeline
+    // the government role is recorded on the overlay track; joining a coalition
+    // never opens a second "party leader" entry
+    const overlay = [...g.history].reverse().find((h) => h.kind === 'deputyOverlay');
+    expect(overlay && (overlay as { action: string }).action).toBe('start');
     const last = [...g.history].reverse().find((h) => h.kind === 'roleChange');
-    expect(last && last.roleSide).toBe('gov');
+    expect(last && last.date).not.toBe(g.day);
   });
 
   it('hands the opposition to the 3rd party when the player WAS the LO (coalition)', () => {
