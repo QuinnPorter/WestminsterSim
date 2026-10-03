@@ -1,13 +1,30 @@
 import { GameState, PartyId } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
-import { PARTIES, polledPartiesForEra } from '../data/parties';
+import { isMajorIn, polledPartiesForArena } from '../data/parties';
 import { Rng } from './rng';
 
-/** national vote shares at the last election (or game start) — the swing anchor */
+/** vote shares at the last election (or game start) — the swing anchor */
 export function lastElectionShares(state: GameState): Partial<Record<PartyId, number>> {
-  const results = Object.values(state.elections).sort((a, b) => b.date - a.date);
+  // only elections fought in the LIVE chamber are an anchor for it — a Westminster
+  // result says nothing about where the Holyrood vote sits
+  const arena = state.arena ?? 'uk';
+  const results = Object.values(state.elections)
+    .filter((r) => (r.arena ?? 'uk') === arena)
+    .sort((a, b) => b.date - a.date);
   if (results.length > 0) return results[0].voteShares;
-  return PARLIAMENTS[state.startEra].baselineShares;
+  return arenaBaseline(state);
+}
+
+/** the live chamber's structural baseline — the shares its swing is measured
+ *  from. Devolved chambers carry their own; the Commons falls back to the era. */
+export function arenaBaseline(state: GameState): Partial<Record<PartyId, number>> {
+  return state.anchorShares ?? PARLIAMENTS[state.startEra].baselineShares;
+}
+
+/** the parties on the live chamber's ballot */
+export function arenaPolledParties(state: GameState): PartyId[] {
+  return state.polledParties
+    ?? polledPartiesForArena(state.arena ?? 'uk', state.startEra, state.day);
 }
 
 /** how much a NON-major party's fundamental follows its last result vs reverting to the
@@ -23,10 +40,10 @@ const MINOR_FUND_CAP = 1.3;
 /** long-run "fundamentals" each party's polling reverts toward */
 function fundamentals(state: GameState): Partial<Record<PartyId, number>> {
   const last = lastElectionShares(state);
-  const baseline = PARLIAMENTS[state.startEra].baselineShares;
+  const baseline = arenaBaseline(state);
   const out: Partial<Record<PartyId, number>> = {};
-  for (const p of polledPartiesForEra(state.startEra)) {
-    if (PARTIES[p]?.major) {
+  for (const p of arenaPolledParties(state)) {
+    if (isMajorIn(p, state.arena)) {
       out[p] = last[p] ?? 0.01;
     } else {
       // pull a minor party partway back toward its structural baseline each cycle,
@@ -49,6 +66,18 @@ const WEEKLY_NOISE = 0.006;
 const MEAN_REVERSION = 0.015;
 /** keep at most this many poll snapshots per parliament */
 const MAX_POLL_SNAPSHOTS = 80;
+/** the share WEEKLY_NOISE is calibrated at. Polling does not move by a flat number
+ *  of points regardless of a party's size — a flat sd let a party on 7% halve or
+ *  double over a parliament on noise alone, and for a regional party that lands in
+ *  its own nation multiplied by its seat coverage. Scaled by sqrt(p(1-p)), the
+ *  shape of sampling error, so the major parties are unchanged. */
+const NOISE_CALIBRATED_AT = 0.35;
+const NOISE_REF = Math.sqrt(NOISE_CALIBRATED_AT * (1 - NOISE_CALIBRATED_AT));
+
+function weeklyNoiseFor(share: number): number {
+  const p = Math.min(0.95, Math.max(0.005, share));
+  return WEEKLY_NOISE * (Math.sqrt(p * (1 - p)) / NOISE_REF);
+}
 /** minimum days between recorded snapshots */
 const POLL_SAMPLE_GAP = 25;
 
@@ -65,7 +94,7 @@ export function samplePolling(state: GameState): void {
 export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
   const shares = state.polling.shares;
   const funds = fundamentals(state);
-  const polled = polledPartiesForEra(state.startEra);
+  const polled = arenaPolledParties(state);
   const gov = state.government.governingParty;
   let day = state.polling.lastUpdated;
 
@@ -74,7 +103,7 @@ export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
     for (const p of polled) {
       const current = shares[p] ?? funds[p] ?? 0.01;
       let next = current
-        + rng.normal(0, WEEKLY_NOISE)
+        + rng.normal(0, weeklyNoiseFor(current))
         + MEAN_REVERSION * ((funds[p] ?? 0.01) - current);
       if (p === gov && day - state.parliamentStart > HONEYMOON_DAYS) {
         next -= GOVERNING_DRAG;

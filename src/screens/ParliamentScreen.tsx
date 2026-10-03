@@ -2,8 +2,10 @@ import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { Hemicycle } from '../components/Hemicycle';
 import { PollGraph } from '../components/PollGraph';
-import { partyPolling } from '../engine/polling';
-import { polledPartiesForEra } from '../data/parties';
+import { arenaPolledParties, partyPolling } from '../engine/polling';
+import { partyNameIn } from '../data/parties';
+import { chamberAt, chamberOf } from '../data/chambers';
+import { seatsForMajority, totalSeats } from '../engine/seats';
 import { useUiStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { playerIsPM, playerIsLeader } from '../engine/career';
@@ -21,15 +23,19 @@ export function ParliamentScreen({ game }: { game: GameState }) {
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
 
   const gov = game.government;
+  const arena = game.arena ?? 'uk';
+  const chamber = chamberAt(arena, game.day);
   const sfSeats = game.seats.sf ?? 0;
-  const workingTarget = Math.floor((650 - sfSeats - 1) / 2) + 1;
+  const house = totalSeats(game.seats);
+  const workingTarget = seatsForMajority(game.seats);
   const leadSeats = game.seats[gov.governingParty] ?? 0;
   // a formal coalition's seats are counted toward the government total
   const coalitionSeats = gov.arrangement === 'coalition' && gov.coalitionPartner
     ? (game.seats[gov.coalitionPartner] ?? 0) : 0;
   const govSeats = leadSeats + coalitionSeats;
 
-  const isPM = playerIsPM(game);
+  // only a Westminster PM can call a snap election: Holyrood and the Senedd are fixed-term
+  const isPM = playerIsPM(game) && !chamberOf(arena).fixedTerm;
   // hide the snap-election button once an election is already on its way
   const electionImminent = game.day >= game.nextElectionBy - 60
     || game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight');
@@ -41,7 +47,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
     && playerIsLeader(game)
     && (isJuniorPartner || game.player.partyId === gov.governingParty);
 
-  const ranked = polledPartiesForEra(game.startEra)
+  const ranked = arenaPolledParties(game)
     .map((p) => ({ p, v: partyPolling(game, p) }))
     .sort((a, b) => b.v - a.v);
   // always keep the Lib Dems on the board, even if they slip out of the top five
@@ -53,9 +59,11 @@ export function ParliamentScreen({ game }: { game: GameState }) {
 
   return (
     <div className="screen">
-      <h2 style={{ marginBottom: 4 }}>The House of Commons</h2>
+      <h2 style={{ marginBottom: 4 }}>
+        {chamber.house.charAt(0).toUpperCase() + chamber.house.slice(1)}
+      </h2>
       <p style={{ color: 'var(--muted)', fontSize: 'var(--fs-sm)', marginBottom: 12 }}>
-        {PARTIES[gov.governingParty].name}{' '}
+        {partyNameIn(gov.governingParty, arena)}{' '}
         {gov.majority > 0
           ? `majority of ${gov.majority}`
           : gov.arrangement === 'coalition' && gov.coalitionPartner
@@ -72,7 +80,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
             color: partyTextColour(gov.governingParty), fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
           }}
         >
-          Prime Ministers ›
+          {arena === 'uk' ? 'Prime Ministers' : 'First Ministers'} ›
         </button>
         <button
           onClick={() => setLoHistoryOpen(true)}
@@ -168,17 +176,19 @@ export function ParliamentScreen({ game }: { game: GameState }) {
           overflow: 'hidden', position: 'relative',
         }}>
           <div style={{
-            width: `${(govSeats / 650) * 100}%`, height: '100%',
+            width: `${(govSeats / house) * 100}%`, height: '100%',
             background: PARTIES[gov.governingParty].colour,
           }} />
           <div style={{
-            position: 'absolute', left: `${(workingTarget / 650) * 100}%`,
+            position: 'absolute', left: `${(workingTarget / house) * 100}%`,
             top: 0, bottom: 0, width: 2, background: 'var(--ink)',
           }} />
         </div>
         <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 6 }}>
-          {govSeats} government seats{coalitionSeats > 0 ? ' (incl. coalition partner)' : ''} · {workingTarget} needed to win votes
+          {govSeats} government seats{coalitionSeats > 0 ? ' (incl. coalition partner)' : ''} · {workingTarget} of {house} needed to win votes
           {sfSeats > 0 ? ` (Sinn Féin's ${sfSeats} MPs don't take their seats)` : ''}
+          {arena !== 'uk' && game.elections && Object.values(game.elections).some((e) => e.arena === arena && e.listSeats)
+            ? ' · constituency and regional-list seats' : ''}
         </p>
       </div>
 

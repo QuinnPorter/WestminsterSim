@@ -1,18 +1,43 @@
 // ---- core ids ----
 
+/** The UK parties are the SAME organisations in every chamber: Scottish Labour is
+ *  Labour, the SNP at Holyrood is the SNP at Westminster. Only two parties exist
+ *  in a devolved chamber and nowhere else — the Scottish Greens (a separate party
+ *  from the Green Party of England and Wales) and Alba. `spk` and `ind` are shared. */
 export type PartyId =
   | 'con' | 'lab' | 'ld' | 'snp' | 'green' | 'reform' | 'pc' | 'ukip' | 'brexit'
-  | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'spk' | 'ind';
+  | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'spk' | 'ind'
+  | 'sgp' | 'alba';
 
 export type RegionId =
   | 'scotland' | 'wales' | 'ni' | 'london' | 'southEast' | 'southWest'
   | 'east' | 'eastMidlands' | 'westMidlands' | 'northWest' | 'northEast'
   | 'yorkshire';
 
-export type DepartmentId =
+/** The nations with a devolved legislature a career can be lived in. Northern
+ *  Ireland is deliberately absent: Stormont is STV, mandatory power-sharing with a
+ *  joint First and deputy First Minister, cross-community votes and periodic
+ *  collapse, and nothing in this engine can represent that. */
+export type DevolvedArenaId = 'scotland' | 'wales';
+
+/** a chamber a career can be lived in: the Commons, Holyrood or the Senedd */
+export type ArenaId = 'uk' | DevolvedArenaId;
+
+/** the Whitehall departments. Kept as its own union because `DEPARTMENTS` is
+ *  iterated to pick a random portfolio in several places in career.ts — a
+ *  widened record there would offer a Westminster minister a devolved brief. */
+export type UkDepartmentId =
   | 'treasury' | 'home' | 'foreign' | 'health' | 'education' | 'defence'
   | 'justice' | 'transport' | 'environment' | 'business' | 'dwp' | 'culture'
   | 'housing' | 'energy' | 'scienceTech';
+
+/** briefs that exist only in a devolved cabinet. The shared ones (health,
+ *  education, justice, transport, environment, business, culture, housing,
+ *  energy) are reused from the Whitehall list rather than duplicated. */
+export type DevolvedDepartmentId =
+  | 'finance' | 'rural' | 'socialJustice' | 'constitution';
+
+export type DepartmentId = UkDepartmentId | DevolvedDepartmentId;
 
 /** Days since 2019-01-01 (UTC). clock.ts converts to dates. */
 export type GameDay = number;
@@ -41,6 +66,9 @@ export interface Party {
   abstentionist?: boolean;
   /** can this party plausibly govern / lead the opposition */
   major?: boolean;
+  /** the party exists only in this devolved chamber (Scottish Greens, Alba) and
+   *  never stands for Westminster, whatever its `contestsRegions` says */
+  devolvedOnly?: DevolvedArenaId;
 }
 
 export interface SyntheticSeat {
@@ -54,6 +82,14 @@ export interface SyntheticSeat {
   base?: Partial<Record<PartyId, number>>;
   winner: PartyId;
   isPlayerSeat?: boolean;
+  /** 'list' for an additional-member or closed-list seat, allocated by d'Hondt
+   *  after the constituency count; absent = a first-past-the-post constituency */
+  kind?: 'constituency' | 'list';
+  /** the list region (Holyrood: Glasgow, Lothian…) or multi-member constituency
+   *  (Senedd 2026) this seat belongs to. Set on every seat in a devolved chamber. */
+  listRegion?: string;
+  /** a list seat's place in its region's allocation order (1 = first allocated) */
+  listRank?: number;
 }
 
 // ---- offices ----
@@ -77,6 +113,10 @@ export interface Office {
   /** territorial offices (Scotland/Wales/NI Secretary) only offered to a player
    *  whose seat is in this region */
   region?: RegionId;
+  /** the chamber this office belongs to; defaults to 'uk'. Devolved office ids
+   *  are namespaced (`scotland_cabsec_health`) and live in the same flat OFFICES
+   *  registry, so every existing `OFFICES[id]` lookup still works. */
+  arena?: ArenaId;
 }
 
 // ---- people ----
@@ -181,7 +221,7 @@ export interface Player {
   officeSinceDay: GameDay | null;
   /** department of the select committee the player chairs (a backbench role held
    *  alongside being an MP); null/undefined when they chair none */
-  committeeChair?: DepartmentId | null;
+  committeeChair?: UkDepartmentId | null;
   /** rebellions in the current parliament */
   rebellionCount: number;
   /** story flags set by cards. String values are used by a few flags that stash a
@@ -271,6 +311,13 @@ export interface ConstituencyResult {
   swing: number;
   turnout: number;
   majorityVotes: number;
+  /** AMS: the player lost the constituency but was returned from the regional
+   *  list, as Anas Sarwar and Douglas Ross were in 2021 */
+  savedByList?: boolean;
+  /** list PR (Senedd 2026): the player's rank on the party list and how many
+   *  seats the party took in the constituency, which together decide the result */
+  listRank?: number;
+  partyListSeats?: number;
 }
 
 export type ElectionOutcome = 'majority' | 'minority' | 'hung';
@@ -278,7 +325,11 @@ export type ElectionOutcome = 'majority' | 'minority' | 'hung';
 export interface ElectionResult {
   id: string;
   date: GameDay;
+  /** the chamber this election was fought in; absent on pre-v10 = the Commons */
+  arena?: ArenaId;
   seats: Partial<Record<PartyId, number>>;
+  /** AMS: how many of each party's seats came from the regional lists */
+  listSeats?: Partial<Record<PartyId, number>>;
   voteShares: Partial<Record<PartyId, number>>;
   playerResult: ConstituencyResult | null;
   outcome: ElectionOutcome;
@@ -329,6 +380,9 @@ export interface Mentor {
 
 export type HistoryEntry =
   | { kind: 'roleChange'; date: GameDay; officeId: OfficeId | null;
+      /** the chamber the role was held in; absent on pre-v10 entries, which are
+       *  all Westminster. Kept per-entry so the timeline stays correct after a jump. */
+      arena?: ArenaId;
       how: 'appointed' | 'promoted' | 'reshuffled' | 'dismissed' | 'resigned' | 'electedLeader' | 'becamePM' | 'leftOffice' | 'continued';
       /** the gov/opposition/minor framing and party AT THE TIME the role was held,
        *  so the career timeline stays correct after the player crosses the floor */
@@ -341,9 +395,11 @@ export type HistoryEntry =
   /** the Deputy-PM / First-Secretary overlay held ON TOP of a brief — a separate,
    *  concurrent timeline track (paired start→end), so it shows alongside the office */
   | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec'; label?: string }
-  | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: DepartmentId }
+  | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: UkDepartmentId }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
-  | { kind: 'enteredParliament'; date: GameDay; seatName: string };
+  /** the player left one chamber for another — the timeline's chamber divider */
+  | { kind: 'arenaChange'; date: GameDay; from: ArenaId; to: ArenaId; partyId: PartyId }
+  | { kind: 'enteredParliament'; date: GameDay; seatName: string; arena?: ArenaId };
 
 // ---- leadership contest state ----
 
@@ -422,6 +478,9 @@ export type ForcedKind =
   | 'committeeChairContest' | 'passedOver'
   | 'exitOffer'
   | 'budget' | 'pmqs' | 'conference'
+  /** recruited by the other chamber: Westminster asking a devolved member to stand,
+   *  or a devolved party asking a Westminster figure to come and lead it */
+  | 'ukRecruit' | 'devolvedDraft'
   | 'calendar';
 
 export interface DrawnCard {
@@ -471,6 +530,46 @@ export interface LegacySummary {
   verdict?: string;
   /** single-word rating, e.g. "Footnote" → "Colossus" */
   rating?: string;
+  /** "Prime Minister" or "First Minister" — what the head-of-government rows mean */
+  headOfGovernmentTitle?: string;
+  /** led a devolved government at some point */
+  wasFirstMinister?: boolean;
+  yearsAsFirstMinister?: number;
+  /** every chamber the career sat in, in order */
+  arenasServed?: ArenaId[];
+}
+
+// ---- arenas ----
+
+/** A chamber the player is not currently in, frozen behind them. The
+ *  chamber-shaped fields of GameState stay at the top level while a chamber is
+ *  live (so career.ts and scheduler.ts need no changes) and are lifted into one
+ *  of these on a move. freezeArena/thawArena in engine/arena.ts move them. */
+export interface ArenaSnapshot {
+  arena: ArenaId;
+  /** the day the chamber was frozen; catchUpArena runs it forward from here */
+  frozenDay: GameDay;
+  seats: Partial<Record<PartyId, number>>;
+  seatMap: SyntheticSeat[];
+  government: GovernmentState;
+  polling: PollingState;
+  pollHistory: PollSnapshot[];
+  parliamentStart: GameDay;
+  nextElectionBy: GameDay;
+  calendarDone: Record<string, number>;
+  pendingContests: NpcContest[];
+  /** the chamber's own cast — MPs do not sit at Holyrood */
+  characters: Record<string, Character>;
+  /** the chamber's own succession chronicles, so First Ministers never appear in
+   *  the list of Prime Ministers */
+  pmHistory: PmTenure[];
+  loHistory: LoTenure[];
+  /** the immutable swing anchor for this chamber's election model */
+  anchorShares: Partial<Record<PartyId, number>>;
+  /** the parties on this chamber's ballot */
+  polledParties: PartyId[];
+  /** the player's seat here, kept so a return lands them back home */
+  playerSeatId: string | null;
 }
 
 // ---- top level ----
@@ -518,6 +617,17 @@ export interface GameState {
 
   parliamentStart: GameDay;
   nextElectionBy: GameDay;
+
+  /** the chamber the player currently sits in. The chamber-shaped fields above
+   *  (seats, government, polling, characters…) describe THIS chamber. */
+  arena: ArenaId;
+  /** chambers the player has left, frozen until they return */
+  dormant: Partial<Record<ArenaId, ArenaSnapshot>>;
+  /** the live chamber's structural swing anchor (the Commons falls back to the
+   *  era's baseline shares when absent) */
+  anchorShares?: Partial<Record<PartyId, number>>;
+  /** the parties on the live chamber's ballot */
+  polledParties?: PartyId[];
 
   gameOver: null | { reason: 'retired' | 'lostSeat' | 'resigned'; legacy: LegacySummary };
 }

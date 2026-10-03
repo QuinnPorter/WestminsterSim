@@ -69,9 +69,12 @@ describe('election balance (softened amplifier + winner bonus)', () => {
     expect(nMajority / nElections).toBeGreaterThan(0.50);
     expect(nMajority / nElections).toBeLessThan(0.82);
     // 400+ landslides: a touch rarer than the old model (~30% on these seeds).
-    // Small margin above 0.30 to tolerate RNG-stream drift from unrelated engine
-    // changes on the same seeds (the career sim threads one RNG through everything).
-    expect(n400 / nElections).toBeLessThan(0.33);
+    // Margin above 0.30 to tolerate RNG-stream drift from unrelated engine changes
+    // on the same seeds (the career sim threads one RNG through everything), and
+    // the regional-party swing fix: the SNP's vote now moves with its own nation's
+    // mood rather than a diluted national figure, so a Westminster landslide picks
+    // up a few more Scottish seats than it used to (~0.33 on these seeds).
+    expect(n400 / nElections).toBeLessThan(0.345);
     // a party trailing in the popular vote rarely keeps a 400+ landslide
     // (old model produced ~2x as many of these on the same seeds)
     expect(nSubPlurality).toBeLessThan(12);

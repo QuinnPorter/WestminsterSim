@@ -4,6 +4,8 @@ import { useGameStore } from '../store/gameStore';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { ResultBar } from '../components/ResultBar';
 import { formatFull } from '../engine/clock';
+import { totalSeats } from '../engine/seats';
+import { chamberAt } from '../data/chambers';
 import './ElectionNightScreen.css';
 
 /** staged reveal: exit poll → your count → national picture → outcome */
@@ -51,18 +53,20 @@ function ExitPoll({ result }: { result: ElectionResult }) {
   const sorted = (Object.entries(result.seats) as [PartyId, number][])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 4);
+  const house = totalSeats(result.seats);
+  const devolved = (result.arena ?? 'uk') !== 'uk';
   return (
     <div className="card fade-in en-section">
-      <h3 className="en-heading">The exit poll</h3>
+      <h3 className="en-heading">{devolved ? 'The first declarations' : 'The exit poll'}</h3>
       <p className="en-sub">
-        Big Ben strikes ten. The broadcasters project:{' '}
+        {devolved ? 'The polls close at ten and the count runs overnight. The broadcasters project:' : 'Big Ben strikes ten. The broadcasters project:'}{' '}
         <strong style={{ color: partyTextColour(result.governingParty) }}>
           {PARTIES[result.governingParty].name}
         </strong>{' '}
         {result.outcome === 'majority' ? 'majority' : 'short of a majority'}.
       </p>
       {sorted.map(([p, n]) => (
-        <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={420} partyId={p} />
+        <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={devolved ? house : 420} partyId={p} />
       ))}
     </div>
   );
@@ -71,13 +75,25 @@ function ExitPoll({ result }: { result: ElectionResult }) {
 function PlayerCount({ game, result }: { game: GameState; result: ElectionResult }) {
   const pr = result.playerResult!;
   const held = pr.winnerPartyId === game.player.partyId;
+  const chamber = chamberAt(result.arena ?? 'uk', result.date);
+  const listSeat = pr.listRank !== undefined;
+  let line: string;
+  if (listSeat) {
+    line = result.playerHeldSeat
+      ? `Your party takes ${pr.partyListSeats} ${pr.partyListSeats === 1 ? 'seat' : 'seats'} here and you were ${ordinal(pr.listRank!)} on the list — you are returned.`
+      : `Your party takes ${pr.partyListSeats ?? 0} ${pr.partyListSeats === 1 ? 'seat' : 'seats'} here and you were ${ordinal(pr.listRank!)} on the list — not enough.`;
+  } else if (held) {
+    line = `You are ${result.playerHeldSeat ? 're-elected' : 'elected'} — majority ${pr.majorityVotes.toLocaleString()}.`;
+  } else if (pr.savedByList) {
+    line = `Lost the constituency to the ${PARTIES[pr.winnerPartyId].shortName} candidate — but the regional list saves you, and you return as a list ${chamber.member}.`;
+  } else {
+    line = `Lost to the ${PARTIES[pr.winnerPartyId].shortName} candidate.`;
+  }
   return (
     <div className="card fade-in en-section">
       <h3 className="en-heading">{pr.seatName}</h3>
       <p className="en-sub">
-        {held
-          ? `You are ${result.playerHeldSeat ? 're-elected' : 'elected'} — majority ${pr.majorityVotes.toLocaleString()}.`
-          : `Lost to the ${PARTIES[pr.winnerPartyId].shortName} candidate.`}{' '}
+        {line}{' '}
         Swing {pr.swing >= 0 ? '+' : ''}{pr.swing.toFixed(1)}% · Turnout {(pr.turnout * 100).toFixed(0)}%
       </p>
       <table className="en-table">
@@ -99,10 +115,18 @@ function PlayerCount({ game, result }: { game: GameState; result: ElectionResult
   );
 }
 
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
+}
+
 function NationalPicture({ game, result }: { game: GameState; result: ElectionResult }) {
   const sorted = (Object.entries(result.seats) as [PartyId, number][])
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1]);
+  const house = totalSeats(result.seats);
+  const devolved = (result.arena ?? 'uk') !== 'uk';
   const gov = game.government;
   // a player-led hung result hasn't been resolved yet (coalition talks are queued)
   const pending = game.forcedQueue.some(
@@ -121,10 +145,17 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
   }
   return (
     <div className="card fade-in en-section">
-      <h3 className="en-heading">All 650 seats declared</h3>
+      <h3 className="en-heading">All {house} seats declared</h3>
       {sorted.map(([p, n]) => (
-        <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={420} partyId={p} />
+        <ResultBar key={p} label={PARTIES[p].shortName} value={n} max={devolved ? house : 420} partyId={p} />
       ))}
+      {result.listSeats && (
+        <p className="en-sub" style={{ marginTop: 6 }}>
+          Of which from the regional lists:{' '}
+          {sorted.filter(([p]) => (result.listSeats?.[p] ?? 0) > 0)
+            .map(([p]) => `${PARTIES[p].shortName} ${result.listSeats?.[p]}`).join(' · ')}
+        </p>
+      )}
       <p className="en-outcome" style={{ color: partyTextColour(result.governingParty) }}>
         {pending
           ? `Hung parliament — ${PARTIES[result.governingParty].name} set to govern, but short of a majority.`

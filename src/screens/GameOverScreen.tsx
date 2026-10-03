@@ -43,6 +43,8 @@ export function GameOverScreen({ game }: { game: GameState }) {
   const canContinue = game.gameOver!.reason === 'retired';
 
   const causes = (legacy.causes ?? []).map((c) => CAUSES_BY_ID[c]?.label).filter(Boolean);
+  // a First Minister's spells are spells as First Minister
+  const headTitle = legacy.headOfGovernmentTitle ?? 'Prime Minister';
 
   const [sharing, setSharing] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
@@ -56,7 +58,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
     lines.push(`${legacy.yearsServed} years in public life`);
     lines.push(`Highest office: ${legacy.highestOfficeTitle}`);
     if (legacy.becamePM && (legacy.pmStints ?? 0) > 0) {
-      lines.push(`Years as Prime Minister: ${legacy.yearsAsPM ?? 0}`);
+      lines.push(`Years as ${headTitle}: ${legacy.yearsAsPM ?? 0}`);
     }
     lines.push(`Elections won: ${legacy.electionsContested !== undefined
       ? `${legacy.electionsWon} of ${legacy.electionsContested}`
@@ -158,11 +160,11 @@ export function GameOverScreen({ game }: { game: GameState }) {
         {legacy.becamePM && (legacy.pmStints ?? 0) > 0 && (
           <>
             <LegacyRow
-              label="Years as Prime Minister"
+              label={`Years as ${headTitle}`}
               value={`${legacy.yearsAsPM ?? 0}`}
             />
             <LegacyRow
-              label="Spells as Prime Minister"
+              label={`Spells as ${headTitle}`}
               value={`${legacy.pmStints}`}
             />
           </>

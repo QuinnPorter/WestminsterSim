@@ -1,8 +1,10 @@
 import { DrawnCard, GameState } from '../types/game';
 import { DecisionCard } from '../types/content';
-import { DEPARTMENTS, OFFICES } from '../data/offices';
+import { departmentInfo, OFFICES } from '../data/offices';
+import { chamberAt } from '../data/chambers';
+import { partyNameIn } from '../data/parties';
 import { COMMITTEE_NAMES } from '../data/committees';
-import { PARTIES } from '../data/parties';
+
 import { getRelationship, relationshipName } from './relationships';
 import {
   playerInGovernmentBloc, playerTier, playerIsLeader, playerLeaderRole, onMinorPartyTrack,
@@ -47,12 +49,18 @@ export function keyMomentLabel(card: DrawnCard): string {
 export function resolveTokens(state: GameState, text: string): string {
   const seat = state.seatMap.find((s) => s.id === state.player.seatId);
   const dept = state.player.officeId
-    ? OFFICES[state.player.officeId].department
+    ? OFFICES[state.player.officeId]?.department
     : undefined;
+  const arena = state.arena ?? 'uk';
+  const chamber = chamberAt(arena, state.day);
+  // the OTHER government, for the two-chair conflict cards: at Westminster the
+  // devolved administration of the player's nation; in a devolved chamber, the UK
+  // government. Both are simulated, so they have a real leader and a real party.
+  const other = otherGovernment(state);
   const map: Record<string, string> = {
     leader: relationshipName(state, 'leader'),
     pm: state.government.pmId === 'player' ? state.player.name
-      : state.characters[state.government.pmId]?.name ?? 'the Prime Minister',
+      : state.characters[state.government.pmId]?.name ?? `the ${chamber.head}`,
     lo: state.government.loId === 'player' ? state.player.name
       : state.characters[state.government.loId]?.name ?? 'the Leader of the Opposition',
     whip: relationshipName(state, 'chiefWhip'),
@@ -61,14 +69,58 @@ export function resolveTokens(state: GameState, text: string): string {
     mentor: relationshipName(state, 'mentor'),
     journalist: relationshipName(state, 'journalist'),
     constituency: seat?.name ?? 'your constituency',
-    department: dept ? DEPARTMENTS[dept].casual : 'the department',
+    department: dept ? departmentInfo(dept).casual : 'the department',
     committee: state.player.committeeChair ? COMMITTEE_NAMES[state.player.committeeChair] : 'your committee',
-    cmtdept: state.player.committeeChair ? DEPARTMENTS[state.player.committeeChair].casual : 'the department',
-    party: PARTIES[state.player.partyId].name,
-    govparty: PARTIES[state.government.governingParty].name,
-    oppparty: PARTIES[state.government.oppositionParty].name,
+    cmtdept: state.player.committeeChair ? departmentInfo(state.player.committeeChair).casual : 'the department',
+    party: partyNameIn(state.player.partyId, arena),
+    govparty: partyNameIn(state.government.governingParty, arena),
+    oppparty: partyNameIn(state.government.oppositionParty, arena),
+    // chamber nouns, so one line of prose can serve every legislature
+    house: chamber.houseThe,
+    housefull: chamber.house,
+    hill: chamber.seat,
+    member: chamber.member,
+    members: chamber.members,
+    head: chamber.head,
+    headoffice: chamber.headOffice,
+    government: chamber.government,
+    nation: chamber.place,
+    speaker: chamber.speakerTitle,
+    // the other government
+    otherleader: other.leader,
+    otherparty: other.party,
+    othergov: other.government,
   };
   return text.replace(/\{(\w+)\}/g, (m, key) => map[key] ?? m);
+}
+
+/** the leader, party and name of the government the player is NOT part of: the
+ *  devolved administration of their nation while they sit at Westminster, and
+ *  the UK Government while they sit in a devolved chamber */
+function otherGovernment(state: GameState): { leader: string; party: string; government: string } {
+  const arena = state.arena ?? 'uk';
+  if (arena === 'uk') {
+    const nation = state.player.region === 'scotland' || state.player.region === 'wales'
+      ? state.player.region : null;
+    const snap = nation ? state.dormant?.[nation] : undefined;
+    const chamber = chamberAt(nation ?? 'scotland', state.day);
+    if (snap) {
+      const fm = snap.characters[snap.government.pmId];
+      return {
+        leader: fm?.name ?? `the ${chamber.head}`,
+        party: partyNameIn(snap.government.governingParty, nation ?? 'scotland'),
+        government: chamber.government,
+      };
+    }
+    return { leader: `the ${chamber.head}`, party: 'the devolved government', government: chamber.government };
+  }
+  const uk = state.dormant?.uk;
+  const pm = uk ? uk.characters[uk.government.pmId] : undefined;
+  return {
+    leader: pm?.name ?? 'the Prime Minister',
+    party: uk ? partyNameIn(uk.government.governingParty, 'uk') : 'the UK government',
+    government: 'the UK Government',
+  };
 }
 
 // ---------- eligibility ----------
@@ -80,6 +132,11 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
       state.day - state.cardHistory[card.id] < card.cooldownDays) {
     return false;
   }
+  // an unmarked card belongs to the Commons. The corpus predates the devolved
+  // chambers and is written throughout in Westminster language, so a card must
+  // opt IN to a legislature rather than leak into one by omission.
+  const arena = state.arena ?? 'uk';
+  if ((req?.arena ?? ['uk']).indexOf(arena) === -1) return false;
   if (!req) return true;
 
   const tier = playerTier(state);

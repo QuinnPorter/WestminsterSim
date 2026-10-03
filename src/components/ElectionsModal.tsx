@@ -4,6 +4,8 @@ import { useUiStore } from '../store/uiStore';
 import { PARTIES } from '../data/parties';
 import { PartyBadge } from './PartyBadge';
 import { formatMonthYear } from '../engine/clock';
+import { arenaElections } from '../engine/arena';
+import { chamberOf } from '../data/chambers';
 import './PmHistoryModal.css';
 
 const OUTCOME_LABEL: Record<string, string> = {
@@ -25,12 +27,15 @@ export function ElectionsModal({ game }: { game: GameState }) {
 
   if (!open) return null;
 
-  const elections = Object.values(game.elections).sort((a, b) => b.date - a.date);
+  // only the chamber being looked at: state.elections spans every chamber the
+  // career has sat in, and a Holyrood result in the Westminster list is noise
+  const elections = [...arenaElections(game)].reverse();
+  const arena = game.arena ?? 'uk';
 
   return (
     <div className="modal-backdrop" onClick={close}>
       <div className="modal-card card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className="modal-title">General Elections</h3>
+        <h3 className="modal-title">{arena === 'uk' ? 'General Elections' : `${chamberOf(arena).seat} Elections`}</h3>
         <div className="pmh-list">
           {elections.map((e) => {
             const top = (Object.entries(e.seats) as [PartyId, number][])

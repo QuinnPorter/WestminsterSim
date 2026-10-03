@@ -14,7 +14,13 @@ import {
   withdrawFromCoalitionCore, openPlayerReshuffle,
 } from '../engine/career';
 import { OFFICES } from '../data/offices';
-import { Era, OfficeId, PartyId } from '../types/game';
+import { PARLIAMENTS } from '../data/parliaments';
+import { polledPartiesForEra } from '../data/parties';
+import { canJump, jumpPartyOptions, jumpTargets, jumpToArena } from '../engine/arena';
+import { arenaPolledParties } from '../engine/polling';
+import { chamberOf } from '../data/chambers';
+import { speakAsChamber } from '../engine/chamberVoice';
+import { ArenaId, Era, OfficeId, PartyId } from '../types/game';
 import { Rng } from '../engine/rng';
 import { useUiStore } from './uiStore';
 
@@ -43,6 +49,8 @@ interface GameStore {
   continueAfterOutcome: () => void;
   acknowledgeElection: () => void;
   crossFloor: (partyId: PartyId) => void;
+  /** resign the seat and stand for another chamber, sitting with `partyId` there */
+  jumpChamber: (arena: ArenaId, partyId: PartyId) => void;
   resignOffice: () => void;
   /** the player (as PM / LO) sacks a minister; optionally names their replacement */
   sackMinister: (officeId: OfficeId, replacementId?: string) => void;
@@ -149,6 +157,23 @@ export function migrateGameState(game: GameState): GameState {
     backfillCabinetOffices(game, rng);
     game.rngState = rng.state;
   }
+  // v10 — chambers: Holyrood and the Senedd, one bump for the whole feature.
+  // Every pre-v10 career was lived entirely in the Commons, so the live chamber
+  // is 'uk' and there is nothing frozen behind it. The chamber-shaped fields
+  // already sit at the top level of GameState, which is exactly why this
+  // migration is additive rather than a reshape.
+  if (game.arena === undefined) game.arena = 'uk';
+  if (game.dormant === undefined) game.dormant = {};
+  if (game.anchorShares === undefined) {
+    game.anchorShares = { ...PARLIAMENTS[game.startEra].baselineShares };
+  }
+  if (game.polledParties === undefined) {
+    game.polledParties = polledPartiesForEra(game.startEra);
+  }
+  // pre-v10 results carry no chamber and were all Westminster
+  for (const r of Object.values(game.elections)) {
+    if (r.arena === undefined) r.arena = 'uk';
+  }
   // clear any "ghost" ministers carrying a cabinet title they no longer hold
   // (e.g. an NPC the player displaced in an older save). Idempotent.
   reconcileCharacterOffices(game);
@@ -222,6 +247,9 @@ function mutateGame(
   if (!current) return;
   const game = structuredClone(current);
   withRng(game, (rng) => fn(game, rng));
+  // a card set directly by a store action (a player reshuffle, a sacking) still
+  // speaks in the live chamber's voice
+  if (game.currentCard && game.currentCard.kind !== 'normal') speakAsChamber(game, game.currentCard);
   set({ game });
 }
 
@@ -311,7 +339,30 @@ export const useGameStore = create<GameStore>()(
         mutateGame(get, set, (game, rng) => acknowledgeElectionCore(game, rng)),
 
       crossFloor: (partyId) =>
-        mutateGame(get, set, (game, rng) => changeParty(game, rng, partyId)),
+        mutateGame(get, set, (game, rng) => {
+          // floor-crossing stays WITHIN the chamber, and only to a party on its ballot
+          const legal = partyId === 'ind' || arenaPolledParties(game).includes(partyId);
+          if (!legal) return;
+          changeParty(game, rng, partyId);
+        }),
+
+      jumpChamber: (arena, partyId) => {
+        // a card already answered is dismissed through the NORMAL continue path
+        // first, so its day-advance still happens (see reshuffleCabinet)
+        if (get().game?.currentCard?.outcome) {
+          mutateGame(get, set, (game, rng) => continueCore(game, rng));
+        }
+        mutateGame(get, set, (game, rng) => {
+          if (!canJump(game)) return;
+          if (!jumpTargets(game).includes(arena)) return;
+          if (!jumpPartyOptions(game, arena).includes(partyId)) return;
+          jumpToArena(game, rng, arena, partyId);
+          // the new chamber needs its own calendar and a first card
+          initCalendar(game);
+          nextStep(game, rng);
+        });
+        useUiStore.getState().setTab('play');
+      },
 
       resignOffice: () =>
         mutateGame(get, set, (game, rng) => resignOfficeCore(game, rng)),
@@ -343,6 +394,8 @@ export const useGameStore = create<GameStore>()(
 
       callSnapElection: () =>
         mutateGame(get, set, (game) => {
+          // a fixed-term chamber cannot be dissolved by its First Minister
+          if (chamberOf(game.arena).fixedTerm) return;
           // guard: don't double-queue if a campaign is already under way
           if (game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight')) return;
           queueGeneralElection(game);

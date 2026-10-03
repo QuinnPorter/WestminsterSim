@@ -1,7 +1,7 @@
-import { DepartmentId } from '../types/game';
+import { UkDepartmentId } from '../types/game';
 
 /** the Commons departmental select committee that scrutinises each department */
-export const COMMITTEE_NAMES: Record<DepartmentId, string> = {
+export const COMMITTEE_NAMES: Record<UkDepartmentId, string> = {
   treasury: 'Treasury',
   home: 'Home Affairs',
   foreign: 'Foreign Affairs',
@@ -20,6 +20,6 @@ export const COMMITTEE_NAMES: Record<DepartmentId, string> = {
 };
 
 /** the player's title while chairing a committee, e.g. "Chair, Treasury Select Committee" */
-export function committeeChairTitle(dept: DepartmentId): string {
+export function committeeChairTitle(dept: UkDepartmentId): string {
   return `Chair, ${COMMITTEE_NAMES[dept]} Select Committee`;
 }

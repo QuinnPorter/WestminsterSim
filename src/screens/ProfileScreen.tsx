@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
-import { DepartmentId, GameState, OfficeId, PartyId } from '../types/game';
+import { ArenaId, GameState, OfficeId, PartyId, UkDepartmentId } from '../types/game';
 import type { RoleSide } from '../engine/career';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
-import { PARTIES, playablePartiesForEra } from '../data/parties';
+import { PARTIES, counterpartParty, partyNameIn, playablePartiesForEra } from '../data/parties';
 import { REGIONS } from '../data/regions';
+import { CHAMBERS, chamberAt } from '../data/chambers';
+import { canJump, homeNation, jumpPartyOptions, jumpTargets, JUMP_MIN_PROFILE } from '../engine/arena';
+import { arenaPolledParties } from '../engine/polling';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { CAUSES_BY_ID } from '../data/causes';
 import { committeeChairTitle } from '../data/committees';
@@ -24,6 +27,8 @@ export interface OfficeSpan {
   roleSide?: RoleSide;
   partyId?: PartyId;
   label?: string;
+  /** the chamber the role was held in; absent on pre-v10 entries = Westminster */
+  arena?: ArenaId;
 }
 
 /** chronological portfolio history, derived from roleChange entries (newest first) */
@@ -56,6 +61,7 @@ export function buildOfficeSpans(history: GameState['history']): OfficeSpan[] {
         roleSide: entry.roleSide,
         partyId: entry.partyId,
         label: entry.label,
+        arena: entry.arena,
       };
     }
   }
@@ -86,7 +92,7 @@ export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
   return spans;
 }
 
-export interface CommitteeSpan { dept: DepartmentId; start: number; end: number | null; }
+export interface CommitteeSpan { dept: UkDepartmentId; start: number; end: number | null; }
 
 /** the concurrent select-committee chairmanship spans (a backbench overlay),
  *  paired from the committeeTenure start/end history entries */
@@ -137,10 +143,15 @@ export function timelineRows(game: GameState): TimelineRow[] {
 }
 
 export function spanTitle(game: GameState, span: OfficeSpan): string {
-  if (span.becamePM) return 'Prime Minister';
+  const arena = span.arena ?? 'uk';
+  // "becamePM" is the ledger's word for taking over the government; in a devolved
+  // chamber that office is First Minister
+  if (span.becamePM) {
+    return arena === 'uk' ? 'Prime Minister' : `First Minister of ${CHAMBERS[arena].place}`;
+  }
   if (span.label) return span.label; // composite roles (e.g. junior coalition partner)
   return playerOfficeLabel(game, span.officeId, span.start, {
-    roleSide: span.roleSide, partyId: span.partyId,
+    roleSide: span.roleSide, partyId: span.partyId, arena: span.arena,
   });
 }
 
@@ -156,13 +167,18 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const requestConfirm = useUiStore((s) => s.requestConfirm);
   const setAgendaEditorOpen = useUiStore((s) => s.setAgendaEditorOpen);
   const setMentorHistoryOpen = useUiStore((s) => s.setMentorHistoryOpen);
+  const jumpChamber = useGameStore((s) => s.jumpChamber);
   const [pickingParty, setPickingParty] = useState(false);
+  const [jumpTarget, setJumpTarget] = useState<ArenaId | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
 
   const player = game.player;
   const seat = game.seatMap.find((s) => s.id === player.seatId);
   const party = PARTIES[player.partyId];
+  const arena = game.arena ?? 'uk';
+  const chamber = chamberAt(arena, game.day);
+  const listSeat = seat?.kind === 'list';
   const rows = useMemo(() => timelineRows(game), [game]);
 
   const playerShare = seat?.shares[player.partyId] ?? 0;
@@ -178,10 +194,14 @@ export function ProfileScreen({ game }: { game: GameState }) {
   const marginality = margin > 20 ? 'Safe' : margin > 8 ? 'Comfortable' : 'Marginal';
   const years = Math.floor(yearsBetween(player.enteredParliament, game.day));
 
-  // defection targets: any playable party that contests the player's region,
-  // plus sitting as an Independent (defection only — never a start option, and
-  // it ends any chance of climbing the ministerial ladder)
-  const switchableParties: PartyId[] = [...playablePartiesForEra(game.startEra), 'ind' as PartyId].filter(
+  // defection targets: any party on THIS chamber's ballot that contests the
+  // player's region, plus sitting as an Independent (defection only — never a
+  // start option, and it ends any chance of climbing the ministerial ladder).
+  // Floor-crossing stays within the chamber; moving to Westminster is the jump.
+  const switchableParties: PartyId[] = [
+    ...(arena === 'uk' ? playablePartiesForEra(game.startEra) : arenaPolledParties(game)),
+    'ind' as PartyId,
+  ].filter(
     (p) => p !== player.partyId
       && (p === 'ind' || PARTIES[p].contestsRegions.includes(player.region))
   );
@@ -193,10 +213,10 @@ export function ProfileScreen({ game }: { game: GameState }) {
         <div>
           <h2 style={{ fontSize: 'var(--fs-lg)' }}>{player.name}</h2>
           <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', fontWeight: 600 }}>
-            {party.name} · {player.age} years old
+            {partyNameIn(party.id, arena)} · {player.age} years old
           </p>
           <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--party)' }}>
-            {player.hasSeat ? playerOfficeTitle(game) : 'Out of Parliament'}
+            {player.hasSeat ? playerOfficeTitle(game) : `Out of ${chamber.houseThe}`}
           </p>
         </div>
       </div>
@@ -204,11 +224,14 @@ export function ProfileScreen({ game }: { game: GameState }) {
       {seat && (
         <div className="card" style={{ marginBottom: 12 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>
-            {player.hasSeat ? 'Member for' : 'Candidate for'} {seat.name}
+            {player.hasSeat ? `${chamber.member} for` : 'Candidate for'} {seat.name}
           </h3>
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
-            {REGIONS[seat.region].name} · {marginality} seat
-            {margin > 0 ? ` (margin ${margin.toFixed(1)}%)` : ''} · {years}{' '}
+            {REGIONS[seat.region].name}
+            {listSeat
+              ? ` · a list seat: your party took ${(playerShare * 100).toFixed(0)}% of the regional vote here`
+              : ` · ${marginality} seat${margin > 0 ? ` (margin ${margin.toFixed(1)}%)` : ''}`}
+            {' · '}{years}{' '}
             {years === 1 ? 'year' : 'years'} in public life
           </p>
           {player.flags.defected === 1 && (
@@ -326,6 +349,102 @@ export function ProfileScreen({ game }: { game: GameState }) {
         )}
       </div>
 
+      {/* ---- moving chambers ---- */}
+      {player.hasSeat && !game.gameOver && jumpTargets(game).length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>
+            {arena === 'uk'
+              ? CHAMBERS[jumpTargets(game)[0]].house.replace(/^the /, (m) => m.toUpperCase())
+              : 'Westminster'}
+          </h3>
+          {!canJump(game) ? (
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
+              {player.stats.profile < JUMP_MIN_PROFILE
+                ? `Nobody is recruiting an unknown. Build a public profile of ${JUMP_MIN_PROFILE} and the other parliament may come calling.`
+                : player.flags._isSpeaker
+                  ? 'The Chair does not stand for another parliament.'
+                  : 'You have moved chambers too recently — carpetbagging has a smell.'}
+            </p>
+          ) : jumpTarget === null ? (
+            <>
+              <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginBottom: 10 }}>
+                Resign your seat and stand for the other parliament. Everything you are
+                travels with you — your record, your name, your ability, and the
+                reputation that keeps re-electing you. Your standing with a group you
+                have never sat in does not.
+              </p>
+              {homeNation(game) === null && arena === 'uk' && (
+                <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginBottom: 10 }}>
+                  Your constituency decides which parliament: you can stand for{' '}
+                  {CHAMBERS[jumpTargets(game)[0]].house} and nowhere else. From there
+                  you can move back and forth with Westminster as often as you like.
+                </p>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {jumpTargets(game).map((a) => (
+                  <button key={a} className="btn" onClick={() => setJumpTarget(a)}>
+                    {CHAMBERS[a].house.replace(/^the /, (m) => m.toUpperCase())} · {CHAMBERS[a].seat}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginBottom: 10 }}>
+                Which party will you sit with at {CHAMBERS[jumpTarget].seat}?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {jumpPartyOptions(game, jumpTarget).map((p) => {
+                  const natural = counterpartParty(player.partyId, jumpTarget) === p;
+                  return (
+                    <button
+                      key={p}
+                      className="btn"
+                      style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                      onClick={() =>
+                        requestConfirm({
+                          title: `Sit as ${partyNameIn(p, jumpTarget)} at ${CHAMBERS[jumpTarget].seat}?`,
+                          message: `You give up your seat and any office you hold. `
+                            + `You keep your integrity, your reputation and your ability; `
+                            + `your standing in a new group starts near the bottom, and a new `
+                            + `seat has no view of you yet.`
+                            + (natural ? '' : ' This is not your political family — it will cost you more.'),
+                          confirmLabel: 'Make the move',
+                          danger: true,
+                          onConfirm: () => {
+                            jumpChamber(jumpTarget, p);
+                            setJumpTarget(null);
+                          },
+                        })
+                      }
+                    >
+                      <span style={{
+                        width: 11, height: 11, borderRadius: '50%',
+                        background: PARTIES[p].colour,
+                        border: '1px solid rgba(0,0,0,0.12)', flexShrink: 0,
+                      }} />
+                      {partyNameIn(p, jumpTarget)}
+                      {natural && (
+                        <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
+                          your party
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                <button
+                  className="btn"
+                  style={{ textAlign: 'center', color: 'var(--muted)' }}
+                  onClick={() => setJumpTarget(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {!playerIsLeader(game) && player.hasSeat && switchableParties.length > 0 && (
         <div className="card" style={{ marginBottom: 12 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>Cross the floor</h3>
@@ -372,7 +491,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
                       background: PARTIES[p].colour,
                       border: '1px solid rgba(0,0,0,0.12)', flexShrink: 0,
                     }} />
-                    {PARTIES[p].name}
+                    {partyNameIn(p, arena)}
                   </button>
                 ))}
                 <button
@@ -398,7 +517,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
               title: isLeader ? 'Resign the leadership?' : 'Resign your office?',
               message: isLeader
                 ? 'A successor will take over and you will return to the backbenches.'
-                : `Step down as ${playerOfficeTitle(game)}? You will stay on as an MP.`,
+                : `Step down as ${playerOfficeTitle(game)}? You will stay on as ${chamber.member === 'MSP' || chamber.member === 'MS' || chamber.member === 'AM' ? 'an' : 'an'} ${chamber.member}.`,
               confirmLabel: 'Resign',
               onConfirm: resignOffice,
             });
@@ -416,17 +535,17 @@ export function ProfileScreen({ game }: { game: GameState }) {
           onClick={() => {
             const frontbench = playerTier(game) >= 1;
             requestConfirm({
-              title: frontbench ? 'Resign and move against the PM?' : 'Call for the PM to go?',
+              title: frontbench ? `Resign and move against the ${chamber.head}?` : `Call for the ${chamber.head} to go?`,
               message: frontbench
-                ? `Resign as ${playerOfficeTitle(game)} and publicly call for the Prime Minister to go? It will destroy your relationship with the leadership — but a senior resignation carries real weight.`
-                : 'Submit a letter of no confidence in the Prime Minister? It will anger the whips and the leader, and may or may not move the dial.',
+                ? `Resign as ${playerOfficeTitle(game)} and publicly call for the ${chamber.head} to go? It will destroy your relationship with the leadership — but a senior resignation carries real weight.`
+                : `Submit a letter of no confidence in the ${chamber.head}? It will anger the whips and the leader, and may or may not move the dial.`,
               confirmLabel: frontbench ? 'Resign and call' : 'Submit letter',
               danger: true,
               onConfirm: callForPmResignation,
             });
           }}
         >
-          {playerTier(game) >= 1 ? 'Resign and call for the PM to go' : 'Call for the PM to resign'}
+          {playerTier(game) >= 1 ? `Resign and call for the ${arena === 'uk' ? 'PM' : 'FM'} to go` : `Call for the ${arena === 'uk' ? 'PM' : 'FM'} to resign`}
         </button>
       )}
 
