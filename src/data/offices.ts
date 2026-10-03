@@ -3,6 +3,7 @@ import {
   UkDepartmentId,
 } from '../types/game';
 import { CHAMBERS, DEVOLVED_ARENAS, ministerialTitlesAt } from './chambers';
+import { withArticle } from './parties';
 
 export interface DepartmentInfo {
   id: DepartmentId;
@@ -368,7 +369,7 @@ export function officeTitleIn(
 
   if (officeId === 'leader') {
     if (inGovernment) return 'First Minister';
-    if (minorPartyName) return `Leader of the ${minorPartyName}`;
+    if (minorPartyName) return `Leader of ${withArticle(minorPartyName)}`;
     return 'Leader of the Opposition';
   }
   const shared = SHARED_RUNG_TITLES[arena][officeId];
@@ -400,7 +401,7 @@ export function officeTitleFor(
   if (!minorPartyName) return officeTitle(officeId, inGovernment);
 
   const office = OFFICES[officeId];
-  if (office.id === 'leader') return `Leader of the ${minorPartyName}`;
+  if (office.id === 'leader') return `Leader of ${withArticle(minorPartyName)}`;
   if (office.id === 'chiefWhip') return `${minorPartyName} Chief Whip`;
   if (office.id === 'whip') return `${minorPartyName} Whip`;
   if (office.id === 'pps') return `Aide to the ${minorPartyName} Leader`;

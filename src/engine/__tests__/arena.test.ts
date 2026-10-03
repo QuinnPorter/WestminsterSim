@@ -16,7 +16,10 @@ import {
 } from '../../data/chambers';
 import { DEVOLVED_LEGISLATURES, legislatureAt } from '../../data/devolved';
 import { HOLYROOD_CONSTITUENCIES, SENEDD_CONSTITUENCIES, SENEDD_2026_CONSTITUENCIES } from '../../data/devolvedSeats';
-import { counterpartParty, PARTIES, partyNameIn } from '../../data/parties';
+import { counterpartParty, leaderOfTitle, PARTIES, partyNameIn, withArticle } from '../../data/parties';
+import { houseHeading } from '../../data/chambers';
+import { seatPlayerJuniorPartner, withdrawFromCoalitionCore } from '../career';
+import { timelineRows } from '../../screens/ProfileScreen';
 import { chamberVoice } from '../chamberVoice';
 import { cardEligible } from '../cardEngine';
 import { nextStep } from '../scheduler';
@@ -231,6 +234,60 @@ describe('offices in a devolved chamber', () => {
   });
 });
 
+describe('names and headings', () => {
+  it('a devolved chamber is not headed with an article; the Commons is', () => {
+    expect(houseHeading('uk')).toBe('The House of Commons');
+    expect(houseHeading('scotland')).toBe('Scottish Parliament');
+    expect(houseHeading('wales')).toBe('Senedd');
+    expect(houseHeading('wales', SENEDD_RENAME_DAY - 1)).toBe('National Assembly for Wales');
+  });
+  it('devolved party names take no article where none is used', () => {
+    expect(withArticle('Scottish Labour')).toBe('Scottish Labour');
+    expect(withArticle('Welsh Labour')).toBe('Welsh Labour');
+    expect(withArticle('Scottish Conservatives')).toBe('the Scottish Conservatives');
+    expect(withArticle('Labour Party')).toBe('the Labour Party');
+    expect(withArticle('Plaid Cymru')).toBe('Plaid Cymru');
+    expect(leaderOfTitle('lab', 'scotland')).toBe('Leader of Scottish Labour');
+    expect(leaderOfTitle('lab', 'wales')).toBe('Leader of Welsh Labour');
+    expect(leaderOfTitle('con', 'scotland')).toBe('Leader of the Scottish Conservatives');
+    expect(leaderOfTitle('lab', 'uk')).toBe('Leader of the Labour Party');
+    expect(leaderOfTitle('pc', 'uk')).toBe('Leader of Plaid Cymru');
+  });
+});
+
+describe('a junior coalition partner’s leader at Holyrood', () => {
+  function labourInCoalition(): { g: GameState; rng: Rng } {
+    const g = game({ arena: 'scotland', devolvedElection: '2021-05-06', partyId: 'lab' });
+    const rng = new Rng(21);
+    g.player.officeId = 'leader';
+    g.history.push({
+      kind: 'roleChange', arena: 'scotland', date: g.day - 30, officeId: 'leader', how: 'electedLeader',
+      roleSide: 'opp', partyId: 'lab',
+    });
+    g.government.arrangement = 'coalition';
+    g.government.coalitionPartner = 'lab';
+    return { g, rng };
+  }
+  it('is never shown as First Minister', () => {
+    const { g, rng } = labourInCoalition();
+    seatPlayerJuniorPartner(g, rng);
+    // "Deputy First Minister and …" is right; "First Minister" on its own is the bug
+    expect(playerOfficeTitle(g)).not.toMatch(/^First Minister/);
+    expect(playerOfficeTitle(g)).toMatch(/Leader of Scottish Labour|Deputy First Minister/);
+    expect(playerOfficeTitle(g)).not.toContain('Leader of the Scottish Labour');
+  });
+  it('keeps one leader entry across joining and leaving the coalition', () => {
+    const { g, rng } = labourInCoalition();
+    seatPlayerJuniorPartner(g, rng);
+    withdrawFromCoalitionCore(g, rng);
+    const leaderEntries = g.history.filter((h) => h.kind === 'roleChange' && h.officeId === 'leader');
+    expect(leaderEntries).toHaveLength(1);
+    const titles = timelineRows(g).map((r) => r.title);
+    expect(titles.filter((t) => /Labour/.test(t) || t === 'Leader of the Opposition')).toHaveLength(1);
+    expect(titles.some((t) => t === 'Leader of the Labour Party')).toBe(false);
+  });
+});
+
 describe("the chamber's voice", () => {
   it('rewrites Commons nouns and leaves the Scottish National Party alone', () => {
     const out = chamberVoice('scotland', 'The Prime Minister tells MPs in the Commons that the Scottish National Party has a nationwide problem. PMQs was brutal.');
@@ -246,6 +303,15 @@ describe("the chamber's voice", () => {
     expect(out).toContain('Llywydd');
     expect(out).toContain('Trefnydd');
     expect(out).toContain('Cathays Park');
+  });
+  it('names the parties as the chamber knows them, without a stray article', () => {
+    const out = chamberVoice('scotland', 'The Labour Party and the Conservative Party agree; the leader of the Labour Party speaks for the Green Party.');
+    expect(out).toContain('Scottish Labour and the Scottish Conservatives');
+    expect(out).toContain('the leader of Scottish Labour');
+    expect(out).toContain('the Scottish Greens');
+    expect(out).not.toContain('the Scottish Labour');
+    expect(chamberVoice('wales', 'the Labour Party')).toBe('Welsh Labour');
+    expect(chamberVoice('scotland', 'Leader of Scottish Labour')).toBe('Leader of Scottish Labour');
   });
   it('uses the Welsh two-tier rank nouns as they stood on the day', () => {
     const before = chamberVoice('wales', 'A Secretary of State and a Minister of State met the Chancellor.', WELSH_CABSEC_DAY - 1);

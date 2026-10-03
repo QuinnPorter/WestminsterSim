@@ -49,7 +49,7 @@ describe('opposition leadership — every vacancy is a visible contest, never a 
     expect(g.government.loId).not.toBe(oldLoId);       // a new Leader of the Opposition
     expect(g.government.loId).toBe(contest.winnerId);   // the pre-announced favourite
     expect((g.pendingContests ?? []).length).toBe(0);   // and it's cleared
-    expect(headlines(g).some((h) => /elected leader of the Labour/i.test(h))).toBe(true);
+    expect(headlines(g).some((h) => /elected Labour Party leader/i.test(h))).toBe(true);
   });
 
   it('never resolves as a silent same-tick appointment (100 seeds)', () => {

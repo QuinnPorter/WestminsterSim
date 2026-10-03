@@ -141,6 +141,16 @@ export function isDevolved(arena: ArenaId | undefined): arena is DevolvedArenaId
   return arena !== undefined && arena !== 'uk';
 }
 
+/** the chamber's name as a heading: "The House of Commons", but "Scottish
+ *  Parliament" and "Senedd" — the devolved chambers do not take the article
+ *  as a title */
+export function houseHeading(arena: ArenaId | undefined, day?: GameDay): string {
+  const c = day === undefined ? chamberOf(arena) : chamberAt(arena, day);
+  if (c.arena === 'uk') return 'The House of Commons';
+  const bare = c.house.replace(/^the /, '');
+  return bare.charAt(0).toUpperCase() + bare.slice(1);
+}
+
 // ---------------------------------------------------------------------------
 // the dates on which the Welsh institution renamed itself
 // ---------------------------------------------------------------------------

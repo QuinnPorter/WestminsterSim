@@ -6,7 +6,7 @@ import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES, counterpartParty, partyNameIn, playablePartiesForEra } from '../data/parties';
 import { REGIONS } from '../data/regions';
-import { CHAMBERS, chamberAt } from '../data/chambers';
+import { CHAMBERS, chamberAt, houseHeading } from '../data/chambers';
 import { canJump, homeNation, jumpPartyOptions, jumpTargets, JUMP_MIN_PROFILE } from '../engine/arena';
 import { arenaPolledParties } from '../engine/polling';
 import { BACKGROUNDS } from '../data/backgrounds';
@@ -127,7 +127,7 @@ export function timelineRowsFromHistory(
     title: spanTitle(game, s), start: s.start, end: close(s.end),
   }));
   const deputy: TimelineRow[] = buildDeputySpans(history).map((d) => ({
-    title: d.label ?? (d.title === 'firstSec' ? 'First Secretary of State' : 'Deputy Prime Minister'),
+    title: d.label ?? (d.title === 'firstSec' ? 'First Secretary of State' : ((game.arena ?? 'uk') === 'uk' ? 'Deputy Prime Minister' : 'Deputy First Minister')),
     start: d.start, end: close(d.end),
   }));
   const committee: TimelineRow[] = buildCommitteeSpans(history).map((c) => ({
@@ -354,7 +354,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>
             {arena === 'uk'
-              ? CHAMBERS[jumpTargets(game)[0]].house.replace(/^the /, (m) => m.toUpperCase())
+              ? houseHeading(jumpTargets(game)[0])
               : 'Westminster'}
           </h3>
           {!canJump(game) ? (
@@ -383,7 +383,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {jumpTargets(game).map((a) => (
                   <button key={a} className="btn" onClick={() => setJumpTarget(a)}>
-                    {CHAMBERS[a].house.replace(/^the /, (m) => m.toUpperCase())} · {CHAMBERS[a].seat}
+                    {houseHeading(a)} · {CHAMBERS[a].seat}
                   </button>
                 ))}
               </div>
