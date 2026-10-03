@@ -247,6 +247,15 @@ describe("the chamber's voice", () => {
     expect(out).toContain('Trefnydd');
     expect(out).toContain('Cathays Park');
   });
+  it('uses the Welsh two-tier rank nouns as they stood on the day', () => {
+    const before = chamberVoice('wales', 'A Secretary of State and a Minister of State met the Chancellor.', WELSH_CABSEC_DAY - 1);
+    expect(before).toContain('A Minister and a Deputy Minister');
+    expect(before).toContain('Finance Minister');
+    const after = chamberVoice('wales', 'A Secretary of State and a Minister of State met the Chancellor.', WELSH_CABSEC_DAY);
+    expect(after).toContain('A Cabinet Secretary and a Minister');
+    expect(after).toContain('Finance Secretary');
+    expect(chamberVoice('scotland', 'A Secretary of State and a Minister of State.', 0)).toContain('A Cabinet Secretary and a Minister');
+  });
   it('is a no-op in the Commons', () => {
     expect(chamberVoice('uk', 'The Prime Minister tells MPs.')).toBe('The Prime Minister tells MPs.');
   });

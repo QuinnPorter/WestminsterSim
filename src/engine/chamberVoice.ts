@@ -1,5 +1,5 @@
 import { ArenaId, DrawnCard, GameDay, GameState } from '../types/game';
-import { chamberAt } from '../data/chambers';
+import { chamberAt, ministerialTitlesAt } from '../data/chambers';
 
 /**
  * Rewrite Commons-specific nouns into the live chamber's.
@@ -27,7 +27,13 @@ function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
   const c = chamberAt(arena, day);
   const houseNoArticle = c.house.replace(/^the /, '');
   const scottish = arena === 'scotland';
-  const finance = 'Finance Secretary';
+  // the two ministerial tiers, as the chamber styled them on the day: a Welsh
+  // cabinet minister was "Minister for X" and the junior rung "Deputy Minister
+  // for X" until March 2024, Cabinet Secretary and Minister after it
+  const ranks = ministerialTitlesAt(arena, day);
+  const senior = ranks.senior.replace(/ for$/, '');
+  const junior = ranks.junior.replace(/ for$/, '');
+  const finance = senior === 'Minister' ? 'Finance Minister' : 'Finance Secretary';
   return [
     // the polity, while no chamber name has been inserted yet
     [/\bnationwide\b/g, `${c.place}-wide`],
@@ -59,10 +65,10 @@ function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
     [/\bCabinet Office\b/g, scottish ? 'St Andrew’s House' : 'Cathays Park'],
 
     // the ranks
-    [/\bSecretaries of State\b/g, 'Cabinet Secretaries'],
-    [/\bSecretary of State\b/g, 'Cabinet Secretary'],
-    [/\bMinisters of State\b/g, 'Ministers'],
-    [/\bMinister of State\b/g, 'Minister'],
+    [/\bSecretaries of State\b/g, `${senior}s`],
+    [/\bSecretary of State\b/g, senior],
+    [/\bMinisters of State\b/g, `${junior}s`],
+    [/\bMinister of State\b/g, junior],
     [/\bParliamentary Private Secretar(y|ies)\b/g, scottish ? 'Parliamentary Liaison Officer$1' : 'parliamentary aide$1'],
     [/\bPPSs\b/g, scottish ? 'PLOs' : 'aides'],
     [/\bPPS\b/g, scottish ? 'PLO' : 'aide'],
