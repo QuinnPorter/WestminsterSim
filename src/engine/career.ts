@@ -879,6 +879,7 @@ export function reassignJuniorPartnerDeputy(state: GameState, party: PartyId, ne
   if (newLeaderId === 'player') {
     state.player.flags._isDeputyPM = true;
     state.player.flags._everDeputyPM = true;
+    state.player.flags._everDeputyArena = state.arena ?? 'uk';
   }
 }
 
@@ -919,7 +920,7 @@ export function appointNpcDeputyPm(state: GameState, rng: Rng): void {
  *  deputy — re-earned each term) and re-rolls the NPC appointment */
 function redecideNpcDeputyPm(state: GameState, rng: Rng): void {
   if (state.player.flags._isDeputyPM) {
-    const dep = deputyPrefix(state.government.deputyTitle); // capture before clearing
+    const dep = deputyPrefix(state.government.deputyTitle, state.arena ?? 'uk'); // capture before clearing
     // re-appointed for the new term only if still in government AND the PM still rates
     // you (relationship + standing + a little chance); losing government always loses it
     const eligible = playerInGovernmentBloc(state)
@@ -955,7 +956,7 @@ export function setDeputyPmCore(state: GameState, _rng: Rng, characterId: string
   state.government.deputyPmId = characterId;
   state.government.deputyTitle = state.government.deputyTitle ?? 'dpm';
   const name = state.characters[characterId]?.name ?? 'a senior minister';
-  const prefix = deputyPrefix(state.government.deputyTitle);
+  const prefix = deputyPrefix(state.government.deputyTitle, state.arena ?? 'uk');
   state.history.push({
     kind: 'event', date: state.day,
     headline: `${state.player.name} appoints ${name} ${prefix}`,
@@ -3108,6 +3109,7 @@ export function seatPlayerJuniorPartner(state: GameState, rng: Rng, forceBrief =
     state.government.deputyTitle = 'dpm';
     state.player.flags._isDeputyPM = true;
     state.player.flags._everDeputyPM = true;
+    state.player.flags._everDeputyArena = state.arena ?? 'uk';
   } else {
     delete state.player.flags._isDeputyPM;
   }
@@ -3307,8 +3309,8 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const keepDeputy = isDeputy && deputyEligibleOffice(officeId) && pmKeepsDeputy(state, rng);
       const deputyLine = isDeputy
         ? (keepDeputy
-          ? ` You would keep your post as ${deputyPrefix(state.government.deputyTitle)} alongside the new brief.`
-          : ` Taking it means giving up your post as ${deputyPrefix(state.government.deputyTitle)}.`)
+          ? ` You would keep your post as ${deputyPrefix(state.government.deputyTitle, state.arena ?? 'uk')} alongside the new brief.`
+          : ` Taking it means giving up your post as ${deputyPrefix(state.government.deputyTitle, state.arena ?? 'uk')}.`)
         : '';
       // a sideways/demotion move can arrive as a forced "accept or resign" push half the
       // time (a promotion or a first-rung offer is never forced — there's a free decline)
@@ -4209,19 +4211,23 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       };
     }
     case 'deputyPmOffer': {
-      const pmName = state.characters[state.government.pmId]?.name ?? 'the Prime Minister';
+      const arena = state.arena ?? 'uk';
+      const chamber = chamberOf(arena);
+      const pmName = state.characters[state.government.pmId]?.name ?? `the ${chamber.head}`;
       return {
         cardId: `forced_deputypm_${state.day}`,
         kind: 'deputyPmOffer',
-        title: 'Number 10 calls',
-        body: `${pmName} wants to see you alone. The offer, when it comes, is the one every senior minister dreams of: to serve as the government's number two — Deputy Prime Minister and First Secretary, deputising at PMQs, chairing Cabinet in the PM's absence. It is a vote of total confidence. It also makes you the obvious successor, which not everyone will love.`,
+        title: `${chamber.headOffice} calls`,
+        body: arena === 'uk'
+          ? `${pmName} wants to see you alone. The offer, when it comes, is the one every senior minister dreams of: to serve as the government's number two — Deputy Prime Minister and First Secretary, deputising at PMQs, chairing Cabinet in the PM's absence. It is a vote of total confidence. It also makes you the obvious successor, which not everyone will love.`
+          : `${pmName} wants to see you alone. The offer, when it comes, is the one every Cabinet Secretary dreams of: to serve as Deputy First Minister — deputising at FMQs, chairing Cabinet in the First Minister's absence. It is a vote of total confidence. It also makes you the obvious successor, which not everyone will love.`,
         choices: [{ label: 'Accept — become the deputy' }, { label: 'Decline, with thanks' }],
         payload: { advance: rng.int(7, 14) },
       };
     }
     case 'deputyRemoval': {
       const pmName = state.characters[state.government.pmId]?.name ?? 'the Prime Minister';
-      const dep = deputyPrefix(state.government.deputyTitle);
+      const dep = deputyPrefix(state.government.deputyTitle, state.arena ?? 'uk');
       const briefTitle = state.player.officeId ? OFFICES[state.player.officeId]?.title : undefined;
       // mostly a demotion to your own department; occasionally a clean-out of the cabinet
       const sacked = rng.chance(0.25);
@@ -6701,6 +6707,7 @@ export function resolveForcedChoice(
       if (choiceIndex === 0) {
         state.player.flags._isDeputyPM = true;
         state.player.flags._everDeputyPM = true;
+    state.player.flags._everDeputyArena = state.arena ?? 'uk';
         // becoming deputy displaces any incumbent — there is only ever one
         state.government.deputyPmId = 'player';
         state.government.deputyTitle = rng.chance(0.67) ? 'dpm' : 'firstSec';
@@ -6733,7 +6740,7 @@ export function resolveForcedChoice(
 
     case 'deputyRemoval': {
       const sacked = card.payload?.sacked === true;
-      const dep = deputyPrefix(state.government.deputyTitle);
+      const dep = deputyPrefix(state.government.deputyTitle, state.arena ?? 'uk');
       // sacked → out of the cabinet entirely; otherwise a demotion to the brief alone.
       // (stripOffice and clearPlayerDeputyPM both record the overlay end on the timeline.)
       if (sacked) {
@@ -7984,6 +7991,7 @@ export function buildLegacy(state: GameState): LegacySummary {
   const headArena: ArenaId = headArenas.has('uk') ? 'uk' : ([...headArenas][0] ?? 'uk');
   const leaderArena: ArenaId = leaderArenas.has('uk') ? 'uk' : ([...leaderArenas][0] ?? 'uk');
   const everDeputyPM = !!state.player.flags._everDeputyPM;
+  const deputyArena = (state.player.flags._everDeputyArena as ArenaId | undefined) ?? 'uk';
   const everCommitteeChair = !!state.player.flags._wasCommitteeChair;
   // the Speaker's Chair is a distinct top-tier honour; Deputy PM ranks just below
   // a party leader. Both outrank a plain cabinet seat. A select-committee chair is
@@ -8003,7 +8011,7 @@ export function buildLegacy(state: GameState): LegacySummary {
       : `First Minister of ${chamberOf(headArena).place}`)
     : everSpeaker ? (speakerArena === 'uk' ? 'Speaker of the House of Commons' : chamberOf(speakerArena).speakerTitle)
     : level === 3 ? (leaderArena === 'uk' ? 'Party Leader' : `Party Leader (${chamberOf(leaderArena).place})`)
-    : everDeputyPM ? 'Deputy Prime Minister'
+    : everDeputyPM ? (deputyArena === 'uk' ? 'Deputy Prime Minister' : `Deputy First Minister of ${chamberOf(deputyArena).place}`)
     : level === 2 ? `Cabinet — ${cabinetTitle}${cabinetArena === 'uk' ? '' : ` (${chamberOf(cabinetArena).place})`}`
     : everChiefRole ? chiefTitle
     : level === 1 ? `${ministerTitle}${ministerArena === 'uk' ? '' : ` (${chamberOf(ministerArena).place})`}`

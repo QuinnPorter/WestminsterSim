@@ -18,7 +18,7 @@ import { DEVOLVED_LEGISLATURES, legislatureAt } from '../../data/devolved';
 import { HOLYROOD_CONSTITUENCIES, SENEDD_CONSTITUENCIES, SENEDD_2026_CONSTITUENCIES } from '../../data/devolvedSeats';
 import { counterpartParty, leaderOfTitle, PARTIES, partyNameIn, withArticle } from '../../data/parties';
 import { houseHeading } from '../../data/chambers';
-import { seatPlayerJuniorPartner, withdrawFromCoalitionCore } from '../career';
+import { seatPlayerJuniorPartner, withdrawFromCoalitionCore, materializeForced, deputyTitleFor } from '../career';
 import { timelineRows } from '../../screens/ProfileScreen';
 import { chamberVoice } from '../chamberVoice';
 import { cardEligible } from '../cardEngine';
@@ -275,6 +275,24 @@ describe('a junior coalition partner’s leader at Holyrood', () => {
     expect(playerOfficeTitle(g)).not.toMatch(/^First Minister/);
     expect(playerOfficeTitle(g)).toMatch(/Leader of Scottish Labour|Deputy First Minister/);
     expect(playerOfficeTitle(g)).not.toContain('Leader of the Scottish Labour');
+  });
+  it('is Deputy First Minister, never Deputy Prime Minister, in every surface', () => {
+    const { g, rng } = labourInCoalition();
+    seatPlayerJuniorPartner(g, rng);
+    expect(playerOfficeTitle(g)).not.toContain('Prime Minister');
+    expect(deputyTitleFor('scotland')).toBe('Deputy First Minister');
+    const overlay = g.history.find((h) => h.kind === 'deputyOverlay' && h.action === 'start');
+    expect(overlay && (overlay as { label?: string }).label).not.toContain('Prime Minister');
+    const offer = materializeForced(g, rng, { kind: 'deputyPmOffer' });
+    expect(`${offer.title} ${offer.body}`).not.toContain('Prime Minister');
+    expect(offer.body).toContain('Deputy First Minister');
+    g.player.flags._everDeputyPM = true;
+    g.player.flags._everDeputyArena = 'scotland';
+    g.player.officeId = null;
+    // the fixture's leadership outranks the deputy post; strip it so the
+    // legacy reports the deputy title, and in the chamber's own words
+    g.history = g.history.filter((h) => !(h.kind === 'roleChange' && h.officeId === 'leader'));
+    expect(buildLegacy(g).highestOfficeTitle).toBe('Deputy First Minister of Scotland');
   });
   it('keeps one leader entry across joining and leaving the coalition', () => {
     const { g, rng } = labourInCoalition();
