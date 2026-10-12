@@ -17,7 +17,7 @@ import { OFFICES } from '../data/offices';
 import { PARLIAMENTS } from '../data/parliaments';
 import { polledPartiesForEra } from '../data/parties';
 import { canJump, jumpPartyOptions, jumpTargets, jumpToArena } from '../engine/arena';
-import { arenaPolledParties, seedNiBallot } from '../engine/polling';
+import { arenaPolledParties, pollSnapshot, seedNiBallot } from '../engine/polling';
 import { chamberOf } from '../data/chambers';
 import { speakAsChamber } from '../engine/chamberVoice';
 import { ArenaId, Era, OfficeId, PartyId } from '../types/game';
@@ -90,7 +90,7 @@ export function migrateGameState(game: GameState): GameState {
     game.government.pmSinceDay = game.parliamentStart;
   }
   if (!game.pollHistory) {
-    game.pollHistory = [{ day: game.parliamentStart, shares: { ...game.polling.shares } }];
+    game.pollHistory = [pollSnapshot(game, game.parliamentStart)];
   }
   if (game.player.flags._peakTier === undefined) {
     let peak = 0;

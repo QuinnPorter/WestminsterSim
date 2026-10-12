@@ -3,8 +3,9 @@ import { Era, PartyId } from '../../types/game';
 import { PARTIES } from '../../data/parties';
 import { PARLIAMENTS } from '../../data/parliaments';
 import {
-  NI_CONSTITUENCIES, NI_WESTMINSTER, niConstituencyName, NI_BOUNDARY_DAY,
+  NI_CONSTITUENCIES, NI_POLLED, NI_WESTMINSTER, niConstituencyName, NI_BOUNDARY_DAY,
 } from '../../data/niWestminster';
+import { westminsterWinner } from '../../generation/constituency';
 import { isoToDay } from '../clock';
 
 const ERAS: Era[] = ['2010', '2015', '2017', '2019', '2024'];
@@ -34,7 +35,7 @@ describe('Northern Ireland at Westminster: the data', () => {
       // 2024) as an independent until the Assembly is built
       const counts: Partial<Record<PartyId, number>> = {};
       for (const p of Object.values(r.winners)) {
-        const k: PartyId = PARTIES[p].devolvedOnly ? 'ind' : p;
+        const k = westminsterWinner(p);
         counts[k] = (counts[k] ?? 0) + 1;
       }
       expect(counts).toEqual(PARLIAMENTS[era].matrix.ni);
@@ -48,18 +49,11 @@ describe('Northern Ireland at Westminster: the data', () => {
         expect(r.shares[p], `${era} ${p}`).toBeGreaterThan(0);
         expect(PARTIES[p], `${era} ${p} is a party`).toBeDefined();
       }
-      for (const p of r.polled) {
+      for (const p of NI_POLLED) {
         expect(r.shares[p], `${era} polled ${p}`).toBeGreaterThan(0.03);
         expect(PARTIES[p].contestsRegions).toEqual(['ni']);
       }
       expect(isoToDay(r.election)).toBeGreaterThanOrEqual(isoToDay(PARLIAMENTS[era].firstSitting) - 60);
     });
   }
-
-  it('polls the same five parties in every era, and never Sinn Féin as a player party', () => {
-    for (const era of ERAS) {
-      expect(NI_WESTMINSTER[era].polled).toEqual(['dup', 'sf', 'sdlp', 'uup', 'alliance']);
-    }
-    expect(PARTIES.sf.abstentionist).toBe(true);
-  });
 });

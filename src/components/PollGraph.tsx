@@ -1,6 +1,6 @@
-import { GameState, PartyId, PollSnapshot } from '../types/game';
+import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
-import { arenaPolledParties, onNiBallot } from '../engine/polling';
+import { onNiBallot, playerBallot } from '../engine/polling';
 import { formatMonthYear } from '../engine/clock';
 
 /** a small multi-line poll tracker for the current parliament */
@@ -9,7 +9,8 @@ export function PollGraph({ game, width = 320, height = 140 }: {
 }) {
   const hist = game.pollHistory;
   const ni = onNiBallot(game);
-  const shareOf = (s: PollSnapshot, p: PartyId): number => (ni ? s.ni?.[p] : s.shares[p]) ?? 0;
+  const ballot = playerBallot(game);
+  const shareOf = (s: (typeof hist)[number], p: PartyId): number => ballot.shareIn(s, p) ?? 0;
   const points = ni ? hist.filter((s) => s.ni) : hist;
   if (!points || points.length < 2) {
     return (
@@ -20,8 +21,7 @@ export function PollGraph({ game, width = 320, height = 140 }: {
   }
 
   // which parties to plot: the ballot's parties that poll meaningfully at any point
-  const ballot = ni ? (game.polling.ni?.parties ?? []) : arenaPolledParties(game);
-  const parties = ballot.filter((p) => points.some((s) => shareOf(s, p) > 0.03));
+  const parties = ballot.parties.filter((p) => points.some((s) => shareOf(s, p) > 0.03));
 
   const padL = 26, padR = 6, padT = 8, padB = 18;
   const x0 = points[0].day;

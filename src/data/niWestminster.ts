@@ -68,13 +68,13 @@ export interface NiWestminsterResult {
   shares: Partial<Record<PartyId, number>>;
   /** the share taken by parties the game does not model at Westminster */
   others: number;
-  /** the parties the NI ballot polls: everyone who held or seriously contested seats */
-  polled: PartyId[];
   /** the winner of every constituency, by `NiConstituency.id` */
   winners: Record<string, PartyId>;
 }
 
-const POLLED_NI: PartyId[] = ['dup', 'sf', 'sdlp', 'uup', 'alliance'];
+/** the parties the NI ballot polls, in polling order: everyone who held or
+ *  seriously contested seats across these five elections */
+export const NI_POLLED: PartyId[] = ['dup', 'sf', 'sdlp', 'uup', 'alliance'];
 
 export const NI_WESTMINSTER: Record<Era, NiWestminsterResult> = {
   // Sinn Féin top the poll for the first time; Naomi Long unseats the First
@@ -86,7 +86,6 @@ export const NI_WESTMINSTER: Record<Era, NiWestminsterResult> = {
       ind: 0.071,
     },
     others: 0.005,
-    polled: POLLED_NI,
     winners: {
       belfastEast: 'alliance', belfastNorth: 'dup', belfastSouth: 'sdlp', belfastWest: 'sf',
       eastAntrim: 'dup', eastLondonderry: 'dup', fermanaghSouthTyrone: 'sf', foyle: 'sdlp',
@@ -104,7 +103,6 @@ export const NI_WESTMINSTER: Record<Era, NiWestminsterResult> = {
       tuv: 0.023, con: 0.013, ind: 0.028,
     },
     others: 0.023,
-    polled: POLLED_NI,
     winners: {
       belfastEast: 'dup', belfastNorth: 'dup', belfastSouth: 'sdlp', belfastWest: 'sf',
       eastAntrim: 'dup', eastLondonderry: 'dup', fermanaghSouthTyrone: 'uup', foyle: 'sdlp',
@@ -122,7 +120,6 @@ export const NI_WESTMINSTER: Record<Era, NiWestminsterResult> = {
       tuv: 0.004, ind: 0.022,
     },
     others: 0.016,
-    polled: POLLED_NI,
     winners: {
       belfastEast: 'dup', belfastNorth: 'dup', belfastSouth: 'dup', belfastWest: 'sf',
       eastAntrim: 'dup', eastLondonderry: 'dup', fermanaghSouthTyrone: 'sf', foyle: 'sf',
@@ -141,7 +138,6 @@ export const NI_WESTMINSTER: Record<Era, NiWestminsterResult> = {
       ukip: 0.001, ind: 0.002,
     },
     others: 0.023,
-    polled: POLLED_NI,
     winners: {
       belfastEast: 'dup', belfastNorth: 'sf', belfastSouth: 'sdlp', belfastWest: 'sf',
       eastAntrim: 'dup', eastLondonderry: 'dup', fermanaghSouthTyrone: 'sf', foyle: 'sdlp',
@@ -161,7 +157,6 @@ export const NI_WESTMINSTER: Record<Era, NiWestminsterResult> = {
       con: 0.001, ind: 0.030,
     },
     others: 0.032,
-    polled: POLLED_NI,
     winners: {
       belfastEast: 'dup', belfastNorth: 'sf', belfastSouth: 'sdlp', belfastWest: 'sf',
       eastAntrim: 'dup', eastLondonderry: 'dup', fermanaghSouthTyrone: 'sf', foyle: 'sdlp',

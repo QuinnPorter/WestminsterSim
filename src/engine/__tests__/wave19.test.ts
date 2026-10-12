@@ -85,14 +85,14 @@ describe('wave 19 — leader demoted to a minor party is recorded in the timelin
 describe('wave 19 — coalition partner choice', () => {
   it('offers every compatible seated party, largest first, excluding opposed ones', () => {
     const partners = compatibleCoalitionPartners(
-      { lab: 280, ld: 55, snp: 40, green: 12, con: 250 } as GameState['seats'], 'lab'
+      { lab: 280, ld: 55, snp: 40, green: 12, con: 250 } as GameState['seats'], 'lab', 'uk'
     );
     expect(partners).toEqual(['ld', 'snp', 'green']); // sorted by seats, Conservatives excluded
   });
 
   it('never offers an ideologically-banned partner', () => {
     const partners = compatibleCoalitionPartners(
-      { lab: 280, reform: 120, ld: 20 } as GameState['seats'], 'lab'
+      { lab: 280, reform: 120, ld: 20 } as GameState['seats'], 'lab', 'uk'
     );
     expect(partners).not.toContain('reform'); // Labour + populist is banned
     expect(partners).toContain('ld');

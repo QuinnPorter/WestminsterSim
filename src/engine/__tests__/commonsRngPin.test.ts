@@ -33,19 +33,17 @@ import { Rng } from '../rng';
  *
  * NI seats and the parties that stand only in NI are left out of every hash on
  * purpose: their ballot moves them on its own stream, and that is allowed.
+ *
+ * To capture a pin for a new seed or era, run the test with the entry absent:
+ * the assertion message carries the computed hash.
  */
 
 const SEEDS = [11, 23, 37];
 const ERAS: Era[] = ['2010', '2015', '2017', '2019', '2024'];
 
-/** parties whose seats live only in Northern Ireland, plus independents (the
- *  only independents in any starting matrix sit in NI seats) */
-const NI_ONLY = new Set<PartyId>(
-  (Object.keys(PARTIES) as PartyId[]).filter((p) => {
-    const regions = PARTIES[p].contestsRegions;
-    return regions.length > 0 && regions.every((r) => r === 'ni');
-  }).concat(['ind'])
-);
+/** parties whose seats live in Northern Ireland, plus independents (the only
+ *  independents in any starting matrix sit in NI seats) */
+const niOnly = (p: PartyId): boolean => p === 'ind' || PARTIES[p].contestsRegions.includes('ni');
 
 function fnv1a(s: string): string {
   let h = 0x811c9dc5;
@@ -63,7 +61,7 @@ function round(x: number | undefined): number {
 function gbShares(shares: Partial<Record<PartyId, number>>): Record<string, number> {
   const out: Record<string, number> = {};
   for (const p of Object.keys(shares).sort() as PartyId[]) {
-    if (NI_ONLY.has(p)) continue;
+    if (niOnly(p)) continue;
     out[p] = round(shares[p]);
   }
   return out;
@@ -186,23 +184,17 @@ describe('the Commons random stream is pinned', () => {
       const key = `${era}/${seed}`;
       it(`creation is unchanged for ${key}`, () => {
         const h = creationHash(newGame(seed, era));
-        if (!PINNED_CREATION[key]) console.log(`PIN creation ${key} ${h}`);
-        expect(PINNED_CREATION[key], `no creation pin for ${key}`).toBeDefined();
-        expect(h).toBe(PINNED_CREATION[key]);
+        expect(h, `creation ${key} is ${h}`).toBe(PINNED_CREATION[key]);
       });
       it(`the first count is unchanged for ${key}`, () => {
         const h = firstCountHash(newGame(seed, era));
-        if (!PINNED_FIRST_COUNT[key]) console.log(`PIN firstCount ${key} ${h}`);
-        expect(PINNED_FIRST_COUNT[key], `no first-count pin for ${key}`).toBeDefined();
-        expect(h).toBe(PINNED_FIRST_COUNT[key]);
+        expect(h, `first count ${key} is ${h}`).toBe(PINNED_FIRST_COUNT[key]);
       });
       it(`a twelve-year career is unchanged for ${key}`, () => {
         const game = newGame(seed, era);
         runCareer(game, 12);
         const h = careerHash(game);
-        if (!PINNED_CAREER[key]) console.log(`PIN career ${key} ${h}`);
-        expect(PINNED_CAREER[key], `no career pin for ${key}`).toBeDefined();
-        expect(h).toBe(PINNED_CAREER[key]);
+        expect(h, `career ${key} is ${h}`).toBe(PINNED_CAREER[key]);
       });
     }
   }

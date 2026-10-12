@@ -1,7 +1,8 @@
-import { Era, GameDay, GameState, PartyId, RegionalBallot } from '../types/game';
+import { Era, GameDay, GameState, PartyId, PollSnapshot, RegionalBallot } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
 import { isMajorIn, polledPartiesForArena } from '../data/parties';
-import { NI_WESTMINSTER } from '../data/niWestminster';
+import { NI_POLLED, NI_WESTMINSTER } from '../data/niWestminster';
+import { normalisedShares } from '../generation/constituency';
 import { Rng } from './rng';
 
 // ---------------------------------------------------------------------------
@@ -14,32 +15,22 @@ const NI_STREAM_SALT = 0x4e49; // 'NI'
 
 /** the NI ballot's structural shares for an era: the real NI-wide vote,
  *  normalised over the parties the ballot polls */
-export function niAnchorFor(era: Era): { anchor: Partial<Record<PartyId, number>>; parties: PartyId[] } {
-  const data = NI_WESTMINSTER[era];
-  const anchor: Partial<Record<PartyId, number>> = {};
-  let total = 0;
-  for (const p of data.polled) total += data.shares[p] ?? 0;
-  for (const p of data.polled) anchor[p] = (data.shares[p] ?? 0) / (total || 1);
-  return { anchor, parties: [...data.polled] };
+export function niAnchorFor(era: Era): Partial<Record<PartyId, number>> {
+  return normalisedShares(NI_WESTMINSTER[era].shares, NI_POLLED);
 }
 
 /** a fresh NI ballot sitting at its era's anchor, with its own stream seeded
- *  from `seed` without drawing from anything */
+ *  from `seed` without drawing from anything. Every Commons is created with one
+ *  (`createNewGame`) or given one on load (the v11 migration); a devolved
+ *  chamber's polling never carries one. */
 export function seedNiBallot(era: Era, seed: number): RegionalBallot {
-  const { anchor, parties } = niAnchorFor(era);
-  return { shares: { ...anchor }, anchor, parties, rngState: (seed ^ NI_STREAM_SALT) >>> 0 };
+  const anchor = niAnchorFor(era);
+  return { shares: { ...anchor }, anchor, rngState: (seed ^ NI_STREAM_SALT) >>> 0 };
 }
 
-/** the Commons' NI ballot, when the live chamber is the Commons. Every Commons
- *  is created with one (`createNewGame`) or given one on load (the v11
- *  migration); a devolved chamber has none. */
-export function niBallotOf(state: GameState): RegionalBallot | undefined {
-  return (state.arena ?? 'uk') === 'uk' ? state.polling.ni : undefined;
-}
-
-/** what the NI ballot's polling reverts toward: its last result, else its anchor */
-function niFundamentals(ballot: RegionalBallot): Partial<Record<PartyId, number>> {
-  return ballot.lastResult ?? ballot.anchor;
+/** the parties a ballot polls, in polling order */
+export function ballotParties(ballot: RegionalBallot): PartyId[] {
+  return Object.keys(ballot.anchor) as PartyId[];
 }
 
 /** a party's current polling, 0..1, on whichever ballot polls it */
@@ -47,14 +38,37 @@ export function partyPollingShare(state: GameState, party: PartyId): number {
   const gb = state.polling.shares[party];
   if (gb !== undefined) return gb;
   const ni = state.polling.ni;
-  if (ni && ni.parties.includes(party)) return ni.shares[party] ?? ni.anchor[party] ?? 0;
+  if (ni && ni.anchor[party] !== undefined) return ni.shares[party] ?? ni.anchor[party] ?? 0;
   return 0;
 }
 
 /** does the player read Northern Ireland's polls rather than the GB tracker: a
  *  member for a Northern Ireland seat at Westminster, whatever their party */
 export function onNiBallot(state: GameState): boolean {
-  return (state.arena ?? 'uk') === 'uk' && state.player.region === 'ni' && !!state.polling.ni;
+  return state.player.region === 'ni' && !!state.polling.ni;
+}
+
+/** the ballot the player's seat is fought on: Northern Ireland's for a member
+ *  for a Northern Ireland seat, the chamber's headline poll for everyone else.
+ *  `shareIn` reads it back out of a poll snapshot. */
+export function playerBallot(state: GameState): {
+  parties: PartyId[];
+  shareIn: (snapshot: PollSnapshot, party: PartyId) => number | undefined;
+} {
+  const ni = onNiBallot(state) ? state.polling.ni : undefined;
+  return ni
+    ? { parties: ballotParties(ni), shareIn: (s, p) => s.ni?.[p] }
+    : { parties: arenaPolledParties(state), shareIn: (s, p) => s.shares[p] };
+}
+
+/** a snapshot of the chamber's polling for the tracker graph, with the NI
+ *  ballot alongside when the chamber has one */
+export function pollSnapshot(state: GameState, day: GameDay = state.day): PollSnapshot {
+  return {
+    day,
+    shares: { ...state.polling.shares },
+    ...(state.polling.ni ? { ni: { ...state.polling.ni.shares } } : {}),
+  };
 }
 
 /** vote shares at the last election (or game start) — the swing anchor */
@@ -140,11 +154,7 @@ export function samplePolling(state: GameState): void {
   const hist = state.pollHistory;
   const last = hist[hist.length - 1];
   if (last && state.day - last.day < POLL_SAMPLE_GAP) return;
-  hist.push({
-    day: state.day,
-    shares: { ...state.polling.shares },
-    ...(state.polling.ni ? { ni: { ...state.polling.ni.shares } } : {}),
-  });
+  hist.push(pollSnapshot(state));
   if (hist.length > MAX_POLL_SNAPSHOTS) hist.splice(0, hist.length - MAX_POLL_SNAPSHOTS);
 }
 
@@ -192,10 +202,10 @@ export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
   // the Northern Ireland ballot walks alongside, on its own stream. Every NI
   // party reverts toward its last result (none is a "minor" party there), and
   // no NI party governs at Westminster, so there is no drag.
-  const ni = niBallotOf(state);
+  const ni = state.polling.ni;
   if (ni) {
     const niRng = new Rng(ni.rngState);
-    stepBallot(ni.shares, ni.parties, niFundamentals(ni), null, state.parliamentStart, niRng, from, toDay);
+    stepBallot(ni.shares, ballotParties(ni), ni.lastResult ?? ni.anchor, null, state.parliamentStart, niRng, from, toDay);
     ni.rngState = niRng.state;
   }
   state.polling.lastUpdated = toDay;

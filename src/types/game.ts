@@ -259,9 +259,9 @@ export interface Player {
  *  walks on its own random stream so the GB stream is untouched by it. */
 export interface RegionalBallot {
   shares: Partial<Record<PartyId, number>>;
-  /** the structural shares the seats' baselines correspond to */
+  /** the structural shares the seats' baselines correspond to; its keys are
+   *  the parties the ballot polls, in polling order */
   anchor: Partial<Record<PartyId, number>>;
-  parties: PartyId[];
   /** the ballot's own PRNG state */
   rngState: number;
   /** the ballot's shares at its last election, which its polling reverts toward */

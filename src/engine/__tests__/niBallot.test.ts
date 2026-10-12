@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { Era, GameState, PartyId } from '../../types/game';
+import { Era, GameState, PartyId, RegionId } from '../../types/game';
 import {
-  abstainsIn, counterpartParty, outsidePartyPolitics, PARTIES, playablePartiesFor,
+  abstainsIn, counterpartParty, outsidePartyPolitics, playablePartiesFor,
 } from '../../data/parties';
 import { PLAYER_REGIONS } from '../../data/regions';
-import { NI_CONSTITUENCIES, NI_WESTMINSTER, niConstituencyName } from '../../data/niWestminster';
+import { NI_CONSTITUENCIES, NI_POLLED, NI_WESTMINSTER, niConstituencyName } from '../../data/niWestminster';
 import { OFFICES } from '../../data/offices';
 import { createNewGame, SAVE_VERSION } from '../newGame';
-import { dressNiSeats } from '../../generation/constituency';
+import { dressNiSeats, westminsterWinner } from '../../generation/constituency';
 import { runElection } from '../election';
-import { onNiBallot, partyPolling, partyPollingShare, updatePolling } from '../polling';
+import { ballotParties, onNiBallot, partyPollingShare, updatePolling } from '../polling';
 import { applyPollingShock } from '../effects';
 import { initCalendar, nextStep } from '../scheduler';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
@@ -18,9 +18,9 @@ import { migrateGameState } from '../../store/gameStore';
 import { isoToDay } from '../clock';
 import { Rng } from '../rng';
 
-const NI_PARTIES: PartyId[] = ['dup', 'sf', 'sdlp', 'uup', 'alliance'];
+const NI_PARTIES = NI_POLLED;
 
-function game(opts: { seed: number; era: Era; partyId?: PartyId; region?: GameState['player']['region'] }): GameState {
+function game(opts: { seed: number; era: Era; partyId?: PartyId; region?: RegionId }): GameState {
   return createNewGame({
     name: 'Test Subject', gender: 'f', age: 40, region: opts.region ?? 'ni', background: 'lawyer',
     partyId: opts.partyId ?? 'alliance',
@@ -36,7 +36,7 @@ describe('Northern Ireland at Westminster: parties and regions', () => {
       expect(all).toEqual(expect.arrayContaining(['dup', 'uup', 'sdlp', 'alliance']));
       expect(all).not.toContain('sf');
       expect(all).not.toContain('tuv');
-      expect(playablePartiesFor(era, 'ni')).toEqual(['dup', 'uup', 'sdlp', 'alliance']);
+      expect([...playablePartiesFor(era, 'ni')].sort()).toEqual(['alliance', 'dup', 'sdlp', 'uup']);
       expect(playablePartiesFor(era, 'london')).not.toContain('dup');
     }
     expect(PLAYER_REGIONS).toContain('ni');
@@ -80,9 +80,7 @@ describe('Northern Ireland at Westminster: the seats', () => {
       const byName = new Map(ni.map((s) => [s.name, s]));
       for (const c of NI_CONSTITUENCIES) {
         const seat = byName.get(niConstituencyName(c, day))!;
-        const real = NI_WESTMINSTER[era].winners[c.id];
-        const expected = PARTIES[real].devolvedOnly ? 'ind' : real;
-        expect(seat.winner, c.name).toBe(expected);
+        expect(seat.winner, c.name).toBe(westminsterWinner(NI_WESTMINSTER[era].winners[c.id]));
         // the winner leads its own seat
         const best = (Object.keys(seat.shares) as PartyId[])
           .reduce((a, p) => ((seat.shares[p] ?? 0) > (seat.shares[a] ?? 0) ? p : a), seat.winner);
@@ -122,14 +120,13 @@ describe('Northern Ireland at Westminster: the ballot', () => {
   it('every Commons start carries an NI ballot at its era anchor, normalised over five parties', () => {
     const g = game({ seed: 1, era: '2017', partyId: 'con', region: 'london' });
     const ni = g.polling.ni!;
-    expect(ni.parties).toEqual(NI_PARTIES);
-    const sum = ni.parties.reduce((a, p) => a + (ni.shares[p] ?? 0), 0);
+    expect(ballotParties(ni)).toEqual(NI_PARTIES);
+    const sum = NI_PARTIES.reduce((a, p) => a + (ni.shares[p] ?? 0), 0);
     expect(sum).toBeCloseTo(1, 9);
     expect(ni.shares.dup).toBeGreaterThan(ni.shares.sf!);
     expect(g.pollHistory[0].ni).toBeDefined();
     expect(partyPollingShare(g, 'dup')).toBeCloseTo(ni.shares.dup!, 9);
     expect(partyPollingShare(g, 'con')).toBeCloseTo(g.polling.shares.con!, 9);
-    expect(partyPolling(g, 'dup')).toBeGreaterThan(20);
     expect(onNiBallot(g)).toBe(false);
     const niMp = game({ seed: 1, era: '2017', partyId: 'dup' });
     expect(onNiBallot(niMp)).toBe(true);
@@ -240,8 +237,7 @@ describe('Northern Ireland at Westminster: saves', () => {
     raw.version = 10;
     const m = migrateGameState(raw);
     expect(m.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(11);
-    expect(m.polling.ni?.parties).toEqual(NI_PARTIES);
+    expect(ballotParties(m.polling.ni!)).toEqual(NI_PARTIES);
     expect(m.polling.ni?.anchor.dup).toBeCloseTo(g.polling.ni!.anchor.dup!, 9);
   });
 
@@ -258,6 +254,6 @@ describe('Northern Ireland at Westminster: saves', () => {
     raw.version = 10;
     const m = migrateGameState(raw);
     expect(m.polling.ni).toBeUndefined();
-    expect(m.dormant.uk!.polling.ni?.parties).toEqual(NI_PARTIES);
+    expect(ballotParties(m.dormant.uk!.polling.ni!)).toEqual(NI_PARTIES);
   });
 });

@@ -9,6 +9,7 @@ import { resolveChoiceCore, continueCore, acknowledgeElectionCore } from './src/
 import { nextStep, initCalendar } from './src/engine/scheduler';
 import { buildLegacy } from './src/engine/career';
 import { Rng } from './src/engine/rng';
+import { PLAYABLE_NI } from './src/data/parties';
 import { GameState } from './src/types/game';
 import { formatMonthYear } from './src/engine/clock';
 
@@ -16,7 +17,7 @@ const PARTIES_BY_STRATEGY: Record<string, string[]> = {
   frontbench: ['con', 'lab', 'con', 'lab', 'ld'],
   backbench: ['con', 'lab', 'ld', 'snp', 'green'],
   free: ['con', 'lab', 'ld', 'snp', 'green', 'reform', 'con', 'lab'],
-  ni: ['dup', 'uup', 'sdlp', 'alliance'],
+  ni: [...PLAYABLE_NI],
 };
 const REGIONS = ['london', 'southEast', 'northWest', 'yorkshire', 'scotland', 'wales', 'westMidlands', 'eastMidlands'];
 const BGS = ['lawyer', 'teacher', 'business', 'journalist', 'doctor', 'councillor', 'advisor', 'tradeUnionist'];
@@ -36,7 +37,6 @@ function pickChoice(card: any, strategy: string, rng: Rng): number {
     backbench: { reshuffleOffer: 1, deputyPmOffer: 1, leadershipStand: 1, committeeChairContest: 0, speakerContest: 0 },
     frontbench: { reshuffleOffer: 0, deputyPmOffer: 0, leadershipStand: 0, committeeChairContest: 1, speakerContest: 1, leadershipBallot: 0 },
     free: {},
-    ni: {},
   };
   const map = forced[strategy] || {};
   if (card.kind in map) return Math.min(map[card.kind], n - 1);

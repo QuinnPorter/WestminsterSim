@@ -12,7 +12,7 @@ import {
 } from '../data/offices';
 import { chamberAt, chamberOf, nextFixedElectionDay } from '../data/chambers';
 import { leaderOfTitle, outsidePartyPolitics, partyNameIn, partyNameWithArticle } from '../data/parties';
-import { partyPollingShare } from './polling';
+import { partyPollingShare, pollSnapshot } from './polling';
 import { seatsForMajorityIn, workingMajorityIn } from './seats';
 import { incomingSeniorityBonus, installPlayerAsLeader, jumpToArena } from './arena';
 import { BACKGROUNDS } from '../data/backgrounds';
@@ -2640,7 +2640,7 @@ export function applyElectionAftermath(
   let forceCoalition = false;
   if (result.outcome !== 'majority' && newOpp && newOpp !== newGov) {
     const lead = (result.seats[newGov] ?? 0) - (result.seats[newOpp] ?? 0);
-    const partner = pickCoalitionPartner(result, rng, newOpp, undefined, state.arena);
+    const partner = pickCoalitionPartner(result, rng, newOpp, state.arena);
     if (lead <= 18 && partner && rng.chance(0.04)) {
       newGov = newOpp;
       newOpp = (Object.entries(result.seats) as [PartyId, number][])
@@ -2717,13 +2717,13 @@ export function applyElectionAftermath(
   } else {
     state.government.arrangement = 'minority'; // default; may be upgraded below
     const shortfall = Math.max(0, seatsForMajorityIn(result.seats, state.arena) - govSeats);
-    const partner = pickCoalitionPartner(result, rng, newGov, undefined, state.arena);
+    const partner = pickCoalitionPartner(result, rng, newGov, state.arena);
     const playerParty = state.player.partyId;
     const playerSeats = result.seats[playerParty] ?? 0;
     if (playerWonSeat && playerIsLeader(state) && playerParty === newGov) {
       // the player is the incoming PM — they choose the arrangement, picking from
       // EVERY compatible partner (the Lib Dems and the SNP both, not just one)
-      const partners = compatibleCoalitionPartners(result.seats, newGov, 3, state.arena);
+      const partners = compatibleCoalitionPartners(result.seats, newGov, state.arena);
       state.forcedQueue.push({ kind: 'coalitionTalks', payload: { partners } });
     } else if (
       playerWonSeat && playerIsLeader(state) && playerParty !== newGov &&
@@ -2732,7 +2732,7 @@ export function applyElectionAftermath(
       // the player's party holds the balance of power. Usually they're courted —
       // but the largest party isn't bound to them: ~30% of the time, when another
       // willing partner exists, it deals elsewhere and the player gets no offer.
-      const otherPartner = pickCoalitionPartner(result, rng, newGov, playerParty, state.arena);
+      const otherPartner = pickCoalitionPartner(result, rng, newGov, state.arena, playerParty);
       if (otherPartner && rng.chance(0.30)) {
         formNpcGovernment(state, rng, newGov, otherPartner);
       } else {
@@ -2777,7 +2777,7 @@ export function applyElectionAftermath(
   // …and a reshuffle cooldown armed before dissolution must not choke the new parliament
   delete state.player.flags._reshuffleCooldownUntil;
   // start a fresh polling tracker for the new parliament
-  state.pollHistory = [{ day: state.day, shares: { ...state.polling.shares }, ...(state.polling.ni ? { ni: { ...state.polling.ni.shares } } : {}) }];
+  state.pollHistory = [pollSnapshot(state)];
 
   // ---- player seat lost? ----
   if (!playerWonSeat) {
@@ -2924,8 +2924,8 @@ export function coalitionCompatible(a: PartyId, b: PartyId): boolean {
  *  the partner varies but plausibly favours larger ones. Returns null if no
  *  compatible partner exists (→ the major party governs as a minority). */
 export function pickCoalitionPartner(
-  result: { seats: Partial<Record<PartyId, number>> }, rng: Rng, newGov: PartyId, exclude?: PartyId,
-  arena: ArenaId = 'uk'
+  result: { seats: Partial<Record<PartyId, number>> }, rng: Rng, newGov: PartyId,
+  arena: ArenaId, exclude?: PartyId
 ): PartyId | null {
   const candidates = (Object.entries(result.seats) as [PartyId, number][])
     .filter(([p, seats]) =>
@@ -2941,7 +2941,7 @@ export function pickCoalitionPartner(
  *  Dems AND the SNP), not just one. Opposed parties (per coalitionCompatible) are
  *  excluded, as before. */
 export function compatibleCoalitionPartners(
-  seats: Partial<Record<PartyId, number>>, newGov: PartyId, max = 3, arena: ArenaId = 'uk'
+  seats: Partial<Record<PartyId, number>>, newGov: PartyId, arena: ArenaId, max = 3
 ): PartyId[] {
   return (Object.entries(seats) as [PartyId, number][])
     .filter(([p, n]) =>
@@ -6655,7 +6655,7 @@ export function resolveForcedChoice(
           headline: `${PARTIES[state.player.partyId].name} declines to prop up a government`,
         });
         if (majorParty) {
-          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId, state.arena);
+          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.arena, state.player.partyId);
           formNpcGovernment(state, rng, majorParty, other);
         }
         return {
@@ -6682,7 +6682,7 @@ export function resolveForcedChoice(
         }
         gain('partyStanding', -3, 'Standing');
         if (majorParty) {
-          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId, state.arena);
+          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.arena, state.player.partyId);
           formNpcGovernment(state, rng, majorParty, other);
         }
         return {

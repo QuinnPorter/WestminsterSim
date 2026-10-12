@@ -289,7 +289,7 @@ export function generateSeatMap(
 /** the party a Westminster seat is recorded under: a devolved-only party that
  *  won one (the TUV in North Antrim) is carried as an independent, because it is
  *  not on the Commons ballot */
-function westminsterWinner(p: PartyId): PartyId {
+export function westminsterWinner(p: PartyId): PartyId {
   return PARTIES[p]?.devolvedOnly ? 'ind' : p;
 }
 
@@ -399,14 +399,7 @@ export function calibrateToVoteShares(
       }
     }
   }
-  for (const seat of seatMap) {
-    if (opts.existingKeysOnly && seat.base) {
-      // rewrite the baseline in the seat's own key order
-      for (const p of Object.keys(seat.shares) as PartyId[]) seat.base[p] = seat.shares[p];
-    } else {
-      seat.base = { ...seat.shares };
-    }
-  }
+  for (const seat of seatMap) seat.base = { ...seat.shares };
 }
 
 export function countSeats(seatMap: SyntheticSeat[]): Partial<Record<PartyId, number>> {

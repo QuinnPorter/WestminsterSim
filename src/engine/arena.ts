@@ -19,7 +19,7 @@ import {
 import { generateCharacter } from '../generation/characters';
 import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
-import { partyPollingShare, updatePolling } from './polling';
+import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
 import { resignationPressure, runElection } from './election';
 import { totalSeats, workingMajorityIn } from './seats';
 import { playerListRank } from './listSeats';
@@ -483,7 +483,7 @@ export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
       state.nextElectionBy = chamber.fixedTerm
         ? nextFixedElectionDay(pollDay)
         : pollDay + chamber.termDays;
-      state.pollHistory = [{ day: pollDay, shares: { ...state.polling.shares }, ...(state.polling.ni ? { ni: { ...state.polling.ni.shares } } : {}) }];
+      state.pollHistory = [pollSnapshot(state, pollDay)];
       state.history.push({
         kind: 'event', date: pollDay,
         headline: `${partyNameIn(result.governingParty, arena)} ${

@@ -1,6 +1,7 @@
 import { GameState, PartyId, StatDelta } from '../types/game';
 import { EffectSpec } from '../types/content';
-import { arenaPolledParties } from './polling';
+import { arenaPolledParties, ballotParties } from './polling';
+import { normalisedShares } from '../generation/constituency';
 import { adjustRelationship, getRelationship, KIND_LABELS } from './relationships';
 import { clamp } from './rng';
 
@@ -48,8 +49,8 @@ export function applyPollingShock(
   deltaPts: number
 ): void {
   const ni = state.polling.ni;
-  if (ni && ni.parties.includes(party)) {
-    shockBallot(ni.shares, ni.parties, party, deltaPts);
+  if (ni && ni.anchor[party] !== undefined) {
+    shockBallot(ni.shares, ballotParties(ni), party, deltaPts);
     return;
   }
   const shares = state.polling.shares;
@@ -61,10 +62,7 @@ function shockBallot(
   shares: Partial<Record<PartyId, number>>, parties: PartyId[], party: PartyId, deltaPts: number
 ): void {
   shares[party] = Math.max(0.005, (shares[party] ?? 0) + deltaPts / 100);
-  let total = 0;
-  for (const p of parties) total += shares[p] ?? 0;
-  if (total <= 0) return;
-  for (const p of parties) shares[p] = (shares[p] ?? 0) / total;
+  Object.assign(shares, normalisedShares(shares, parties));
 }
 
 /** Apply an effect spec to the state. Returns user-facing stat deltas. */

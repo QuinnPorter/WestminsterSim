@@ -103,11 +103,6 @@ export const PLAYABLE_PARTIES: PartyId[] = [
   'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc',
 ];
 
-/** the Northern Ireland parties a Westminster career can be lived in. Sinn
- *  Féin's MPs never take their seats, so a Sinn Féin career is lived in the
- *  Assembly, not the Commons. */
-export const PLAYABLE_NI: PartyId[] = ['dup', 'uup', 'sdlp', 'alliance'];
-
 /** Sinn Féin abstain from the Commons; nobody abstains from a devolved chamber */
 export function abstainsIn(p: PartyId, arena: ArenaId | undefined): boolean {
   return !!PARTIES[p]?.abstentionist && (arena ?? 'uk') === 'uk';
@@ -123,10 +118,13 @@ export function outsidePartyPolitics(p: PartyId, arena: ArenaId | undefined): bo
   return (arena ?? 'uk') === 'uk' && !!PARTIES[p].devolvedOnly;
 }
 
-/** GB parties included in national polling (full superset across all eras) */
-export const POLLED_PARTIES: PartyId[] = [
-  'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc', 'ukip', 'brexit',
-];
+/** the Northern Ireland parties a Westminster career can be lived in: those
+ *  that stand there and sit there. Sinn Féin's MPs never take their seats, so a
+ *  Sinn Féin career is lived in the Assembly, not the Commons; the TUV is not
+ *  on the Commons ballot in this model. */
+export const PLAYABLE_NI: PartyId[] = (Object.keys(PARTIES) as PartyId[]).filter(
+  (p) => PARTIES[p].contestsRegions.includes('ni') && !outsidePartyPolitics(p, 'uk')
+);
 
 /** the polled GB parties for a given era — the right-populist slot is
  *  era-specific: UKIP (2015/2017), Brexit Party (2019), Reform UK (2024), so
