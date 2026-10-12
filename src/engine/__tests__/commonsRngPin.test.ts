@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Era, GameState, PartyId } from '../../types/game';
 import { PARTIES } from '../../data/parties';
 import { createNewGame } from '../newGame';
+import { runElection } from '../election';
+import { updatePolling } from '../polling';
 import { initCalendar, nextStep } from '../scheduler';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
 import { Rng } from '../rng';
@@ -15,15 +17,22 @@ import { Rng } from '../rng';
  * random number on a Commons tick re-rolls thousands of career-years and can
  * trip those thresholds for reasons that have nothing to do with balance.
  *
- * This test hashes the generated GB seat map and the course of a twelve-year
- * career for a handful of seeds and eras. Northern Ireland seats and the parties
- * that only stand there are left out of the hash on purpose: the NI ballot moves
- * them on its own stream, and that is allowed to change. Everything else is not.
+ * Two pins never move:
+ *   - creation: the generated GB seat map and the PRNG state after `createNewGame`;
+ *   - the first count: the GB seats, the GB vote and the PRNG state after the
+ *     first general election is run straight from a fresh game. Northern Ireland
+ *     is the last region in every matrix, so the state after the count asserts
+ *     the exact number of draws made for NI seats too.
+ * Both were captured on the tree before the Northern Ireland work (`314f7df`).
  *
- * If this test fails, the change moved the Commons stream. Either make the new
- * work draw from its own stream (see the NI ballot's `rngState`), or re-baseline
- * in a commit of its own whose message says what model change justified it, and
- * confirm `electionBalance.test.ts` is still green.
+ * The third pin, a twelve-year career, follows the whole simulation and so moves
+ * whenever the world's results change (the first time: NI seats began to swing
+ * and NI leader churn began to follow real gradients). It may be re-baselined,
+ * in a commit of its own whose message says what model change justified it, with
+ * `electionBalance.test.ts` green as the gate. The first two may not.
+ *
+ * NI seats and the parties that stand only in NI are left out of every hash on
+ * purpose: their ballot moves them on its own stream, and that is allowed.
  */
 
 const SEEDS = [11, 23, 37];
@@ -70,11 +79,29 @@ function newGame(seed: number, era: Era): GameState {
   });
 }
 
-function seatMapHash(game: GameState): string {
-  const rows = game.seatMap
+function gbSeatRows(game: GameState) {
+  return game.seatMap
     .filter((s) => s.region !== 'ni')
     .map((s) => ({ id: s.id, name: s.name, region: s.region, winner: s.winner, shares: gbShares(s.shares) }));
-  return fnv1a(JSON.stringify(rows));
+}
+
+function creationHash(game: GameState): string {
+  return fnv1a(JSON.stringify({ seats: gbSeatRows(game), rngState: game.rngState }));
+}
+
+/** run the first general election straight from a fresh game */
+function firstCountHash(game: GameState): string {
+  const rng = new Rng(game.rngState);
+  game.day = game.nextElectionBy;
+  updatePolling(game, rng, game.day);
+  const { result } = runElection(game, rng);
+  return fnv1a(JSON.stringify({
+    seats: gbSeatRows(game),
+    standings: gbShares(result.seats as Partial<Record<PartyId, number>>),
+    voteShares: gbShares(result.voteShares),
+    polling: gbShares(game.polling.shares),
+    rngState: rng.state,
+  }));
 }
 
 /** the same policy `simulateCareer` uses, kept local so the pin does not move
@@ -128,42 +155,54 @@ function careerHash(game: GameState): string {
   return fnv1a(JSON.stringify({ elections, tail }));
 }
 
-/** captured at bcf4998, before the Northern Ireland work */
-const PINNED: Record<string, { seatMap: string; career: string }> = {
-  '2010/11': { seatMap: 'ba9b3149', career: '8df2b17f' },
-  '2010/23': { seatMap: '872c3f52', career: '64f75603' },
-  '2010/37': { seatMap: '251f55b5', career: '767ffb4c' },
-  '2015/11': { seatMap: '83f74798', career: '21ce959d' },
-  '2015/23': { seatMap: '1929c8c7', career: 'fc97059c' },
-  '2015/37': { seatMap: '7450fc1b', career: '9bb6893a' },
-  '2017/11': { seatMap: '943a3e13', career: 'd12ac933' },
-  '2017/23': { seatMap: 'd67ee6b0', career: '0bdd3947' },
-  '2017/37': { seatMap: '9654b4e8', career: '3a29889b' },
-  '2019/11': { seatMap: '1117c0e3', career: 'ab4f91f2' },
-  '2019/23': { seatMap: 'b39c1aa8', career: 'ba89cbcc' },
-  '2019/37': { seatMap: 'e4e143dc', career: '0b0780a7' },
-  '2024/11': { seatMap: 'fbb97dae', career: '8875ef0b' },
-  '2024/23': { seatMap: '0f9dee39', career: '67fd20f0' },
-  '2024/37': { seatMap: 'fee3bb1b', career: 'f1a82553' },
+/** captured at 314f7df, before the Northern Ireland work. Never re-baselined. */
+const PINNED_CREATION: Record<string, string> = {
+  '2010/11': '3a9d7e3c', '2010/23': 'b62a2fc5', '2010/37': 'd1e91eb3',
+  '2015/11': '29ffc967', '2015/23': 'ed306f14', '2015/37': '6d9188c3',
+  '2017/11': 'f7d0afde', '2017/23': '4e46eb47', '2017/37': '65c13748',
+  '2019/11': '8f2134ea', '2019/23': '7ced6df9', '2019/37': 'fd12b823',
+  '2024/11': 'c0dff8e4', '2024/23': '2ad465dc', '2024/37': '195619eb',
+};
+const PINNED_FIRST_COUNT: Record<string, string> = {
+  '2010/11': '98178368', '2010/23': 'fd81c852', '2010/37': '1beff5c5',
+  '2015/11': 'aacf5528', '2015/23': 'b8954df7', '2015/37': '2b7a18ff',
+  '2017/11': 'a5d89dfd', '2017/23': '396af2cf', '2017/37': '856dc871',
+  '2019/11': 'eb574503', '2019/23': '15ecf0d5', '2019/37': '6d7c8a0b',
+  '2024/11': 'ccb18890', '2024/23': '748786b6', '2024/37': '60b76d41',
+};
+
+/** the twelve-year career. Re-baselined: see the file comment. */
+const PINNED_CAREER: Record<string, string> = {
+  '2010/11': 'f66babb9', '2010/23': '346677e0', '2010/37': '767ffb4c',
+  '2015/11': '8f5fa8ba', '2015/23': '27a34691', '2015/37': 'dd92aaeb',
+  '2017/11': 'f8b1b1a4', '2017/23': '7224eea4', '2017/37': '3a29889b',
+  '2019/11': '4a7f94ad', '2019/23': '564f2328', '2019/37': '59476e91',
+  '2024/11': '1c4b2ffe', '2024/23': '8915a3cd', '2024/37': '74aeeed0',
 };
 
 describe('the Commons random stream is pinned', () => {
   for (const era of ERAS) {
     for (const seed of SEEDS) {
       const key = `${era}/${seed}`;
-      it(`seat map and a twelve-year career are unchanged for ${key}`, () => {
+      it(`creation is unchanged for ${key}`, () => {
+        const h = creationHash(newGame(seed, era));
+        if (!PINNED_CREATION[key]) console.log(`PIN creation ${key} ${h}`);
+        expect(PINNED_CREATION[key], `no creation pin for ${key}`).toBeDefined();
+        expect(h).toBe(PINNED_CREATION[key]);
+      });
+      it(`the first count is unchanged for ${key}`, () => {
+        const h = firstCountHash(newGame(seed, era));
+        if (!PINNED_FIRST_COUNT[key]) console.log(`PIN firstCount ${key} ${h}`);
+        expect(PINNED_FIRST_COUNT[key], `no first-count pin for ${key}`).toBeDefined();
+        expect(h).toBe(PINNED_FIRST_COUNT[key]);
+      });
+      it(`a twelve-year career is unchanged for ${key}`, () => {
         const game = newGame(seed, era);
-        const seatMap = seatMapHash(game);
         runCareer(game, 12);
-        const career = careerHash(game);
-        const pinned = PINNED[key];
-        if (!pinned) {
-          // first run: print the values to paste into PINNED
-          console.log(`PIN ${key} ${seatMap} ${career}`);
-        }
-        expect(pinned, `no pin recorded for ${key}`).toBeDefined();
-        expect(seatMap).toBe(pinned.seatMap);
-        expect(career).toBe(pinned.career);
+        const h = careerHash(game);
+        if (!PINNED_CAREER[key]) console.log(`PIN career ${key} ${h}`);
+        expect(PINNED_CAREER[key], `no career pin for ${key}`).toBeDefined();
+        expect(h).toBe(PINNED_CAREER[key]);
       });
     }
   }
