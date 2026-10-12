@@ -18,6 +18,7 @@ import {
   ExecutivePlan, constrainToPartyPosts, executiveParties, hasOfficialOpposition, inExecutive,
   installExecutive, planExecutive,
 } from './executive';
+import { TEO_JUNIOR_DFM, TEO_JUNIOR_FM } from '../data/offices';
 import { incomingSeniorityBonus, installPlayerAsLeader, jumpToArena } from './arena';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { causeDepartments } from '../data/causes';
@@ -214,9 +215,12 @@ function minorPartyNameOf(state: GameState): string | undefined {
  *  at Westminster, the chamber's own rank nouns (dated) in a devolved parliament */
 function titleInLiveChamber(state: GameState, officeId: OfficeId, inGovernment: boolean): string {
   const arena = state.arena ?? 'uk';
-  return arena === 'uk'
-    ? officeTitleFor(officeId, { inGovernment, minorPartyName: minorPartyNameOf(state) })
-    : officeTitleIn(officeId, inGovernment, arena, state.day, minorPartyNameOf(state));
+  if (arena === 'uk') return officeTitleFor(officeId, { inGovernment, minorPartyName: minorPartyNameOf(state) });
+  // a spokesperson rung is the party's post whoever holds it, so it always
+  // carries the party's name, even for a party sitting in the Executive
+  const partyName = minorPartyNameOf(state)
+    ?? (officeId.includes('_spokes_') ? partyNameIn(state.player.partyId, arena) : undefined);
+  return officeTitleIn(officeId, inGovernment, arena, state.day, partyName);
 }
 
 export function playerOfficeTitle(state: GameState): string {
@@ -807,8 +811,10 @@ export function giveOffice(
   // belt and braces: a couple of paths build an office id directly from a
   // department rather than going through nextOfficeFor, so translate here too.
   // Idempotent — an office already in the live chamber passes straight through.
-  officeId = offerableOffice(state, rng, officeId)
-    ?? translateOffice(officeId, state.arena ?? 'uk', (xs) => rng.pick(xs)) ?? officeId;
+  const fitted = offerableOffice(state, rng, officeId);
+  // in a joint Executive a post the party does not hold is never handed over
+  if (!fitted && state.government.executive) return;
+  officeId = fitted ?? translateOffice(officeId, state.arena ?? 'uk', (xs) => rng.pick(xs)) ?? officeId;
   // vacate any cabinet-level post the player held
   removePlayerFromFrontbench(state, rng);
   // a select-committee chair must give up the chair to take a frontbench office
@@ -839,6 +845,10 @@ export function giveOffice(
 function removePlayerFromFrontbench(state: GameState, rng: Rng): void {
   const prev = state.player.officeId;
   if (onFrontbenchTrack(state) && prev && benchOffices(state).includes(prev)) {
+    // the Executive's formation may already have handed the post to another
+    // party's minister; that holder is not replaced
+    if (state.government.executive
+      && state.government[frontbenchSide(state)].find((p) => p.officeId === prev)?.characterId !== 'player') return;
     const replacement = newFrontbencher(state, rng, state.player.partyId, prev);
     setFrontbenchPost(state, frontbenchSide(state), prev, replacement.id);
   }
@@ -1003,10 +1013,11 @@ export function runReshuffle(state: GameState, rng: Rng, emergency = false): voi
   if (state.forcedQueue.some((e) => e.kind === 'reshuffleOffer' || e.kind === 'dismissal')) return;
 
   const tier = playerTier(state);
-  const inGov = playerInGovernment(state);
+  // a minister of any Executive party sits in the cabinet, not a shadow one
+  const inGov = playerInGovernmentBloc(state);
   const leaderName = characterName(
     state,
-    inGov ? state.government.pmId : getRelationship(state, 'leader')?.characterId
+    playerInGovernment(state) ? state.government.pmId : getRelationship(state, 'leader')?.characterId
   );
 
   state.history.push({
@@ -1131,7 +1142,11 @@ export function npcFrontbencherRetires(state: GameState, rng: Rng, party: PartyI
     : null;
   if (!side) return;
   const inGov = side === 'cabinet';
-  const post = rng.pick(state.government[side].filter((p) => p.characterId !== 'player'));
+  // only the party's own posts: in a joint Executive the cabinet seats several parties
+  const own = state.government[side].filter((p) =>
+    p.characterId !== 'player' && (!state.government.executive || state.characters[p.characterId]?.partyId === party));
+  if (own.length === 0) return;
+  const post = rng.pick(own);
   if (!post) return;
   const old = state.characters[post.characterId];
   if (old) { old.officeId = null; old.active = false; }
@@ -2635,7 +2650,24 @@ function makePlayerLeader(state: GameState, rng: Rng, opts: { softMandate?: bool
  *  a player on a shadow bench that no longer exists returns to the backbenches. */
 function reseatPlayerInExecutive(state: GameState, rng: Rng, playerWonSeat: boolean): void {
   const held = state.player.officeId;
-  if (!playerWonSeat || !held || held === 'leader' || held === 'speaker' || !benchOffices(state).includes(held)) return;
+  if (!playerWonSeat || !held || held === 'leader' || held === 'speaker') return;
+  // the Executive Office's junior posts go with the First and deputy First
+  // Ministers' parties
+  const teoParty = held === TEO_JUNIOR_FM ? state.government.governingParty
+    : held === TEO_JUNIOR_DFM ? state.government.coalitionPartner : undefined;
+  if (teoParty !== undefined) {
+    if (teoParty === state.player.partyId) return;
+    const title = playerOfficeTitle(state);
+    state.player.officeId = null;
+    state.player.officeSinceDay = null;
+    state.history.push({ kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: null, how: 'leftOffice' });
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${state.player.name} leaves office as ${title}: the post goes with the office their party no longer holds`,
+    });
+    return;
+  }
+  if (!benchOffices(state).includes(held)) return;
   const side = frontbenchSide(state);
   const post = state.government[side].find((p) => p.officeId === held);
   if (post?.characterId === 'player') return; // kept the brief
@@ -2676,14 +2708,18 @@ export function applyElectionAftermath(
   // snapshot the outgoing seat counts before they're overwritten — used to scale
   // NPC leader resignations by how much each party gained or lost
   const prevSeats = { ...state.seats };
-  // was the player's party on a frontbench track going into the election
-  const wasOnTrack = onFrontbenchTrack(state);
+  // was the player's party on a frontbench track going into the election (the
+  // Westminster test stays literal: the Executive's membership is what moves it)
+  const wasOnTrackBefore = onFrontbenchTrack(state);
 
   // a joint Executive is designated, not won: the First Minister's party is the
   // largest, and the result decides who else sits in it. Decided first, so the
   // opposition is ranked among the parties left outside.
   const plan: ExecutivePlan | null = chamberOf(state.arena).jointExecutive
-    ? planExecutive(result.seats, result.voteShares, rng, state.day, state.arena ?? 'uk')
+    ? planExecutive(result.seats, result.voteShares, rng, state.day, state.arena ?? 'uk', undefined, {
+      // the player's own decision to sit out is not rolled for them
+      neverDeclines: playerWonSeat && playerIsLeader(state) ? state.player.partyId : undefined,
+    })
     : null;
   if (plan) {
     newGov = plan.fm;
@@ -2915,7 +2951,12 @@ export function applyElectionAftermath(
 
   // ---- player kept their seat ----
   // if the player's party fell off the frontbench track, they lose office
-  const onTrack = onFrontbenchTrack(state);
+  const wasOnTrack = plan
+    ? wasOnTrackBefore
+    : state.player.partyId === prevGov || state.player.partyId === prevOpp;
+  const onTrack = plan
+    ? onFrontbenchTrack(state)
+    : state.player.partyId === newGov || state.player.partyId === newOpp;
   if (state.player.officeId && state.player.officeId !== 'speaker' && !playerIsLeader(state) && !onTrack) {
     stripOffice(state, rng, 'leftOffice');
   }
@@ -2932,7 +2973,7 @@ export function applyElectionAftermath(
     state.player.officeId !== 'speaker' &&
     !playerIsLeader(state)
   ) {
-    const nowInGov = playerInGovernmentBloc(state);
+    const nowInGov = plan ? playerInGovernmentBloc(state) : state.player.partyId === newGov;
     const expected = playerOfficeTitle(state);
     // the "Emily Thornberry effect": a shadow minister / spokesperson usually slots
     // straight into the matching brief, but the incoming leader occasionally passes
@@ -3408,7 +3449,10 @@ function settleNpcLeaderships(
 export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): DrawnCard {
   switch (ev.kind) {
     case 'reshuffleOffer': {
-      const officeId = ev.payload?.officeId as OfficeId;
+      // a joint Executive may have re-formed since the offer was queued: refit it
+      // (a no-op anywhere else: a Westminster office is its own translation)
+      const officeId = (offerableOffice(state, rng, ev.payload?.officeId as OfficeId) ?? ev.payload?.officeId) as OfficeId;
+      if (ev.payload) ev.payload.officeId = officeId;
       const sideways = ev.payload?.sideways === true;
       const title = officeTitleFor(officeId, {
         inGovernment: playerInGovernmentBloc(state),
@@ -3971,9 +4015,9 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const fate = (ev.payload?.fate as FormationFate) ?? 'retained';
       const targetOffice = ev.payload?.officeId as OfficeId | undefined;
       const leaderId = ev.payload?.leaderId as string | undefined;
-      const inGov = playerInGovernment(state);
-      const leaderName = leaderId ? characterName(state, leaderId) : (inGov ? 'The new Prime Minister' : 'The new leader');
-      const leaderTitle = inGov ? 'Prime Minister' : 'Leader of the Opposition';
+      const inGov = playerInGovernmentBloc(state);
+      const leaderName = leaderId ? characterName(state, leaderId) : (playerInGovernment(state) ? 'The new Prime Minister' : 'The new leader');
+      const leaderTitle = playerInGovernment(state) ? 'Prime Minister' : inGov ? 'leader' : 'Leader of the Opposition';
       const teamWord = inGov ? 'government' : 'shadow cabinet';
       const curTitle = state.player.officeId ? officeTitle(state.player.officeId, inGov) : 'your post';
       const newTitle = targetOffice ? officeTitle(targetOffice, inGov) : '';
@@ -6199,7 +6243,7 @@ export function resolveForcedChoice(
       const targetOffice = card.payload?.officeId as OfficeId | undefined;
       const leaderId = card.payload?.leaderId as string | undefined;
       const leaderName = leaderId ? characterName(state, leaderId) : 'the new leader';
-      const inGov = playerInGovernment(state);
+      const inGov = playerInGovernmentBloc(state);
 
       if (fate === 'sacked') {
         const graceful = choiceIndex === 0;
@@ -7300,6 +7344,8 @@ export function sackMinisterCore(state: GameState, rng: Rng, officeId: OfficeId,
   const post = state.government[side].find((p) => p.officeId === officeId);
   if (!post || post.characterId === 'player') return;
   const old = state.characters[post.characterId];
+  // in a joint Executive another party's minister is that party's to move, not yours
+  if (state.government.executive && old && old.partyId !== benchParty) return;
   // the sacked minister goes to the backbenches, resenting you (loyalty craters) —
   // and so joins the pool from which a future reshuffle might one day recall them
   if (old) {

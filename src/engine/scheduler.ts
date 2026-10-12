@@ -1152,7 +1152,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
       && !reshuffleOfferThisMonth(state) && !reshuffleOnCooldown(state)
       && !newLeaderBeatPending) {
     // a party deep in the polling mire reshuffles in desperation
-    const inTheMire = partyPolling(state, state.player.partyId) < 28;
+    const inTheMire = partyPolling(state, state.player.partyId) < 28 * chamberOf(state.arena).pressureScale;
     const hazard = RESHUFFLE_HAZARD + (inTheMire ? EMERGENCY_RESHUFFLE_BONUS : 0);
     if (rng.chance(hazard)) {
       runReshuffle(state, rng, inTheMire);

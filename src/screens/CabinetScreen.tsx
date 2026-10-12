@@ -111,7 +111,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
               characterId={post.characterId}
               title={cabinetTitleFor(officeId, isGov, isDeputy, game.government.deputyTitle, arena, game.day)}
               coalitionOf={coalitionOf}
-              onSack={canSack && isNpc
+              onSack={canSack && isNpc && !(game.government.executive && memberParty !== game.player.partyId)
                 ? () => {
                     const name = game.characters[post.characterId]?.name ?? 'this minister';
                     setSackTarget({ officeId: officeId as OfficeId, name });

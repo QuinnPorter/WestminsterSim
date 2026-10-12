@@ -4,7 +4,9 @@ import {
 import type { ExecutiveSnapshot } from '../data/niAssembly';
 import { PARTIES, outsidePartyPolitics, partyNameIn } from '../data/parties';
 import { chamberOf, isDevolved } from '../data/chambers';
-import { OFFICES, cabinetOfficesFor, cabsecOfficeId, executiveDepartments } from '../data/offices';
+import {
+  OFFICES, TEO_JUNIOR_DFM, TEO_JUNIOR_FM, cabinetOfficesFor, cabsecOfficeId, executiveDepartments,
+} from '../data/offices';
 import { dHondt } from './listSeats';
 import { workingMajorityIn } from './seats';
 import { generateCharacter } from '../generation/characters';
@@ -208,7 +210,8 @@ export interface ExecutivePlan {
  *  run, and after the 2016 reforms the smaller entitled parties may decline. */
 export function planExecutive(
   seats: Partial<Record<PartyId, number>>, shares: Partial<Record<PartyId, number>>,
-  rng: Rng, day: number, arena: ArenaId, snapshot?: ExecutiveSnapshot
+  rng: Rng, day: number, arena: ArenaId, snapshot?: ExecutiveSnapshot,
+  opts: { /** a party whose leader the player is: its choice is not rolled */ neverDeclines?: PartyId } = {}
 ): ExecutivePlan | null {
   if (!isDevolved(arena)) return null;
   const departments = executiveDepartments(arena);
@@ -229,7 +232,7 @@ export function planExecutive(
   const declined: PartyId[] = [];
   if (day >= OPPOSITION_REFORM_DAY) {
     for (const p of entitled) {
-      if (p === heads.fm || p === heads.dfm) continue;
+      if (p === heads.fm || p === heads.dfm || p === opts.neverDeclines) continue;
       if (rng.chance(DECLINE_CHANCE)) declined.push(p);
     }
   }
@@ -500,9 +503,15 @@ export function constrainToPartyPosts(
     const others = held.filter((d) => d !== current);
     return others.length > 0 ? cabsecOfficeId(arena, rng.pick(others)) : null;
   }
-  if (target.startsWith(`${arena}_spokes_`) && held.includes(dept)) {
-    const free = executiveDepartments(arena).filter((d) => !held.includes(d) && d !== current);
-    return free.length > 0 ? `${arena}_spokes_${rng.pick(free)}` : null;
+  if (target.startsWith(`${arena}_spokes_`)) {
+    // the heads' parties have a junior rung of their own in the Executive Office
+    const teo = party === state.government.governingParty ? TEO_JUNIOR_FM
+      : party === state.government.coalitionPartner ? TEO_JUNIOR_DFM : null;
+    if (teo && state.player.officeId !== teo && rng.chance(0.3)) return teo;
+    if (held.includes(dept)) {
+      const free = executiveDepartments(arena).filter((d) => !held.includes(d) && d !== current);
+      return free.length > 0 ? `${arena}_spokes_${rng.pick(free)}` : null;
+    }
   }
   return target;
 }

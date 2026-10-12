@@ -480,7 +480,7 @@ export function officeTitleIn(
     const brief = devolvedBriefName(devolved, office.department);
     // a spokesperson rung is a party post whoever holds it
     if (officeId === spokespersonOfficeId(devolved, office.department)) {
-      return `${minorPartyName ?? partyNameInChamber(arena)} Spokesperson for ${brief}`;
+      return minorPartyName ? `${minorPartyName} Spokesperson for ${brief}` : `Spokesperson for ${brief}`;
     }
     const nouns = ministerialTitlesAt(office.arena, day ?? Number.MAX_SAFE_INTEGER);
     const noun = office.tier === 4 ? nouns.senior : nouns.junior;
@@ -490,12 +490,6 @@ export function officeTitleIn(
     return `Shadow ${styled}`;
   }
   return officeTitleFor(officeId, { inGovernment, minorPartyName });
-}
-
-/** the possessive a spokesperson rung is titled with when no party name is
- *  passed: the chamber's own word for its parties */
-function partyNameInChamber(arena: ArenaId | undefined): string {
-  return arena === 'ni' ? 'Party' : 'Party';
 }
 
 /** Title for an office, aware of minor-party spokesperson naming. Pass
