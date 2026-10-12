@@ -13,7 +13,8 @@ import { isoToDay, UK_TERM_DAYS } from './clock';
 import { seatCoalitionCabinet } from './career';
 import { catchUpArena, startInNation, ukEraFor } from './arena';
 import { polledPartiesForEra } from '../data/parties';
-import { workingMajority } from './seats';
+import { workingMajorityIn } from './seats';
+import { seedNiBallot } from './polling';
 
 export interface CreationInput {
   name: string;
@@ -34,7 +35,7 @@ export interface CreationInput {
   devolvedElection?: string;
 }
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;
@@ -204,7 +205,7 @@ export function createNewGame(input: CreationInput): GameState {
   const player = buildPlayer(input, playerSeatId, startDay);
 
   // working majority excluding SF + Speaker
-  const majority = workingMajority(seats, govParty);
+  const majority = workingMajorityIn(seats, govParty, 'uk');
 
   const state: GameState = {
     version: SAVE_VERSION,
@@ -238,8 +239,10 @@ export function createNewGame(input: CreationInput): GameState {
       termsInPower: 1,
       loInheritedPolls: (data.baselineShares[oppParty] ?? 0) * 100,
     },
-    polling: { shares: { ...data.baselineShares }, lastUpdated: startDay },
-    pollHistory: [{ day: startDay, shares: { ...data.baselineShares } }],
+    // the GB poll, and alongside it Northern Ireland's own ballot on its own
+    // stream, seeded from the career's seed without a draw
+    polling: { shares: { ...data.baselineShares }, lastUpdated: startDay, ni: seedNiBallot(era, seed) },
+    pollHistory: [{ day: startDay, shares: { ...data.baselineShares }, ni: { ...seedNiBallot(era, seed).shares } }],
     history: [
       {
         kind: 'enteredParliament',

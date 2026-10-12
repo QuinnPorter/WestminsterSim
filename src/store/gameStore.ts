@@ -17,7 +17,7 @@ import { OFFICES } from '../data/offices';
 import { PARLIAMENTS } from '../data/parliaments';
 import { polledPartiesForEra } from '../data/parties';
 import { canJump, jumpPartyOptions, jumpTargets, jumpToArena } from '../engine/arena';
-import { arenaPolledParties } from '../engine/polling';
+import { arenaPolledParties, seedNiBallot } from '../engine/polling';
 import { chamberOf } from '../data/chambers';
 import { speakAsChamber } from '../engine/chamberVoice';
 import { ArenaId, Era, OfficeId, PartyId } from '../types/game';
@@ -173,6 +173,13 @@ export function migrateGameState(game: GameState): GameState {
   // pre-v10 results carry no chamber and were all Westminster
   for (const r of Object.values(game.elections)) {
     if (r.arena === undefined) r.arena = 'uk';
+  }
+  // v11 — the Northern Ireland ballot. The Commons polling (live, or frozen
+  // behind a devolved career) gains the NI ballot at its era's anchor, with its
+  // own stream derived from the save's state without advancing it.
+  {
+    const commons = (game.arena ?? 'uk') === 'uk' ? game.polling : game.dormant?.uk?.polling;
+    if (commons && !commons.ni) commons.ni = seedNiBallot(game.startEra, game.rngState);
   }
   // clear any "ghost" ministers carrying a cabinet title they no longer hold
   // (e.g. an NPC the player displaced in an older save). Idempotent.

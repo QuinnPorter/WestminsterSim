@@ -5,7 +5,7 @@ import {
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { CauseGrid, toggleCause as toggleCauseList, MAX_CAUSES } from '../components/CauseGrid';
-import { PARTIES, partyNameIn, playablePartiesForEra, populistPartyForEra } from '../data/parties';
+import { PARTIES, partyNameIn, playablePartiesFor, populistPartyForEra } from '../data/parties';
 import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
 import { PARLIAMENTS } from '../data/parliaments';
@@ -121,14 +121,14 @@ export function NewCareerScreen() {
   );
   /** the parties actually on the ballot in the chosen chamber and era */
   const chamberParties: PartyId[] = arena === 'uk'
-    ? playablePartiesForEra(era)
+    ? playablePartiesFor(era)
     : (devolvedSnap?.parties ?? []);
 
   /** move to a chamber, carrying the selection somewhere valid */
   const chooseArena = (a: ArenaId) => {
     setArena(a);
     if (a === 'uk') {
-      if (!playablePartiesForEra(era).includes(partyId)) setPartyId('lab');
+      if (!playablePartiesFor(era).includes(partyId)) setPartyId('lab');
       return;
     }
     const latest = DEVOLVED_LEGISLATURES[a][DEVOLVED_LEGISLATURES[a].length - 1];

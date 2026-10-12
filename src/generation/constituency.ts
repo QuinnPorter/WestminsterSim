@@ -9,7 +9,9 @@ import { LIST_RATIO, LegislatureSnapshot } from '../data/devolved';
 import {
   HOLYROOD_CONSTITUENCIES, SENEDD_2026_FROM_REGION, SENEDD_CONSTITUENCIES,
 } from '../data/devolvedSeats';
+import { NI_CONSTITUENCIES, NI_WESTMINSTER, niConstituencyName } from '../data/niWestminster';
 import { Rng } from '../engine/rng';
+import { isoToDay } from '../engine/clock';
 import { dHondt, listSeatsOf } from '../engine/listSeats';
 
 /** The parties on a ballot in this seat. `ballot`, when given, is the list of
@@ -258,6 +260,9 @@ export function generateSeatMap(
     }
   }
 
+  // the Commons' Northern Ireland seats are real places with a real vote
+  if (arena === 'uk') dressNiSeats(seatMap, era);
+
   // A regional party only stands where it actually fights elections: the SNP in
   // Scotland, Plaid Cymru in Wales, the NI parties in Northern Ireland. If the
   // player picked an incompatible home region (e.g. an SNP candidate notionally
@@ -279,6 +284,82 @@ export function generateSeatMap(
     rng, seatMap.filter((s) => s.region === effectiveRegion && s.winner !== 'spk'), playerParty
   );
   return { seatMap, playerSeatId, playerRegion: effectiveRegion };
+}
+
+/** the party a Westminster seat is recorded under: a devolved-only party that
+ *  won one (the TUV in North Antrim) is carried as an independent, because it is
+ *  not on the Commons ballot */
+function westminsterWinner(p: PartyId): PartyId {
+  return PARTIES[p]?.devolvedOnly ? 'ind' : p;
+}
+
+/**
+ * Dress the generated Northern Ireland seats as the eighteen real constituencies:
+ * each takes the name of a real seat its party actually won that year, and the
+ * seats' shares are rescaled so the vote they imply matches the published
+ * NI-wide result, with every winner still ahead.
+ *
+ * Deterministic and key-preserving by construction: it takes no Rng, and it
+ * only ever rewrites values of share keys a seat already has. The election
+ * engine draws one random number per share key per seat, so adding a key here
+ * would move the Commons random stream for every career.
+ */
+export function dressNiSeats(seatMap: SyntheticSeat[], era: Era): void {
+  const data = NI_WESTMINSTER[era];
+  const niSeats = seatMap.filter((s) => s.region === 'ni');
+  // only the real House has the real seats
+  if (!data || niSeats.length !== NI_CONSTITUENCIES.length) return;
+  const day = isoToDay(data.election);
+
+  // names: every real constituency to an unused seat its winner holds
+  const taken = new Set<string>();
+  for (const c of NI_CONSTITUENCIES) {
+    const want = westminsterWinner(data.winners[c.id]);
+    const seat = niSeats.find((s) => !taken.has(s.id) && s.winner === want);
+    if (!seat) continue;
+    taken.add(seat.id);
+    seat.name = niConstituencyName(c, day);
+  }
+
+  // climate: scale each seat's existing keys toward the NI-wide vote. The target
+  // for a key is the party's real share; keys the published table does not
+  // carry (an off-ballot party on a seat) keep their value and absorb the rest.
+  for (let pass = 0; pass < 4; pass++) {
+    const implied: Partial<Record<PartyId, number>> = {};
+    for (const seat of niSeats) {
+      for (const [p, v] of Object.entries(seat.shares) as [PartyId, number | undefined][]) {
+        implied[p] = (implied[p] ?? 0) + (v ?? 0);
+      }
+    }
+    for (const seat of niSeats) {
+      for (const p of Object.keys(seat.shares) as PartyId[]) {
+        const want = data.shares[p];
+        const have = (implied[p] ?? 0) / niSeats.length;
+        if (want === undefined || want <= 0 || have <= 0) continue;
+        seat.shares[p] = (seat.shares[p] ?? 0) * (want / have);
+      }
+      let sum = 0;
+      for (const v of Object.values(seat.shares)) sum += v ?? 0;
+      if (sum <= 0) continue;
+      for (const p of Object.keys(seat.shares) as PartyId[]) {
+        seat.shares[p] = (seat.shares[p] ?? 0) / sum;
+      }
+      // the real winner stays ahead: swap values, never keys
+      const best = (Object.keys(seat.shares) as PartyId[])
+        .reduce((a, p) => ((seat.shares[p] ?? 0) > (seat.shares[a] ?? 0) ? p : a), seat.winner);
+      if (best !== seat.winner) {
+        const swap = seat.shares[best] ?? 0;
+        seat.shares[best] = seat.shares[seat.winner] ?? 0;
+        seat.shares[seat.winner] = swap;
+      }
+    }
+  }
+  for (const seat of niSeats) {
+    // rewrite the baseline in the seat's own key order
+    for (const p of Object.keys(seat.shares) as PartyId[]) {
+      if (seat.base) seat.base[p] = seat.shares[p];
+    }
+  }
 }
 
 /** pick the player's seat from `candidates`: one their party holds, else the most

@@ -1,7 +1,8 @@
 /* Headless QA play-harness — drives the pure engine to "play" full careers and emit
  * a compact transcript + summary + auto-flagged anomalies. NOT game code; a test tool.
  * Usage:  npx tsx qa-harness.mts <strategy> <startSeed> <count>
- *   strategy: backbench | frontbench | free
+ *   strategy: backbench | frontbench | free | ni
+ *   ni: a Northern Ireland MP (DUP, UUP, SDLP or Alliance) sitting for a Northern Ireland seat
  * Prints one block per game to stdout. */
 import { createNewGame, CreationInput } from './src/engine/newGame';
 import { resolveChoiceCore, continueCore, acknowledgeElectionCore } from './src/engine/turn';
@@ -15,6 +16,7 @@ const PARTIES_BY_STRATEGY: Record<string, string[]> = {
   frontbench: ['con', 'lab', 'con', 'lab', 'ld'],
   backbench: ['con', 'lab', 'ld', 'snp', 'green'],
   free: ['con', 'lab', 'ld', 'snp', 'green', 'reform', 'con', 'lab'],
+  ni: ['dup', 'uup', 'sdlp', 'alliance'],
 };
 const REGIONS = ['london', 'southEast', 'northWest', 'yorkshire', 'scotland', 'wales', 'westMidlands', 'eastMidlands'];
 const BGS = ['lawyer', 'teacher', 'business', 'journalist', 'doctor', 'councillor', 'advisor', 'tradeUnionist'];
@@ -34,6 +36,7 @@ function pickChoice(card: any, strategy: string, rng: Rng): number {
     backbench: { reshuffleOffer: 1, deputyPmOffer: 1, leadershipStand: 1, committeeChairContest: 0, speakerContest: 0 },
     frontbench: { reshuffleOffer: 0, deputyPmOffer: 0, leadershipStand: 0, committeeChairContest: 1, speakerContest: 1, leadershipBallot: 0 },
     free: {},
+    ni: {},
   };
   const map = forced[strategy] || {};
   if (card.kind in map) return Math.min(map[card.kind], n - 1);
@@ -49,7 +52,7 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
   const party = PARTIES_BY_STRATEGY[strategy][seed % PARTIES_BY_STRATEGY[strategy].length];
   const input: CreationInput = {
     name: NAMES[seed % NAMES.length], gender: (seed % 3 === 0 ? 'm' : seed % 3 === 1 ? 'f' : 'nb') as any,
-    age: 32 + (seed % 30), region: REGIONS[seed % REGIONS.length] as any,
+    age: 32 + (seed % 30), region: (strategy === 'ni' ? 'ni' : REGIONS[seed % REGIONS.length]) as any,
     background: BGS[seed % BGS.length] as any, partyId: party as any,
     avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
     era: ERAS[seed % ERAS.length] as any, seed,

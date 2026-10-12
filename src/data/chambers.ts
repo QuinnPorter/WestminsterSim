@@ -133,6 +133,14 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
 
 export const DEVOLVED_ARENAS: DevolvedArenaId[] = ['scotland', 'wales'];
 
+/** the devolved chamber whose nation a region is, if that chamber is built.
+ *  Northern Ireland returns null until the Assembly exists. */
+export function nationOfRegion(region: RegionId): DevolvedArenaId | null {
+  return DEVOLVED_ARENAS.includes(region as DevolvedArenaId)
+    ? (region as DevolvedArenaId)
+    : null;
+}
+
 export function chamberOf(arena: ArenaId | undefined): ChamberProfile {
   return CHAMBERS[arena ?? 'uk'] ?? CHAMBERS.uk;
 }

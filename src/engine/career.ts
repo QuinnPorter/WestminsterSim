@@ -11,8 +11,9 @@ import {
   isGreatOffice, officeArena, officeTitle, officeTitleFor, officeTitleIn, translateOffice,
 } from '../data/offices';
 import { chamberAt, chamberOf, nextFixedElectionDay } from '../data/chambers';
-import { leaderOfTitle, partyNameIn, partyNameWithArticle } from '../data/parties';
-import { seatsForMajority, workingMajority } from './seats';
+import { leaderOfTitle, outsidePartyPolitics, partyNameIn, partyNameWithArticle } from '../data/parties';
+import { partyPollingShare } from './polling';
+import { seatsForMajorityIn, workingMajorityIn } from './seats';
 import { incomingSeniorityBonus, installPlayerAsLeader, jumpToArena } from './arena';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { causeDepartments } from '../data/causes';
@@ -2361,7 +2362,7 @@ export function resolveNpcLeadership(
     // snapshot the polling the new NPC LO inherits — the baseline a later mid-term coup
     // measures their slide against (the NPC mirror of flags._leaderTookOverPolls)
     if (winner.id !== 'player') {
-      state.government.loInheritedPolls = (state.polling.shares[party] ?? 0) * 100;
+      state.government.loInheritedPolls = partyPollingShare(state, party) * 100;
     }
     state.history.push({
       kind: 'event', date: state.day,
@@ -2533,7 +2534,7 @@ function makePlayerLeader(state: GameState, rng: Rng, opts: { softMandate?: bool
   state.player.officeSinceDay = state.day;
   // record the polling the player inherits, so "failed to improve" can bite later;
   // and clear any stale resignation pledge from a previous spell as leader
-  state.player.flags._leaderTookOverPolls = (state.polling.shares[party] ?? 0) * 100;
+  state.player.flags._leaderTookOverPolls = partyPollingShare(state, party) * 100;
   delete state.player.flags._pledgeResignBy;
   // a leader crowned without a real contest carries a soft, never-tested mandate — the
   // party gave them the job but not the scars, and the authority frays faster (scheduler)
@@ -2629,7 +2630,7 @@ export function applyElectionAftermath(
   // can take it from a collapsed Conservative or Labour party. Sinn Féin abstain,
   // and the Speaker / independents sit outside party politics, so none can lead it.
   const ranked = (Object.entries(result.seats) as [PartyId, number][])
-    .filter(([p, n]) => p !== newGov && p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] && (n ?? 0) > 0)
+    .filter(([p, n]) => p !== newGov && !outsidePartyPolitics(p, state.arena) && (n ?? 0) > 0)
     .sort((a, b) => b[1] - a[1]);
   let newOpp = ranked[0]?.[0] ?? (newGov === prevGov ? prevOpp : prevGov);
 
@@ -2639,11 +2640,11 @@ export function applyElectionAftermath(
   let forceCoalition = false;
   if (result.outcome !== 'majority' && newOpp && newOpp !== newGov) {
     const lead = (result.seats[newGov] ?? 0) - (result.seats[newOpp] ?? 0);
-    const partner = pickCoalitionPartner(result, rng, newOpp);
+    const partner = pickCoalitionPartner(result, rng, newOpp, undefined, state.arena);
     if (lead <= 18 && partner && rng.chance(0.04)) {
       newGov = newOpp;
       newOpp = (Object.entries(result.seats) as [PartyId, number][])
-        .filter(([p, n]) => p !== newGov && p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] && (n ?? 0) > 0)
+        .filter(([p, n]) => p !== newGov && !outsidePartyPolitics(p, state.arena) && (n ?? 0) > 0)
         .sort((a, b) => b[1] - a[1])[0]?.[0] ?? newGov;
       result.governingParty = newGov; // keep the stored result + PM history consistent
       forceCoalition = true;
@@ -2700,7 +2701,7 @@ export function applyElectionAftermath(
   // the rosters (and the player's seat on them) follow the election result
   reconcileFrontbenches(state, rng, playerWonSeat);
   const govSeats = result.seats[newGov] ?? 0;
-  state.government.majority = workingMajority(result.seats, newGov);
+  state.government.majority = workingMajorityIn(result.seats, newGov, state.arena);
 
   // incumbent fatigue: count consecutive terms the same party has governed
   state.government.termsInPower = newGov === prevGov
@@ -2715,14 +2716,14 @@ export function applyElectionAftermath(
     state.government.arrangement = 'majority';
   } else {
     state.government.arrangement = 'minority'; // default; may be upgraded below
-    const shortfall = Math.max(0, seatsForMajority(result.seats) - govSeats);
-    const partner = pickCoalitionPartner(result, rng, newGov);
+    const shortfall = Math.max(0, seatsForMajorityIn(result.seats, state.arena) - govSeats);
+    const partner = pickCoalitionPartner(result, rng, newGov, undefined, state.arena);
     const playerParty = state.player.partyId;
     const playerSeats = result.seats[playerParty] ?? 0;
     if (playerWonSeat && playerIsLeader(state) && playerParty === newGov) {
       // the player is the incoming PM — they choose the arrangement, picking from
       // EVERY compatible partner (the Lib Dems and the SNP both, not just one)
-      const partners = compatibleCoalitionPartners(result.seats, newGov);
+      const partners = compatibleCoalitionPartners(result.seats, newGov, 3, state.arena);
       state.forcedQueue.push({ kind: 'coalitionTalks', payload: { partners } });
     } else if (
       playerWonSeat && playerIsLeader(state) && playerParty !== newGov &&
@@ -2731,7 +2732,7 @@ export function applyElectionAftermath(
       // the player's party holds the balance of power. Usually they're courted —
       // but the largest party isn't bound to them: ~30% of the time, when another
       // willing partner exists, it deals elsewhere and the player gets no offer.
-      const otherPartner = pickCoalitionPartner(result, rng, newGov, playerParty);
+      const otherPartner = pickCoalitionPartner(result, rng, newGov, playerParty, state.arena);
       if (otherPartner && rng.chance(0.30)) {
         formNpcGovernment(state, rng, newGov, otherPartner);
       } else {
@@ -2776,7 +2777,7 @@ export function applyElectionAftermath(
   // …and a reshuffle cooldown armed before dissolution must not choke the new parliament
   delete state.player.flags._reshuffleCooldownUntil;
   // start a fresh polling tracker for the new parliament
-  state.pollHistory = [{ day: state.day, shares: { ...state.polling.shares } }];
+  state.pollHistory = [{ day: state.day, shares: { ...state.polling.shares }, ...(state.polling.ni ? { ni: { ...state.polling.ni.shares } } : {}) }];
 
   // ---- player seat lost? ----
   if (!playerWonSeat) {
@@ -2923,12 +2924,13 @@ export function coalitionCompatible(a: PartyId, b: PartyId): boolean {
  *  the partner varies but plausibly favours larger ones. Returns null if no
  *  compatible partner exists (→ the major party governs as a minority). */
 export function pickCoalitionPartner(
-  result: { seats: Partial<Record<PartyId, number>> }, rng: Rng, newGov: PartyId, exclude?: PartyId
+  result: { seats: Partial<Record<PartyId, number>> }, rng: Rng, newGov: PartyId, exclude?: PartyId,
+  arena: ArenaId = 'uk'
 ): PartyId | null {
   const candidates = (Object.entries(result.seats) as [PartyId, number][])
     .filter(([p, seats]) =>
       p !== newGov && p !== exclude && seats > 0 &&
-      p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] &&
+      !outsidePartyPolitics(p, arena) &&
       coalitionCompatible(newGov, p));
   if (candidates.length === 0) return null;
   return rng.pickWeighted(candidates, ([, seats]) => seats)[0];
@@ -2939,12 +2941,12 @@ export function pickCoalitionPartner(
  *  Dems AND the SNP), not just one. Opposed parties (per coalitionCompatible) are
  *  excluded, as before. */
 export function compatibleCoalitionPartners(
-  seats: Partial<Record<PartyId, number>>, newGov: PartyId, max = 3
+  seats: Partial<Record<PartyId, number>>, newGov: PartyId, max = 3, arena: ArenaId = 'uk'
 ): PartyId[] {
   return (Object.entries(seats) as [PartyId, number][])
     .filter(([p, n]) =>
       p !== newGov && (n ?? 0) > 0 &&
-      p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] &&
+      !outsidePartyPolitics(p, arena) &&
       coalitionCompatible(newGov, p))
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
     .slice(0, max)
@@ -2963,7 +2965,7 @@ function playerSeizesGovernment(state: GameState, rng: Rng): void {
   state.government.arrangement = 'minority';
   delete state.government.coalitionPartner;
   delete state.government.confidencePartner;
-  state.government.majority = workingMajority(state.seats, state.player.partyId);
+  state.government.majority = workingMajorityIn(state.seats, state.player.partyId, state.arena);
   reconcileFrontbenches(state, rng, true);
   recomputeOpposition(state, rng);
   recordPmChange(state, 'player');
@@ -3022,7 +3024,7 @@ function recomputeOpposition(state: GameState, rng: Rng): void {
   const ranked = (Object.entries(state.seats) as [PartyId, number][])
     .filter(([p, n]) =>
       p !== state.government.governingParty && p !== state.government.coalitionPartner &&
-      p !== 'sf' && p !== 'spk' && p !== 'ind' && !!PARTIES[p] && (n ?? 0) > 0)
+      !outsidePartyPolitics(p, state.arena) && (n ?? 0) > 0)
     .sort((a, b) => b[1] - a[1]);
   const opp = ranked[0]?.[0];
   // the current opposition is invalid if it has joined the government bloc, or if
@@ -3185,7 +3187,7 @@ export function dissolveCoalition(state: GameState, rng: Rng): void {
     }
   }
   state.government.coalitionPartner = undefined;
-  state.government.majority = workingMajority(state.seats, gov);
+  state.government.majority = workingMajorityIn(state.seats, gov, state.arena);
   state.government.arrangement = state.government.majority > 0 ? 'majority' : 'minority';
   // the former partner is no longer in the government bloc — it may now be the opposition
   recomputeOpposition(state, rng);
@@ -3278,7 +3280,7 @@ function settleNpcLeaderships(
   for (const [p, seats] of Object.entries(result.seats) as [PartyId, number][]) {
     if (p === newGov || p === oppParty) continue;
     if (p === state.player.partyId && playerIsLeader(state)) continue;
-    if (p === 'sf' || p === 'spk' || p === 'ind' || !PARTIES[p]) continue;
+    if (outsidePartyPolitics(p, state.arena)) continue;
     const gained = seats - (prevSeats[p] ?? 0);
     let prob = 0.45;
     if (gained > 15) prob -= 0.34;
@@ -6156,7 +6158,7 @@ export function resolveForcedChoice(
       // facing the dole queue will defenestrate even a personally popular PM. This makes a
       // polling collapse genuinely fatal rather than something a strong PM serenely rides
       // out — without it, well-regarded player-PMs survived every revolt and never fell.
-      const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+      const pollsPct = partyPollingShare(state, state.player.partyId) * 100;
       const pollDrag = pollsPct < 34
         ? -((34 - pollsPct) * 1.1 + Math.max(0, 26 - pollsPct) * 1.6)
         : 0;
@@ -6411,7 +6413,7 @@ export function resolveForcedChoice(
       // government sliding toward a wipeout loses the whipped loyalty it needs to hold a
       // confidence motion, so a collapsed share drags survival strength down — a fall is
       // reachable, not just theoretical.
-      const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+      const pollsPct = partyPollingShare(state, state.player.partyId) * 100;
       const pollDrag = pollsPct < 32 ? -Math.min(12, (32 - pollsPct) * 0.7) : 0;
       let strength = 0.4 * s.partyStanding + 0.3 * s.profile + 0.3 * s.competence + pollDrag;
       const arr = state.government.arrangement;
@@ -6478,7 +6480,7 @@ export function resolveForcedChoice(
       // electoral liability. A collapsed national share drags survival strength down — and
       // the drag accelerates into a true wipeout (below ~26) — so a genuinely failing
       // leader can actually be ousted rather than clinging on regardless of the polls.
-      const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+      const pollsPct = partyPollingShare(state, state.player.partyId) * 100;
       const pollDrag = pollsPct < 34
         ? -((34 - pollsPct) * 1.1 + Math.max(0, 26 - pollsPct) * 1.6)
         : 0;
@@ -6653,7 +6655,7 @@ export function resolveForcedChoice(
           headline: `${PARTIES[state.player.partyId].name} declines to prop up a government`,
         });
         if (majorParty) {
-          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId);
+          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId, state.arena);
           formNpcGovernment(state, rng, majorParty, other);
         }
         return {
@@ -6680,7 +6682,7 @@ export function resolveForcedChoice(
         }
         gain('partyStanding', -3, 'Standing');
         if (majorParty) {
-          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId);
+          const other = pickCoalitionPartner({ seats: state.seats }, rng, majorParty, state.player.partyId, state.arena);
           formNpcGovernment(state, rng, majorParty, other);
         }
         return {
@@ -7082,7 +7084,7 @@ export function callForPmResignationCore(state: GameState, rng: Rng): { text: st
   const prior = state.government.pmHeavePressure ?? 0;
   state.government.pmHeavePressure = prior + weight;
 
-  const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+  const pollsPct = partyPollingShare(state, state.player.partyId) * 100;
   let pmWeakness = 0;
   if (pollsPct < 30) pmWeakness += (30 - pollsPct) * 0.01;
   pmWeakness += prior / 200;
@@ -7139,7 +7141,7 @@ export function callForLeaderResignationCore(state: GameState, rng: Rng): { text
   state.government.oppLeaderPressure = prior + weight;
 
   // a leader who can't lift the party in the polls is more vulnerable to a heave
-  const pollsPct = (state.polling.shares[state.player.partyId] ?? 0) * 100;
+  const pollsPct = partyPollingShare(state, state.player.partyId) * 100;
   let weakness = 0;
   if (pollsPct < 32) weakness += (32 - pollsPct) * 0.01;
   weakness += prior / 200;

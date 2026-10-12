@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PARLIAMENTS } from '../../data/parliaments';
 import { PARTIES } from '../../data/parties';
 import { CONSTITUENCY_POOLS } from '../../data/constituencyNames';
+import { NI_CONSTITUENCIES } from '../../data/niWestminster';
 import { generateSeatMap } from '../../generation/constituency';
 import { Rng } from '../rng';
 import { Era, PartyId, RegionId } from '../../types/game';
@@ -15,6 +16,11 @@ const ALL_REGIONS = Object.keys(CONSTITUENCY_POOLS) as RegionId[];
  *  seat's name genuinely belongs to the region its winner was drawn for. The
  *  numbered "<stem> <n>" collision fallback in generateName is also accepted. */
 function nameBelongsToRegion(name: string, region: RegionId): boolean {
+  // Northern Ireland's seats are the eighteen real constituencies, under either
+  // of the names a seat has carried
+  if (region === 'ni' && NI_CONSTITUENCIES.some((c) => c.name === name || c.nameBefore2024 === name)) {
+    return true;
+  }
   const pool = CONSTITUENCY_POOLS[region];
   const stems = pool.stems;
   // bare stem

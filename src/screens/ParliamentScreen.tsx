@@ -1,11 +1,11 @@
 import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { Hemicycle } from '../components/Hemicycle';
-import { PollGraph } from '../components/PollGraph';
+import { onNiBallot, PollGraph } from '../components/PollGraph';
 import { arenaPolledParties, partyPolling } from '../engine/polling';
-import { partyNameIn } from '../data/parties';
+import { abstainsIn, partyNameIn } from '../data/parties';
 import { chamberOf, houseHeading } from '../data/chambers';
-import { seatsForMajority, totalSeats } from '../engine/seats';
+import { seatsForMajorityIn, totalSeats } from '../engine/seats';
 import { useUiStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { playerIsPM, playerIsLeader } from '../engine/career';
@@ -24,9 +24,12 @@ export function ParliamentScreen({ game }: { game: GameState }) {
 
   const gov = game.government;
   const arena = game.arena ?? 'uk';
-  const sfSeats = game.seats.sf ?? 0;
+  // seats whose members do not take them (Sinn Féin's, at Westminster)
+  const sfSeats = (Object.entries(game.seats) as [PartyId, number][])
+    .filter(([p]) => abstainsIn(p, arena))
+    .reduce((a, [, n]) => a + (n ?? 0), 0);
   const house = totalSeats(game.seats);
-  const workingTarget = seatsForMajority(game.seats);
+  const workingTarget = seatsForMajorityIn(game.seats, arena);
   const leadSeats = game.seats[gov.governingParty] ?? 0;
   // a formal coalition's seats are counted toward the government total
   const coalitionSeats = gov.arrangement === 'coalition' && gov.coalitionPartner
@@ -46,8 +49,11 @@ export function ParliamentScreen({ game }: { game: GameState }) {
     && playerIsLeader(game)
     && (isJuniorPartner || game.player.partyId === gov.governingParty);
 
-  const ranked = arenaPolledParties(game)
-    .map((p) => ({ p, v: partyPolling(game, p) }))
+  // a Northern Ireland MP's polls are Northern Ireland's: its own ballot, not the GB one
+  const niBallot = onNiBallot(game) ? game.polling.ni : undefined;
+  const ranked = (niBallot
+    ? niBallot.parties.map((p) => ({ p, v: (niBallot.shares[p] ?? 0) * 100 }))
+    : arenaPolledParties(game).map((p) => ({ p, v: partyPolling(game, p) })))
     .sort((a, b) => b.v - a.v);
   // always keep the Lib Dems on the board, even if they slip out of the top five
   const ldIncluded = ranked.some((x, i) => i < 5 && x.p === 'ld');

@@ -30,8 +30,13 @@ describe('Northern Ireland at Westminster: the data', () => {
     it(`${era}: every constituency has a winner and the winners match the era matrix`, () => {
       const ids = NI_CONSTITUENCIES.map((c) => c.id).sort();
       expect(Object.keys(r.winners).sort()).toEqual(ids);
+      // the Commons model carries a devolved-only winner (the TUV in North Antrim,
+      // 2024) as an independent until the Assembly is built
       const counts: Partial<Record<PartyId, number>> = {};
-      for (const p of Object.values(r.winners)) counts[p] = (counts[p] ?? 0) + 1;
+      for (const p of Object.values(r.winners)) {
+        const k: PartyId = PARTIES[p].devolvedOnly ? 'ind' : p;
+        counts[k] = (counts[k] ?? 0) + 1;
+      }
       expect(counts).toEqual(PARLIAMENTS[era].matrix.ni);
     });
 

@@ -4,7 +4,7 @@ import type { RoleSide } from '../engine/career';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
-import { PARTIES, counterpartParty, partyNameIn, playablePartiesForEra } from '../data/parties';
+import { PARTIES, counterpartParty, partyNameIn, playablePartiesFor } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { CHAMBERS, chamberAt, houseHeading } from '../data/chambers';
 import { canJump, homeNation, jumpPartyOptions, jumpTargets, JUMP_MIN_PROFILE } from '../engine/arena';
@@ -199,7 +199,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
   // start option, and it ends any chance of climbing the ministerial ladder).
   // Floor-crossing stays within the chamber; moving to Westminster is the jump.
   const switchableParties: PartyId[] = [
-    ...(arena === 'uk' ? playablePartiesForEra(game.startEra) : arenaPolledParties(game)),
+    ...(arena === 'uk' ? playablePartiesFor(game.startEra) : arenaPolledParties(game)),
     'ind' as PartyId,
   ].filter(
     (p) => p !== player.partyId
