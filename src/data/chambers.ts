@@ -1,7 +1,7 @@
 import { ArenaId, DevolvedArenaId, GameDay, OfficeId, PartyId, RegionId } from '../types/game';
 import { isoToDay } from '../engine/clock';
 import { HOLYROOD_REGIONS, SENEDD_2026_CONSTITUENCIES, SENEDD_REGIONS } from './devolvedSeats';
-import { NI_CONSTITUENCIES } from './niWestminster';
+import { NI_CONSTITUENCIES, niConstituencyName } from './niWestminster';
 
 /** the nouns the chamber's voice substitutes for Westminster's in generated
  *  prose. Data, so a new chamber never falls through to another's words. */
@@ -370,7 +370,7 @@ export function seatSystemAt(arena: ArenaId | undefined, day: GameDay): SeatSyst
       // the transfer count arrives each constituency is allocated by d'Hondt
       return {
         kind: 'listPr',
-        districts: NI_CONSTITUENCIES.map((c) => ({ id: c.id, name: c.name })),
+        districts: NI_CONSTITUENCIES.map((c) => ({ id: c.id, name: niConstituencyName(c, day) })),
         seatsPer: day >= NI_FIVE_SEAT_DAY ? 5 : 6,
         changeHeadline: 'The Assembly shrinks to ninety members, five for each constituency',
       };

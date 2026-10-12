@@ -14,12 +14,13 @@ import {
 import { legislatureAt } from '../data/devolved';
 import { PARLIAMENTS } from '../data/parliaments';
 import {
-  countSeats, generateDevolvedSeatMap, normalisedShares, pickDevolvedPlayerSeat,
+  countSeats, generateDevolvedSeatMap, generateListPrSeatMap, normalisedShares, pickDevolvedPlayerSeat,
 } from '../generation/constituency';
 import { generateCharacter } from '../generation/characters';
 import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
 import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
+import { initCalendar } from './calendar';
 import { resignationPressure, runElection } from './election';
 import { totalSeats, workingMajorityIn } from './seats';
 import { playerListRank } from './listSeats';
@@ -116,15 +117,15 @@ export function buildDevolvedArena(
   const snap = legislatureAt(arena, state.day);
   const electionDay = isoToDay(snap.election);
   const system = seatSystemAt(arena, electionDay);
-  if (system.kind !== 'ams') throw new Error(`no snapshot map for ${arena} on ${snap.election}`);
+  if (system.kind === 'fptp') throw new Error(`no snapshot map for ${arena} on ${snap.election}`);
 
   // the published list vote excludes the parties that won nothing; polling, the
   // swing anchor and the per-seat climate all have to be on one normalised scale
   const shares = normalisedShares(snap.shares, snap.parties);
 
-  const { seatMap, playerSeatId } = generateDevolvedSeatMap(
-    rng, arena, snap, system.regions, playerParty, state.startEra
-  );
+  const { seatMap, playerSeatId } = system.kind === 'ams'
+    ? generateDevolvedSeatMap(rng, arena, snap, system.regions, playerParty, state.startEra)
+    : generateListPrSeatMap(rng, arena, snap, system.districts, system.seatsPer, playerParty, 2);
   const seats = countSeats(seatMap);
 
   const usedNames = globalUsedNames(state);
@@ -656,6 +657,7 @@ export function jumpToArena(
   let seatId: string;
   if (existing) {
     thawArena(state, existing);
+    initCalendar(state);
     delete state.dormant[target];
     catchUpArena(state, rng, state.day);
     seatId = pickSeatFor(state, rng, party, existing.playerSeatId, {
@@ -666,6 +668,7 @@ export function jumpToArena(
   } else {
     const built = buildDevolvedArena(state, rng, target as DevolvedArenaId, party);
     thawArena(state, built.snapshot);
+    initCalendar(state);
     delete state.dormant[target];
     if (state.nextElectionBy <= state.day) {
       // the real result on record is more than a term old: fight the elections since

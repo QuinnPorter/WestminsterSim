@@ -640,23 +640,171 @@ export function pickDevolvedPlayerSeat(
     return seat.id;
   }
   if (constituencies.length > 0) return carveOutPlayerSeat(rng, constituencies, party);
-  // a pure list-PR chamber with no seat of the party's at all: take the first
-  // seat of the district where it runs strongest and flip it
-  const district = [...seatMap].sort((a, b) => (b.shares[party] ?? 0) - (a.shares[party] ?? 0))[0];
-  district.winner = party;
-  district.isPlayerSeat = true;
-  return district.id;
+  // a pure list-PR chamber with no seat of the party's at all: the last seat of
+  // the district where it runs strongest flips, never the first-allocated one
+  const best = [...seatMap].sort((a, b) => (b.shares[party] ?? 0) - (a.shares[party] ?? 0))[0];
+  const district = listSeatsOf(seatMap, best.listRegion ?? '');
+  const last = district[district.length - 1] ?? best;
+  last.winner = party;
+  last.isPlayerSeat = true;
+  return last.id;
 }
 
 // ---------------------------------------------------------------------------
 // the 2026 Senedd: closed-list PR in sixteen six-member constituencies
 // ---------------------------------------------------------------------------
 
-/** Rebuild a Senedd map for the expanded chamber. Each new constituency inherits
- *  the politics of the old region most of its voters came from, so the valleys
- *  stay Labour and Gwynedd stays Plaid. Returns the new map and the id of the
- *  seat the player now stands for (their party's `rank`-th seat in a home
- *  constituency drawn from their old region). */
+/** the party-by-party d'Hondt allocation of `seats` seats on `shares` */
+function dHondtCounts(shares: Partial<Record<PartyId, number>>, seats: number): Partial<Record<PartyId, number>> {
+  const counts: Partial<Record<PartyId, number>> = {};
+  for (const p of dHondt(shares, seats)) counts[p] = (counts[p] ?? 0) + 1;
+  return counts;
+}
+
+function sameCounts(a: Partial<Record<PartyId, number>>, b: Partial<Record<PartyId, number>>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as PartyId[]);
+  for (const k of keys) if ((a[k] ?? 0) !== (b[k] ?? 0)) return false;
+  return true;
+}
+
+/**
+ * A district's vote that reproduces its real seat row under d'Hondt, without a
+ * search: votes in proportion to seats always do (each party's quotients run
+ * s/1 … s/s = 1, so exactly Σs quotients reach 1 and every next one falls
+ * short). That vector is too neat to be a real vote, so it is blended toward a
+ * prior (the nation's vote tilted by the row) as far as the allocation still
+ * holds, by bisection on the blend. Deterministic, no random numbers.
+ */
+export function calibrateDistrict(
+  row: Partial<Record<PartyId, number>>,
+  prior: Partial<Record<PartyId, number>>,
+  seatsPer: number
+): Partial<Record<PartyId, number>> {
+  const keys = [...new Set([...Object.keys(row), ...Object.keys(prior)] as PartyId[])];
+  const exact: Partial<Record<PartyId, number>> = {};
+  for (const k of keys) exact[k] = Math.max(0.001, (row[k] ?? 0) / seatsPer);
+  const blend = (t: number): Partial<Record<PartyId, number>> => {
+    const raw: Partial<Record<PartyId, number>> = {};
+    for (const k of keys) raw[k] = t * (prior[k] ?? 0.001) + (1 - t) * (exact[k] ?? 0);
+    return normalisedShares(raw, keys);
+  };
+  const fits = (t: number) => sameCounts(dHondtCounts(blend(t), seatsPer), row);
+  if (fits(1)) return blend(1);
+  let lo = 0; // always fits
+  let hi = 1;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid; else hi = mid;
+  }
+  return blend(lo);
+}
+
+/** Build a multi-member-constituency map as it stood after a real election
+ *  (the Assembly): every district's shares are calibrated so d'Hondt returns
+ *  the seats it actually returned, and its seats are written in allocation
+ *  order. The player's seat is their party's `rank`-th in the district where
+ *  the party runs strongest, flipped from the bottom of the order if the party
+ *  holds fewer seats there than that. */
+export function generateListPrSeatMap(
+  rng: Rng,
+  arena: DevolvedArenaId,
+  snap: LegislatureSnapshot,
+  districts: { id: string; name: string }[],
+  seatsPer: number,
+  playerParty: PartyId,
+  rank: number
+): SeatMapResult {
+  const region: RegionId = arena;
+  const rows = snap.districtSeats ?? {};
+  const national = normalisedShares(snap.shares, [...snap.parties, 'ind']);
+  const seatMap: SyntheticSeat[] = [];
+  let counter = 0;
+  for (const d of districts) {
+    const row = rows[d.id] ?? {};
+    const keys = [...new Set([...snap.parties, ...(Object.keys(row) as PartyId[])])];
+    // the prior: the nation's vote, tilted toward the parties that won here
+    const prior: Partial<Record<PartyId, number>> = {};
+    for (const k of keys) prior[k] = 0.6 * (national[k] ?? 0.001) + 0.4 * ((row[k] ?? 0) / seatsPer);
+    const shares = calibrateDistrict(row, normalisedShares(prior, keys), seatsPer);
+    const order = dHondt(shares, seatsPer);
+    for (let k = 1; k <= seatsPer; k++) {
+      seatMap.push({
+        id: `seat_${arena}_${counter++}`,
+        name: d.name,
+        region,
+        winner: order[k - 1] ?? snap.parties[0],
+        shares: { ...shares },
+        base: { ...shares },
+        kind: 'list',
+        listRegion: d.id,
+        listRank: k,
+      });
+    }
+  }
+  void rng; // the map is a deterministic function of the result
+  const playerSeatId = placeListPrPlayer(seatMap, districts.map((d) => d.id), playerParty, rank);
+  return { seatMap, playerSeatId, playerRegion: region };
+}
+
+/** the player's seat in a list-PR map: their party's `rank`-th seat in the
+ *  candidate district where it runs strongest, flipping seats from the bottom
+ *  of the order until the party holds that many there */
+function placeListPrPlayer(
+  seatMap: SyntheticSeat[], candidateDistricts: string[], playerParty: PartyId, rank: number
+): string {
+  for (const s of seatMap) delete s.isPlayerSeat;
+  const home = candidateDistricts
+    .map((id) => {
+      const seats = listSeatsOf(seatMap, id);
+      const held = seats.filter((s) => s.winner === playerParty).length;
+      return { id, held, share: seats[0]?.shares[playerParty] ?? 0 };
+    })
+    .sort((a, b) => (b.held - a.held) || (b.share - a.share))[0].id;
+  const homeSeats = listSeatsOf(seatMap, home);
+  let have = homeSeats.filter((s) => s.winner === playerParty).length;
+  for (let i = homeSeats.length - 1; i >= 0 && have < rank; i--) {
+    if (homeSeats[i].winner !== playerParty) {
+      homeSeats[i].winner = playerParty;
+      have++;
+    }
+  }
+  let seen = 0;
+  let chosen = homeSeats[0];
+  for (const s of homeSeats) {
+    if (s.winner === playerParty && ++seen === rank) { chosen = s; break; }
+  }
+  chosen.isPlayerSeat = true;
+  return chosen.id;
+}
+
+/** how a chamber's map is rebuilt when its list-PR system changes shape: the
+ *  Senedd's sixteen new constituencies each inherit the politics of the old
+ *  region most of their voters came from; the Assembly's constituencies keep
+ *  their own politics when they shrink from six seats to five */
+export interface ListPrRebuild {
+  region: RegionId;
+  idPrefix: string;
+  /** new district id → the old list region it inherits; absent = its own id */
+  parentOf?: Record<string, string>;
+  /** old list region → the new districts drawn from it; absent = itself */
+  childrenOf?: Record<string, string[]>;
+}
+
+export function listPrRebuildOptions(arena: DevolvedArenaId, seatsPer: number): ListPrRebuild {
+  if (arena === 'wales') {
+    const parentOf: Record<string, string> = {};
+    for (const [oldRegion, ids] of Object.entries(SENEDD_2026_FROM_REGION)) {
+      for (const id of ids) parentOf[id] = oldRegion;
+    }
+    return { region: 'wales', idPrefix: 'seat_wales96', parentOf, childrenOf: SENEDD_2026_FROM_REGION };
+  }
+  return { region: arena, idPrefix: `seat_${arena}${seatsPer}` };
+}
+
+/** Rebuild a map for a list-PR chamber whose shape has changed. Each district
+ *  inherits the politics of the old list region it is drawn from. Returns the
+ *  new map and the id of the seat the player now stands for (their party's
+ *  `rank`-th seat in a home district drawn from their old region). */
 export function rebuildForListPr(
   rng: Rng,
   oldMap: SyntheticSeat[],
@@ -665,15 +813,12 @@ export function rebuildForListPr(
   playerSeatId: string,
   playerParty: PartyId,
   rank: number,
-  polled: PartyId[]
+  polled: PartyId[],
+  opts: ListPrRebuild
 ): { seatMap: SyntheticSeat[]; playerSeatId: string } {
-  const region: RegionId = 'wales';
+  const region = opts.region;
   const oldPlayerSeat = oldMap.find((s) => s.id === playerSeatId);
-  // district -> old region
-  const parentOf: Record<string, string> = {};
-  for (const [oldRegion, ids] of Object.entries(SENEDD_2026_FROM_REGION)) {
-    for (const id of ids) parentOf[id] = oldRegion;
-  }
+  const parentOf = (id: string): string => opts.parentOf ? (opts.parentOf[id] ?? '') : id;
   const regionMean = (oldRegion: string): Partial<Record<PartyId, number>> => {
     const seats = oldMap.filter((s) => s.listRegion === oldRegion);
     const pool = seats.length > 0 ? seats : oldMap;
@@ -689,14 +834,14 @@ export function rebuildForListPr(
   const seatMap: SyntheticSeat[] = [];
   let counter = 0;
   for (const d of districts) {
-    const mean = regionMean(parentOf[d.id] ?? '');
+    const mean = regionMean(parentOf(d.id));
     const raw: Partial<Record<PartyId, number>> = {};
     for (const p of polled) raw[p] = Math.max(0.005, (mean[p] ?? 0.01) * (1 + rng.normal(0, 0.12)));
     const shares = normalisedShares(raw, polled);
     const order = dHondt(shares, seatsPer);
     for (let k = 1; k <= seatsPer; k++) {
       seatMap.push({
-        id: `seat_wales96_${counter++}`,
+        id: `${opts.idPrefix}_${counter++}`,
         name: d.name,
         region,
         winner: order[k - 1] ?? polled[0],
@@ -709,27 +854,12 @@ export function rebuildForListPr(
     }
   }
 
-  // the player's home: a district from their old region, where their party is strongest
+  // the player's home: a district drawn from their old region (or the same
+  // constituency, where districts keep their identity)
   const homeRegion = oldPlayerSeat?.listRegion ?? '';
-  const homeIds = SENEDD_2026_FROM_REGION[homeRegion] ?? districts.map((d) => d.id);
-  const home = homeIds
-    .map((id) => ({ id, share: seatMap.find((s) => s.listRegion === id)?.shares[playerParty] ?? 0 }))
-    .sort((a, b) => b.share - a.share)[0].id;
-  const homeSeats = listSeatsOf(seatMap, home);
-  const order = homeSeats.map((s) => s.winner);
-  // make sure the party holds at least `rank` seats here, so the player has one
-  let have = order.filter((p) => p === playerParty).length;
-  for (let i = homeSeats.length - 1; i >= 0 && have < rank; i--) {
-    if (homeSeats[i].winner !== playerParty) {
-      homeSeats[i].winner = playerParty;
-      have++;
-    }
-  }
-  let seen = 0;
-  let chosen = homeSeats[0];
-  for (const s of homeSeats) {
-    if (s.winner === playerParty && ++seen === rank) { chosen = s; break; }
-  }
-  chosen.isPlayerSeat = true;
-  return { seatMap, playerSeatId: chosen.id };
+  const homeIds = opts.childrenOf
+    ? (opts.childrenOf[homeRegion] ?? districts.map((d) => d.id))
+    : (districts.some((d) => d.id === homeRegion) ? [homeRegion] : districts.map((d) => d.id));
+  const playerSeat = placeListPrPlayer(seatMap, homeIds, playerParty, rank);
+  return { seatMap, playerSeatId: playerSeat };
 }

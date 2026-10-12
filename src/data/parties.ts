@@ -249,7 +249,12 @@ export function counterpartParty(from: PartyId, to: ArenaId): PartyId | null {
   const party = PARTIES[from];
   // the Greens are three separate parties, one per island nation
   const GREENS: Partial<Record<ArenaId, PartyId>> = { uk: 'green', wales: 'green', scotland: 'sgp', ni: 'gpni' };
-  if (from === 'green' || from === 'sgp' || from === 'gpni') return GREENS[to] ?? null;
+  if (from === 'green' || from === 'sgp' || from === 'gpni') {
+    // the Westminster Greens do not stand in Northern Ireland, so a Green MLA
+    // has no Commons home; a Scottish Green does (the party stands in Scotland)
+    if (from === 'gpni' && to === 'uk') return null;
+    return GREENS[to] ?? null;
+  }
   if (to === 'uk') {
     // a devolved-only party has no Westminster home
     return party.devolvedOnly ? null : from;

@@ -4,6 +4,7 @@ import {
 import { ALL_CARDS, fallbackPoolFor } from '../content/cards';
 import { outcomeAsChamber, speakAsChamber } from './chamberVoice';
 import { chamberOf, nationOfRegion } from '../data/chambers';
+import { calendarFor, nextOccurrence } from './calendar';
 import { legislatureAt } from '../data/devolved';
 import { homeNation } from './arena';
 import { SCANDAL_ARC_BEATS } from '../content/cards/crisis';
@@ -24,7 +25,7 @@ import { relationshipValue, getRelationship, adjustRelationship, characterName }
 import { runElection } from './election';
 import { gainStat } from './effects';
 import { partyPolling, pollingLead, lastElectionShares, updatePolling } from './polling';
-import { isoToDay, yearOf, monthOf } from './clock';
+import { yearOf, monthOf } from './clock';
 import { Rng, clamp } from './rng';
 import { seatsForMajorityIn } from './seats';
 
@@ -41,37 +42,9 @@ function softMandatePressure(state: GameState): number {
 }
 
 // ---------- calendar ----------
-
-interface CalendarEvent {
-  key: string;
-  month: number; // 1-12
-  day: number;
-}
-
-const CALENDAR: CalendarEvent[] = [
-  { key: 'pmqsWinter', month: 1, day: 22 },
-  { key: 'budget', month: 3, day: 10 },
-  { key: 'locals', month: 5, day: 4 },
-  { key: 'pmqsSummer', month: 6, day: 18 },
-  { key: 'recess', month: 8, day: 5 },
-  { key: 'conference', month: 9, day: 28 },
-];
-
-function nextOccurrence(after: number, month: number, day: number): number {
-  let year = yearOf(after);
-  let due = isoToDay(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-  if (due <= after) {
-    year += 1;
-    due = isoToDay(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-  }
-  return due;
-}
-
-export function initCalendar(state: GameState): void {
-  for (const ev of CALENDAR) {
-    state.calendarDone[ev.key] = nextOccurrence(state.day, ev.month, ev.day);
-  }
-}
+// the table and its initialisation live in calendar.ts; the scheduler only
+// fires what the live chamber holds
+export { initCalendar } from './calendar';
 
 // ---------- calendar variant rotation ----------
 //
@@ -669,7 +642,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
 
   // 2. calendar events (skip while seatless)
   if (state.player.hasSeat) {
-    for (const ev of CALENDAR) {
+    for (const ev of calendarFor(state.arena)) {
       const due = state.calendarDone[ev.key];
       if (due !== undefined && state.day >= due) {
         state.calendarDone[ev.key] = nextOccurrence(state.day, ev.month, ev.day);
