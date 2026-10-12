@@ -6,7 +6,7 @@ import { ResultBar } from '../components/ResultBar';
 import { onNiBallot } from '../engine/polling';
 import { formatFull } from '../engine/clock';
 import { totalSeats } from '../engine/seats';
-import { chamberAt } from '../data/chambers';
+import { chamberAt, chamberOf } from '../data/chambers';
 import './ElectionNightScreen.css';
 
 /** staged reveal: exit poll → your count → national picture → outcome */
@@ -140,7 +140,9 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
     ? (Object.entries(niShares) as [PartyId, number][]).sort((a, b) => b[1] - a[1])
     : null;
   let verdict: string;
-  if (result.outcome === 'majority') {
+  if (gov.executive && gov.coalitionPartner) {
+    verdict = `nominates the First Minister; ${PARTIES[gov.coalitionPartner].shortName} the ${chamberOf(result.arena ?? 'uk').deputyHead}. A ${gov.executive.parties.length}-party Executive is formed`;
+  } else if (result.outcome === 'majority') {
     verdict = 'wins a majority';
   } else if (gov.arrangement === 'coalition' && partner) {
     verdict = `to govern in coalition with the ${PARTIES[partner].shortName}`;

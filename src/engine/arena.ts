@@ -21,6 +21,7 @@ import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
 import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
 import { initCalendar } from './calendar';
+import { formExecutive } from './executive';
 import { resignationPressure, runElection } from './election';
 import { totalSeats, workingMajorityIn } from './seats';
 import { playerListRank } from './listSeats';
@@ -147,7 +148,8 @@ export function buildDevolvedArena(
 
   const cabinet: CabinetPost[] = [];
   const shadowCabinet: CabinetPost[] = [];
-  for (const officeId of cabinetOfficesFor(arena)) {
+  // a joint Executive's benches are built by its formation below, party by party
+  for (const officeId of chamber.jointExecutive ? [] : cabinetOfficesFor(arena)) {
     cabinet.push({
       officeId,
       characterId: add(generateCharacter(rng, usedNames, {
@@ -185,6 +187,27 @@ export function buildDevolvedArena(
     ? nextFixedElectionDay(electionDay)
     : nextFixedElectionDay(startDay);
 
+  const since = Math.min(startDay, electionDay);
+  const pmHistory: GameState['pmHistory'] = [{
+    characterId: fm.id, name: fm.name, partyId: gov, startDay: since, endDay: null,
+  }];
+  const loHistory: GameState['loHistory'] = [{
+    characterId: oppLeader.id, name: oppLeader.name, partyId: opp, startDay: since, endDay: null,
+  }];
+  const polling = { shares: { ...shares }, lastUpdated: since };
+
+  if (chamber.jointExecutive) {
+    // the Executive the real election produced, installed on the chamber as it
+    // will be thawed: the same government, cast and tenure records
+    const forming: GameState = {
+      ...state, arena, day: since, seats, seatMap, government, characters, pmHistory, loHistory,
+      history: [], polling,
+    };
+    formExecutive(forming, rng, {
+      snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false, headline: false,
+    });
+  }
+
   return {
     playerSeatId,
     snapshot: {
@@ -193,21 +216,15 @@ export function buildDevolvedArena(
       seats,
       seatMap,
       government,
-      polling: { shares: { ...shares }, lastUpdated: Math.min(startDay, electionDay) },
-      pollHistory: [{ day: Math.min(startDay, electionDay), shares: { ...shares } }],
-      parliamentStart: Math.min(startDay, electionDay),
+      polling,
+      pollHistory: [{ day: since, shares: { ...shares } }],
+      parliamentStart: since,
       nextElectionBy,
       calendarDone: {},
       pendingContests: [],
       characters,
-      pmHistory: [{
-        characterId: fm.id, name: fm.name, partyId: gov,
-        startDay: Math.min(startDay, electionDay), endDay: null,
-      }],
-      loHistory: [{
-        characterId: oppLeader.id, name: oppLeader.name, partyId: opp,
-        startDay: Math.min(startDay, electionDay), endDay: null,
-      }],
+      pmHistory,
+      loHistory,
       anchorShares: { ...shares },
       polledParties: snap.parties,
       playerSeatId,
@@ -325,6 +342,14 @@ function installNpcGovernment(
         ? `${leader.name} steps down; ${heir.name} takes over as ${partyNameIn(party, arena)} leader`
         : `${leader.name} resigns as ${partyNameIn(party, arena)} leader after the ${chamber.place === 'the country' ? 'general' : chamber.place} election`,
     });
+  }
+
+  if (chamber.jointExecutive) {
+    // the Executive forms by right around the result; the player is not here
+    formExecutive(state, rng, { shares: state.polling.shares, playerSeated: false });
+    gv.termsInPower = gv.governingParty === prevGoverning ? (gv.termsInPower ?? 1) + 1 : 1;
+    gv.loInheritedPolls = partyPollingShare(state, gv.oppositionParty) * 100;
+    return;
   }
 
   const pmId = leaderOf(governing);
@@ -487,9 +512,11 @@ export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
       state.pollHistory = [pollSnapshot(state, pollDay)];
       state.history.push({
         kind: 'event', date: pollDay,
-        headline: `${partyNameIn(result.governingParty, arena)} ${
-          result.outcome === 'majority' ? 'wins a majority' : 'forms a minority government'
-        } ${arena === 'uk' ? 'at the general election' : `at ${chamber.seat}`}`,
+        headline: chamber.jointExecutive
+          ? `${partyNameIn(state.government.governingParty, arena)} returned as the largest party at ${chamber.seat}`
+          : `${partyNameIn(result.governingParty, arena)} ${
+            result.outcome === 'majority' ? 'wins a majority' : 'forms a minority government'
+          } ${arena === 'uk' ? 'at the general election' : `at ${chamber.seat}`}`,
       });
     }
     state.day = toDay;
@@ -1042,6 +1069,15 @@ export function installPlayerAsLeader(state: GameState, rng: Rng): void {
       characterId: 'player', name: state.player.name, partyId: party,
       startDay: state.day, endDay: null,
     }];
+  }
+  // the deputy First Minister's party has just changed leader: the post follows
+  if (state.government.executive && state.government.coalitionPartner === party) {
+    state.government.deputyPmId = 'player';
+    state.government.deputyTitle = 'dfm';
+    state.player.flags._isDeputyPM = true;
+    state.player.flags._everDeputyPM = true;
+    state.player.flags._everDeputyArena = arena;
+    state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', title: 'dfm' });
   }
   state.history.push({
     kind: 'roleChange', arena, date: state.day, officeId: 'leader',

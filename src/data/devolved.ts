@@ -1,6 +1,7 @@
 import { DevolvedArenaId, GameDay, PartyId } from '../types/game';
 import { isoToDay } from '../engine/clock';
 import { NI_ASSEMBLY } from './niAssembly';
+import type { ExecutiveSnapshot } from './niAssembly';
 
 /** One devolved general election — the starting composition for a career that
  *  begins in that chamber, or arrives in it any time after this date and before
@@ -33,6 +34,8 @@ export interface LegislatureSnapshot {
   arrangement: 'majority' | 'minority' | 'supplyConfidence' | 'coalition';
   coalitionPartner?: PartyId;
   confidencePartner?: PartyId;
+  /** a joint Executive (the Assembly): the one this election actually produced */
+  executive?: ExecutiveSnapshot;
 }
 
 /* ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
 import { PARLIAMENTS } from '../data/parliaments';
 import { CHAMBERS, DEVOLVED_ARENAS, chamberAt, houseHeading } from '../data/chambers';
-import { DEVOLVED_LEGISLATURES } from '../data/devolved';
+import { DEVOLVED_LEGISLATURES, erasFor } from '../data/devolved';
 import { formatFull, isoToDay } from '../engine/clock';
 import { Avatar } from '../avatar/Avatar';
 import { SwipeCarousel } from '../components/SwipeCarousel';
@@ -113,7 +113,7 @@ export function NewCareerScreen() {
 
   /** the legislatures on offer in the chosen devolved chamber, newest first */
   const devolvedEras = useMemo(
-    () => (arena === 'uk' ? [] : [...DEVOLVED_LEGISLATURES[arena]].reverse()),
+    () => (arena === 'uk' ? [] : [...erasFor(arena)].reverse()),
     [arena]
   );
   const devolvedSnap = useMemo(
@@ -132,7 +132,7 @@ export function NewCareerScreen() {
       if (!playablePartiesFor(era).includes(partyId)) setPartyId('lab');
       return;
     }
-    const latest = DEVOLVED_LEGISLATURES[a][DEVOLVED_LEGISLATURES[a].length - 1];
+    const latest = erasFor(a)[erasFor(a).length - 1];
     setDevolvedElection(latest.election);
     if (!latest.parties.includes(partyId)) setPartyId(latest.governing);
     setRegion(CHAMBERS[a].regions[0]);

@@ -181,6 +181,9 @@ export function migrateGameState(game: GameState): GameState {
     const commons = (game.arena ?? 'uk') === 'uk' ? game.polling : game.dormant?.uk?.polling;
     if (commons && !commons.ni) commons.ni = seedNiBallot(game.startEra, game.rngState);
   }
+  // v12 — the Northern Ireland Assembly as a chamber. No pre-v12 save can hold a
+  // Stormont career, so there is nothing to backfill: the bump marks the
+  // `government.executive` shape as part of the format.
   // clear any "ghost" ministers carrying a cabinet title they no longer hold
   // (e.g. an NPC the player displaced in an older save). Idempotent.
   reconcileCharacterOffices(game);

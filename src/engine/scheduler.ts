@@ -18,7 +18,7 @@ import {
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, reconcilePlayerOffice, canChairCommittee, pickCommittee,
   resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
-  noteReshuffle, reshuffleOnCooldown,
+  noteReshuffle, reshuffleOnCooldown, offerableOffice,
 } from './career';
 import { OFFICES } from '../data/offices';
 import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
@@ -935,7 +935,8 @@ function nextStepCore(state: GameState, rng: Rng): void {
     const arr = state.government.arrangement;
     const yearsSinceFormation = (state.day - state.parliamentStart) / 365;
     const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
-    if (arr !== 'majority' && yearsSinceFormation > 0.6 && state.day >= coupCool) {
+    // a joint Executive's parties govern by right, not on a majority
+    if (arr !== 'majority' && !state.government.executive && yearsSinceFormation > 0.6 && state.day >= coupCool) {
       const govParty = state.government.governingParty;
       const majorityLine = seatsForMajorityIn(state.seats, state.arena);
       const govSeats = state.seats[govParty] ?? 0;
@@ -993,7 +994,8 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // their own rebellious backbenches or sheer longevity faces an authority
   // crisis — usually survivable, occasionally fatal to the premiership
   if (playerIsPM(state) && state.day >= coupCool) {
-    const polls = partyPolling(state, state.player.partyId);
+    // on the chamber's own scale: a Stormont First Minister polls in the twenties by design
+    const polls = partyPolling(state, state.player.partyId) / chamberOf(state.arena).pressureScale;
     const tenureYears = (state.day - state.government.pmSinceDay) / 365;
     let pressure = 0;
     // B3 (player-PMs can fall): a sitting PM only faces ~150 of these checks across a
@@ -1040,7 +1042,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     // a LOW absolute backstop floor (a genuine wipeout still bites), but the
     // dominant driver is how far they've SLID from the polling they inherited — a
     // stable-but-low FPTP standing shouldn't by itself force a heave
-    const floor = onMinorPartyTrack(state) ? 10 : 16;
+    const floor = (onMinorPartyTrack(state) ? 10 : 16) * chamberOf(state.arena).pressureScale;
     let pressure = 0;
     if (polls < floor) pressure += (floor - polls) * 0.5;
     pressure += state.player.rebellionCount * 4;
@@ -1066,7 +1068,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     state.government.pmId !== 'player' && state.player.hasSeat &&
     state.day >= ((state.player.flags._pmHeaveCooldownUntil as number) ?? 0)
   ) {
-    const polls = partyPolling(state, state.government.governingParty);
+    const polls = partyPolling(state, state.government.governingParty) / chamberOf(state.arena).pressureScale;
     if (polls < 28) {
       const hazard = Math.min(0.03, (28 - polls) * 0.004);
       if (rng.chance(hazard)) {
@@ -1082,7 +1084,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // to the PM is elevated to Deputy Prime Minister / First Secretary of State
   if (
     playerInGovernment(state) && !playerIsLeader(state) &&
-    state.government.pmId !== 'player' &&
+    state.government.pmId !== 'player' && !state.government.executive &&
     // a departmental Secretary of State (never the Chief Whip) can be made deputy
     !!state.player.officeId?.startsWith('sos_') &&
     !state.player.flags._isDeputyPM && canHoldOffice(state) &&
@@ -1103,7 +1105,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // the title clears _isDeputyPM, so this can't re-fire on a player who's already out.
   if (
     state.player.flags._isDeputyPM && !playerIsLeader(state) &&
-    state.government.pmId !== 'player' && canHoldOffice(state)
+    state.government.pmId !== 'player' && canHoldOffice(state) && !state.government.executive
   ) {
     const fallout = relationshipValue(state, 'leader') < 12 || !!state.player.flags.scandal;
     const hazard = (fallout ? DEPUTY_REMOVAL_FALLOUT : 0) + DEPUTY_REMOVAL_REFRESH;
@@ -1199,7 +1201,8 @@ function nextStepCore(state: GameState, rng: Rng): void {
     const target = nextOfficeFor(state, rng);
     state.forcedQueue.push({
       kind: 'reshuffleOffer',
-      payload: { officeId: target ?? (rng.chance(0.55) ? 'pps' : 'whip') },
+      // the raw first rungs still go through the chamber's ladder (no PPS in some)
+      payload: { officeId: target ?? offerableOffice(state, rng, rng.chance(0.55) ? 'pps' : 'whip') ?? 'whip' },
     });
     nextStep(state, rng);
     return;
@@ -1323,10 +1326,10 @@ function nextStepCore(state: GameState, rng: Rng): void {
     // low absolute backstop floor to still catch a genuine wipeout.
     const polls = partyPolling(state, party);
     const ref = (lastElectionShares(state)[party] ?? 0) * 100;
-    const BACKSTOP_FLOOR = 16;
+    const BACKSTOP_FLOOR = 16 * chamberOf(state.arena).pressureScale;
     const SLIDE_PTS = 8;
     // a leader still polling respectably isn't "collapsing", even if down from a big win
-    const SLIDE_CEILING = 30;
+    const SLIDE_CEILING = 30 * chamberOf(state.arena).pressureScale;
     const scandalFall = rng.chance(NPC_LEADER_SCANDAL);
     // a PM gets a ~3-month grace before the polls can fell them — a leader who just
     // won shouldn't resign over polling the same month (only scandal, Liz-Truss-style)

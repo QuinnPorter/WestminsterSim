@@ -35,7 +35,7 @@ export interface CreationInput {
   devolvedElection?: string;
 }
 
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 
 function buildPlayer(input: CreationInput, seatId: string, startDay: number): Player {
   const mods = BACKGROUNDS[input.background].statMods;

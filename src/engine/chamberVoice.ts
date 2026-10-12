@@ -1,5 +1,5 @@
 import { ArenaId, DrawnCard, GameDay, GameState } from '../types/game';
-import { chamberAt, ministerialTitlesAt } from '../data/chambers';
+import { chamberAt, chamberOf, ministerialTitlesAt } from '../data/chambers';
 
 /**
  * Rewrite Commons-specific nouns into the live chamber's.
@@ -25,8 +25,10 @@ import { chamberAt, ministerialTitlesAt } from '../data/chambers';
  */
 function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
   const c = chamberAt(arena, day);
+  const v = chamberOf(arena).voice;
   const houseNoArticle = c.house.replace(/^the /, '');
-  const scottish = arena === 'scotland';
+  // a chamber with no PPS rung still has to say something for the word
+  const pps = v.pps ?? { singular: 'special adviser', plural: 'special advisers', abbr: 'adviser', abbrPlural: 'advisers' };
   // the two ministerial tiers, as the chamber styled them on the day: a Welsh
   // cabinet minister was "Minister for X" and the junior rung "Deputy Minister
   // for X" until March 2024, Cabinet Secretary and Minister after it
@@ -48,31 +50,32 @@ function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
     [/\bDeputy Prime Minister\b/g, `Deputy ${c.head}`],
     [/\bFirst Secretary of State\b/g, `Deputy ${c.head}`],
     [/\bPrime Ministers\b/g, `${c.head}s`],
-    [/\bPrime Minister[’']s Questions\b/g, `${c.head}’s Questions`],
+    [/\bPrime Minister[’']s Questions\b/g, v.questions === 'FMQs' ? `${c.head}’s Questions` : v.questions],
     [/\bPrime Minister\b/g, c.head],
-    [/\bPMQs\b/g, 'FMQs'],
+    [/\bPMQs\b/g, v.questions],
     [/\b[Tt]he PM\b/g, `the ${c.head}`],
     [/\bPM\b/g, c.head],
     [/\bDowning Street\b/g, c.headOffice],
     [/\bNumber (?:10|Ten)\b/g, c.headOffice],
     [/\bNo\.? ?10\b/g, c.headOffice],
-    [/\bWhitehall\b/g, scottish ? 'St Andrew’s House' : 'Cathays Park'],
-    [/\b[Tt]he Treasury\b/g, scottish ? 'the Scottish Government’s finance directorate' : 'the Welsh Treasury'],
+    [/\bWhitehall\b/g, v.civilService],
+    [/\b[Tt]he Treasury\b/g, v.treasury],
     [/\b[Tt]he Chancellor of the Exchequer\b/g, `the ${finance}`],
     [/\bChancellor of the Exchequer\b/g, finance],
     [/\b[Tt]he Chancellor\b/g, `the ${finance}`],
     [/\bShadow Chancellor\b/g, `Shadow ${finance}`],
-    [/\bCabinet Office\b/g, scottish ? 'St Andrew’s House' : 'Cathays Park'],
+    [/\bCabinet Office\b/g, v.civilService],
 
     // the ranks
     [/\bSecretaries of State\b/g, `${senior}s`],
     [/\bSecretary of State\b/g, senior],
     [/\bMinisters of State\b/g, `${junior}s`],
     [/\bMinister of State\b/g, junior],
-    [/\bParliamentary Private Secretar(y|ies)\b/g, scottish ? 'Parliamentary Liaison Officer$1' : 'parliamentary aide$1'],
-    [/\bPPSs\b/g, scottish ? 'PLOs' : 'aides'],
-    [/\bPPS\b/g, scottish ? 'PLO' : 'aide'],
-    [/\bChief Whip\b/g, scottish ? 'Minister for Parliamentary Business' : 'Trefnydd'],
+    [/\bParliamentary Private Secretaries\b/g, pps.plural],
+    [/\bParliamentary Private Secretary\b/g, pps.singular],
+    [/\bPPSs\b/g, pps.abbrPlural],
+    [/\bPPS\b/g, pps.abbr],
+    [/\bChief Whip\b/g, v.chiefWhip],
     [/\b[Tt]he Speaker\b/g, `the ${c.speakerTitle}`],
     [/\bSpeaker of the House of Commons\b/g, c.speakerTitle],
     [/\bMr Speaker\b/g, c.speakerTitle],
@@ -92,29 +95,32 @@ function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
     [/\bWestminster\b/g, c.seat],
     [/\bParliament Square\b/g, c.seat],
     [/\b[Tt]he tearoom\b/g, 'the members’ restaurant'],
-    [/\bPortcullis House\b/g, scottish ? 'the Garden Lobby' : 'Tŷ Hywel'],
+    [/\bPortcullis House\b/g, v.lobby],
     // "Parliament is dissolved" -> "the Chamber is dissolved"; the article and
     // the capital are repaired by `tidy`. Scotland keeps the word, since the
     // Scottish Parliament IS a parliament.
-    ...(scottish ? [] : [
+    ...(v.keepsParliamentWord ? [] : [
       [/\b[Tt]he Parliament\b/g, c.houseThe] as [RegExp, string],
       [/\bParliament\b/g, c.houseThe] as [RegExp, string],
-      [/\bparliaments\b/g, 'Senedd terms'] as [RegExp, string],
-      [/\bparliament\b/g, 'Senedd term'] as [RegExp, string],
+      [/\bparliaments\b/g, `${v.termNoun}s`] as [RegExp, string],
+      [/\bparliament\b/g, v.termNoun] as [RegExp, string],
     ]),
     [/\bgeneral election\b/g, `${c.houseThe.replace(/^the /, '')} election`],
     [/\bGeneral election\b/g, `${c.houseThe.replace(/^the /, '')} election`],
 
-    // the parties, as they are known here: generated prose names the UK party
-    [/\b[Tt]he Labour Party\b/g, `${c.placeAdjective} Labour`],
-    [/\bLabour Party\b/g, `${c.placeAdjective} Labour`],
-    [/\b[Tt]he Conservative Party\b/g, `the ${c.placeAdjective} Conservatives`],
-    [/\bConservative Party\b/g, `${c.placeAdjective} Conservatives`],
-    [/\b[Tt]he Liberal Democrats\b/g, `the ${c.placeAdjective} Liberal Democrats`],
-    [/\bLiberal Democrats\b/g, `${c.placeAdjective} Liberal Democrats`],
-    ...(scottish ? [
-      [/\b[Tt]he Green Party\b/g, 'the Scottish Greens'] as [RegExp, string],
-      [/\bGreen Party\b/g, 'Scottish Greens'] as [RegExp, string],
+    // the parties, as they are known here: generated prose names the UK party.
+    // Not where the chamber's parties are its own (Stormont).
+    ...(v.partyPrefixes ? [
+      [/\b[Tt]he Labour Party\b/g, `${c.placeAdjective} Labour`] as [RegExp, string],
+      [/\bLabour Party\b/g, `${c.placeAdjective} Labour`] as [RegExp, string],
+      [/\b[Tt]he Conservative Party\b/g, `the ${c.placeAdjective} Conservatives`] as [RegExp, string],
+      [/\bConservative Party\b/g, `${c.placeAdjective} Conservatives`] as [RegExp, string],
+      [/\b[Tt]he Liberal Democrats\b/g, `the ${c.placeAdjective} Liberal Democrats`] as [RegExp, string],
+      [/\bLiberal Democrats\b/g, `${c.placeAdjective} Liberal Democrats`] as [RegExp, string],
+    ] : []),
+    ...(v.greenParty ? [
+      [/\b[Tt]he Green Party\b/g, `the ${v.greenParty}`] as [RegExp, string],
+      [/\bGreen Party\b/g, v.greenParty] as [RegExp, string],
     ] : []),
 
     // the members
@@ -124,14 +130,17 @@ function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
   ];
 }
 
-/** the Scottish National Party must survive a pass that rewrites "national" */
+/** the Scottish National Party must survive a pass that rewrites "national",
+ *  and the Social Democratic and Labour Party one that rewrites "Labour Party" */
 const SHIELD: [RegExp, string][] = [
   [/Scottish National Party/g, '\u0001SNPFULL\u0001'],
   [/National Assembly/g, '\u0001NATASM\u0001'],
+  [/Social Democratic and Labour Party/g, '\u0001SDLPFULL\u0001'],
 ];
 const UNSHIELD: [RegExp, string][] = [
   [/\u0001SNPFULL\u0001/g, 'Scottish National Party'],
   [/\u0001NATASM\u0001/g, 'National Assembly'],
+  [/\u0001SDLPFULL\u0001/g, 'Social Democratic and Labour Party'],
 ];
 
 /** apply the chamber's voice to one string; a no-op in the Commons */
@@ -158,6 +167,8 @@ function tidy(text: string): string {
     .replace(/\b(Scottish|Welsh) (Scottish|Welsh) /g, '$1 ')
     .replace(/\bin the Holyrood\b/g, 'at Holyrood')
     .replace(/\bin the Cardiff Bay\b/g, 'in Cardiff Bay')
+    .replace(/\bin the Stormont\b/g, 'at Stormont')
+    .replace(/\bthe the Assembly\b/g, 'the Assembly')
     .replace(/^the\b/, 'The')
     .replace(/([.!?—]\s+|["“”]\s*)the\b/g, (_m, lead: string) => `${lead}The`);
 }

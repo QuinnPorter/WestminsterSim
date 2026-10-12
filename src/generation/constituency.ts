@@ -688,15 +688,36 @@ export function calibrateDistrict(
     for (const k of keys) raw[k] = t * (prior[k] ?? 0.001) + (1 - t) * (exact[k] ?? 0);
     return normalisedShares(raw, keys);
   };
-  const fits = (t: number) => sameCounts(dHondtCounts(blend(t), seatsPer), row);
-  if (fits(1)) return blend(1);
-  let lo = 0; // always fits
-  let hi = 1;
-  for (let i = 0; i < 20; i++) {
-    const mid = (lo + hi) / 2;
-    if (fits(mid)) lo = mid; else hi = mid;
+  // Votes exactly proportional to seats reproduce the row, but with the last
+  // seats tied; the prior alone usually does not. Somewhere between, the row
+  // is reproduced with the widest margin on its last seat: that is the vote
+  // the constituency "really" had, and the one a swing moves plausibly. The
+  // margin is the gap between the last quotient awarded and the first denied.
+  let best = blend(0);
+  let bestMargin = -1;
+  for (let i = 0; i <= 100; i++) {
+    const shares = blend(i / 100);
+    if (!sameCounts(dHondtCounts(shares, seatsPer), row)) continue;
+    const margin = dHondtMargin(shares, seatsPer);
+    if (margin > bestMargin) { bestMargin = margin; best = shares; }
   }
-  return blend(lo);
+  return best;
+}
+
+/** how safely a d'Hondt count awards its last seat: the relative gap between
+ *  the last quotient awarded and the best quotient that was not */
+function dHondtMargin(shares: Partial<Record<PartyId, number>>, seatsPer: number): number {
+  const order = dHondt(shares, seatsPer);
+  const held: Partial<Record<PartyId, number>> = {};
+  for (const p of order) held[p] = (held[p] ?? 0) + 1;
+  const last = order[order.length - 1];
+  const lastQ = (shares[last] ?? 0) / (held[last] ?? 1);
+  let nextQ = 0;
+  for (const p of Object.keys(shares) as PartyId[]) {
+    const q = (shares[p] ?? 0) / ((held[p] ?? 0) + 1);
+    if (q > nextQ) nextQ = q;
+  }
+  return lastQ <= 0 ? 0 : (lastQ - nextQ) / lastQ;
 }
 
 /** Build a multi-member-constituency map as it stood after a real election
