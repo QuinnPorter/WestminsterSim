@@ -449,10 +449,12 @@ export function generateDevolvedSeatMap(
   const usedNames = new Set<string>();
   const seatMap: SyntheticSeat[] = [];
   let counter = 0;
-  const constShares = normalisedShares(snap.constituencyShares, ballot);
+  // an AMS snapshot carries its constituency vote and per-region seats
+  const constShares = normalisedShares(snap.constituencyShares ?? snap.shares, ballot);
+  const constituencySeats = snap.constituencySeats ?? {};
 
   for (const lr of regions) {
-    const row = snap.constituencySeats[lr.id] ?? {};
+    const row = constituencySeats[lr.id] ?? {};
     const climate = regionalClimate(region, row, era, arena, ballot, constShares);
     const pool = regionNamePool(arena, lr.id);
     for (const [partyKey, count] of Object.entries(row)) {
@@ -502,7 +504,7 @@ export function generateDevolvedSeatMap(
       });
     }
   }
-  calibrateListAllocation(seatMap, regions, listVotes, snap.listSeats, ballot);
+  calibrateListAllocation(seatMap, regions, listVotes, snap.listSeats ?? {}, ballot);
 
   const playerSeatId = pickDevolvedPlayerSeat(rng, seatMap, playerParty, 2);
   return { seatMap, playerSeatId, playerRegion: region };

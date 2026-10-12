@@ -51,6 +51,7 @@ const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
 const CHAMBER_BLURBS: Record<DevolvedArenaId, string> = {
   scotland: 'Holyrood. A hundred and twenty-nine seats elected by the Additional Member System, so nobody wins a majority twice; a government that runs the NHS, the schools and the courts; and the constitutional question under every other question.',
   wales: 'Cardiff Bay. Sixty members until 2026 and ninety-six after it, a Labour government since devolution began, and a nation arguing about whether it gets its fair share — and in which language.',
+  ni: 'The Assembly. Multi-member constituencies, a five-party Executive the big parties sit in by right, and a First and deputy First Minister who cannot govern without each other.',
 };
 
 const LAYER_PILLS: { key: AvatarLayerKey; label: string }[] = [

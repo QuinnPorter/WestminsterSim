@@ -38,6 +38,10 @@ export const DEVOLVED_DEPARTMENTS: Record<DevolvedDepartmentId, DepartmentInfo> 
   rural: { id: 'rural', name: 'the rural affairs directorates', casual: 'Rural Affairs' },
   socialJustice: { id: 'socialJustice', name: 'the social justice directorates', casual: 'Social Justice' },
   constitution: { id: 'constitution', name: 'the constitution and external affairs directorates', casual: 'the Constitution' },
+  economy: { id: 'economy', name: 'Department for the Economy', casual: 'the Economy' },
+  infrastructure: { id: 'infrastructure', name: 'Department for Infrastructure', casual: 'Infrastructure' },
+  communities: { id: 'communities', name: 'Department for Communities', casual: 'Communities' },
+  agriculture: { id: 'agriculture', name: 'Department of Agriculture, Environment and Rural Affairs', casual: 'Agriculture and the Environment' },
 };
 
 /** look up any department, Whitehall or devolved */
@@ -83,7 +87,19 @@ const DEVOLVED_CABINET: Record<DevolvedArenaId, DepartmentId[]> = {
     'finance', 'health', 'education', 'business', 'environment', 'transport',
     'housing', 'socialJustice', 'culture',
   ],
+  // the eight departments of the Executive since the Departments Act (Northern
+  // Ireland) 2016, the Executive Office aside. Justice is elected by
+  // cross-community vote rather than allocated by d'Hondt.
+  ni: [
+    'finance', 'health', 'education', 'economy', 'justice', 'infrastructure',
+    'communities', 'agriculture',
+  ],
 };
+
+/** the departments a chamber's Executive allocates by d'Hondt, in pick order */
+export function executiveDepartments(arena: DevolvedArenaId): DepartmentId[] {
+  return DEVOLVED_CABINET[arena];
+}
 
 /** the full portfolio names each government uses, where they differ from the
  *  Whitehall casual name. Scotland: "Cabinet Secretary for Health and Social
@@ -113,7 +129,35 @@ const DEVOLVED_BRIEF_NAMES: Record<DevolvedArenaId, Partial<Record<DepartmentId,
     socialJustice: 'Social Justice',
     culture: 'Culture, Skills and Social Partnership',
   },
+  ni: {
+    finance: 'Finance',
+    health: 'Health',
+    education: 'Education',
+    economy: 'the Economy',
+    justice: 'Justice',
+    infrastructure: 'Infrastructure',
+    communities: 'Communities',
+    agriculture: 'Agriculture, Environment and Rural Affairs',
+  },
 };
+
+/** The preposition between a bare rank noun and its brief, where the rank noun
+ *  does not carry one: Northern Ireland styles its ministers "Minister of
+ *  Finance" but "Minister for the Economy". */
+const BRIEF_PREPOSITION: Partial<Record<DevolvedArenaId, Partial<Record<DepartmentId, 'of' | 'for'>>>> = {
+  ni: {
+    finance: 'of', health: 'of', education: 'of', justice: 'of', agriculture: 'of',
+    economy: 'for', infrastructure: 'for', communities: 'for',
+  },
+};
+
+/** join a rank noun to a brief: "Cabinet Secretary for" + "Health" needs
+ *  nothing; a bare "Minister" takes the brief's own preposition */
+export function rankWithBrief(noun: string, arena: DevolvedArenaId, dept: DepartmentId): string {
+  const brief = devolvedBriefName(arena, dept);
+  if (/\b(for|of)$/.test(noun)) return `${noun} ${brief}`;
+  return `${noun} ${BRIEF_PREPOSITION[arena]?.[dept] ?? 'for'} ${brief}`;
+}
 
 /** the brief name used inside a devolved title */
 export function devolvedBriefName(arena: DevolvedArenaId, dept: DepartmentId): string {
@@ -134,20 +178,50 @@ function devolvedRank(dept: DepartmentId): number {
   return dept === 'justice' ? 2 : 1;
 }
 
-/** a Cabinet Secretary's office id: the senior, tier-4 rung */
+/** the senior, tier-4 departmental rung: a Cabinet Secretary at Holyrood and in
+ *  the Senedd, the Minister in a single-tier Executive */
 export function cabsecOfficeId(arena: DevolvedArenaId, dept: DepartmentId): OfficeId {
-  return `${arena}_cabsec_${dept}`;
+  return CHAMBERS[arena].ladder === 'singleTier' ? `${arena}_minister_${dept}` : `${arena}_cabsec_${dept}`;
 }
-/** a junior Minister's office id: the tier-3 rung under a Cabinet Secretary */
+/** the tier-3 departmental rung under a Cabinet Secretary. A single-tier
+ *  Executive has none: the Minister is the only departmental rank, so this
+ *  resolves to the same office. */
 export function devolvedMinisterOfficeId(arena: DevolvedArenaId, dept: DepartmentId): OfficeId {
-  return `${arena}_min_${dept}`;
+  return CHAMBERS[arena].ladder === 'singleTier' ? cabsecOfficeId(arena, dept) : `${arena}_min_${dept}`;
 }
+/** a party's spokesperson on a brief in a single-tier chamber: the tier-3 rung
+ *  every party keeps, outside the Executive's benches */
+export function spokespersonOfficeId(arena: DevolvedArenaId, dept: DepartmentId): OfficeId {
+  return `${arena}_spokes_${dept}`;
+}
+/** the two junior ministers in the Executive Office, one from the First
+ *  Minister's party and one from the deputy First Minister's */
+export const TEO_JUNIOR_FM: OfficeId = 'ni_junior_teo_fm';
+export const TEO_JUNIOR_DFM: OfficeId = 'ni_junior_teo_dfm';
 
 function buildDevolvedOffices(): Record<OfficeId, Office> {
   const out: Record<OfficeId, Office> = {};
   for (const arena of DEVOLVED_ARENAS) {
+    const single = CHAMBERS[arena].ladder === 'singleTier';
     for (const dept of DEVOLVED_CABINET[arena]) {
       const brief = devolvedBriefName(arena, dept);
+      if (single) {
+        // one rank of Minister, and a spokesperson rung for the parties outside
+        // the Executive (or outside this brief)
+        out[cabsecOfficeId(arena, dept)] = {
+          id: cabsecOfficeId(arena, dept), tier: 4, department: dept, arena,
+          rank: devolvedRank(dept),
+          title: rankWithBrief(CHAMBERS[arena].ranks.senior, arena, dept),
+          shadowTitle: `Shadow ${rankWithBrief(CHAMBERS[arena].ranks.senior, arena, dept)}`,
+        };
+        out[spokespersonOfficeId(arena, dept)] = {
+          id: spokespersonOfficeId(arena, dept), tier: 3, department: dept, arena,
+          rank: devolvedRank(dept),
+          title: `Spokesperson for ${brief}`,
+          shadowTitle: `Spokesperson for ${brief}`,
+        };
+        continue;
+      }
       // titles stored here are the CURRENT ones; officeTitleIn applies the
       // date-dependent Welsh forms (Minister / Deputy Minister before 2024)
       out[cabsecOfficeId(arena, dept)] = {
@@ -161,6 +235,18 @@ function buildDevolvedOffices(): Record<OfficeId, Office> {
         rank: devolvedRank(dept),
         title: `Minister for ${brief}`,
         shadowTitle: `Shadow Minister for ${brief}`,
+      };
+    }
+    if (CHAMBERS[arena].jointExecutive) {
+      out[TEO_JUNIOR_FM] = {
+        id: TEO_JUNIOR_FM, tier: 3, arena, rank: 1,
+        title: 'Junior Minister, the Executive Office',
+        shadowTitle: 'Junior Minister, the Executive Office',
+      };
+      out[TEO_JUNIOR_DFM] = {
+        id: TEO_JUNIOR_DFM, tier: 3, arena, rank: 1,
+        title: 'Junior Minister, the Executive Office',
+        shadowTitle: 'Junior Minister, the Executive Office',
       };
     }
   }
@@ -306,6 +392,8 @@ export function cabinetOfficesFor(arena: ArenaId | undefined): OfficeId[] {
     ...DEVOLVED_CABINET[arena]
       .filter((d) => !first.includes(d))
       .map((d) => cabsecOfficeId(arena, d)),
+    // the party's business manager sits with the ministers in every chamber:
+    // at Stormont the Executive has no whip of its own, but the party does
     'chiefWhip',
   ];
 }
@@ -338,6 +426,15 @@ const SHARED_RUNG_TITLES: Record<DevolvedArenaId, Record<OfficeId, { gov: string
     pps: { gov: 'Parliamentary Aide', shadow: 'Parliamentary Aide to the Leader' },
     whip: { gov: 'Government Whip', shadow: 'Opposition Whip' },
     chiefWhip: { gov: 'Trefnydd and Chief Whip', shadow: 'Chief Whip' },
+  },
+  ni: {
+    leader: { gov: 'First Minister', shadow: 'Leader of the Opposition' },
+    speaker: { gov: 'Speaker of the Assembly', shadow: 'Speaker of the Assembly' },
+    // no PPS rung at Stormont; never offered there (see translateOffice)
+    pps: { gov: 'Parliamentary Aide', shadow: 'Parliamentary Aide to the Leader' },
+    // every party's whip is the party's own: the Executive has no "government whip"
+    whip: { gov: 'Party Whip', shadow: 'Party Whip' },
+    chiefWhip: { gov: 'Chief Whip', shadow: 'Chief Whip' },
   },
 };
 
@@ -379,14 +476,26 @@ export function officeTitleIn(
     return inGovernment ? shared.gov : shared.shadow;
   }
   if (office.arena && office.arena !== 'uk' && office.department) {
-    const brief = devolvedBriefName(office.arena as DevolvedArenaId, office.department);
+    const devolved = office.arena as DevolvedArenaId;
+    const brief = devolvedBriefName(devolved, office.department);
+    // a spokesperson rung is a party post whoever holds it
+    if (officeId === spokespersonOfficeId(devolved, office.department)) {
+      return `${minorPartyName ?? partyNameInChamber(arena)} Spokesperson for ${brief}`;
+    }
     const nouns = ministerialTitlesAt(office.arena, day ?? Number.MAX_SAFE_INTEGER);
     const noun = office.tier === 4 ? nouns.senior : nouns.junior;
-    if (inGovernment) return `${noun} ${brief}`;
+    const styled = rankWithBrief(noun, devolved, office.department);
+    if (inGovernment) return styled;
     if (minorPartyName) return `${minorPartyName} Spokesperson for ${brief}`;
-    return `Shadow ${noun} ${brief}`;
+    return `Shadow ${styled}`;
   }
   return officeTitleFor(officeId, { inGovernment, minorPartyName });
+}
+
+/** the possessive a spokesperson rung is titled with when no party name is
+ *  passed: the chamber's own word for its parties */
+function partyNameInChamber(arena: ArenaId | undefined): string {
+  return arena === 'ni' ? 'Party' : 'Party';
 }
 
 /** Title for an office, aware of minor-party spokesperson naming. Pass
@@ -443,12 +552,35 @@ const DEVOLVED_ANALOGUE: Partial<Record<DepartmentId, DepartmentId>> = {
   scienceTech: 'business',
 };
 
+/** the Executive's briefs for the Whitehall ones it names differently */
+const NI_ANALOGUE: Partial<Record<DepartmentId, DepartmentId>> = {
+  treasury: 'finance',
+  home: 'justice',
+  defence: 'justice',
+  foreign: 'economy',
+  business: 'economy',
+  scienceTech: 'economy',
+  energy: 'economy',
+  transport: 'infrastructure',
+  housing: 'communities',
+  dwp: 'communities',
+  culture: 'communities',
+  environment: 'agriculture',
+  rural: 'agriculture',
+  socialJustice: 'communities',
+  constitution: 'finance',
+};
+
 /** …and the way back to Whitehall for a devolved-only brief */
 const UK_ANALOGUE: Partial<Record<DepartmentId, UkDepartmentId>> = {
   finance: 'treasury',
   rural: 'environment',
   socialJustice: 'dwp',
   constitution: 'foreign',
+  economy: 'business',
+  infrastructure: 'transport',
+  communities: 'housing',
+  agriculture: 'environment',
 };
 
 /** Map an office computed for one chamber (career.ts reasons entirely in
@@ -465,14 +597,16 @@ export function translateOffice(
 ): OfficeId | null {
   const target = arena ?? 'uk';
   if (!officeId) return officeId;
+  // a chamber without a PPS rung never offers one
+  const noPps = !CHAMBERS[target].hasPps;
   if (officeArena(officeId) === target) {
-    if (target === 'wales' && officeId === 'pps') return null;
+    if (noPps && officeId === 'pps') return null;
     return officeId;
   }
   const office = OFFICES[officeId];
   if (!office) return null;
   if (SHARED_RUNGS.includes(officeId)) {
-    if (target === 'wales' && officeId === 'pps') return null;
+    if (noPps && officeId === 'pps') return null;
     return officeId;
   }
 
@@ -487,8 +621,9 @@ export function translateOffice(
   }
 
   const held = DEVOLVED_CABINET[target];
+  const analogue = target === 'ni' ? NI_ANALOGUE : DEVOLVED_ANALOGUE;
   const wanted = office.department
-    ? (DEVOLVED_ANALOGUE[office.department] ?? office.department)
+    ? (analogue[office.department] ?? office.department)
     : undefined;
   // the money brief is never handed out by analogy to a portfolio-less office
   const pool = wanted && held.includes(wanted)
@@ -497,7 +632,11 @@ export function translateOffice(
   const dept = pool.length === 1 ? pool[0] : pick(pool);
   // Westminster's tier-4 non-departmental offices (Leader of the House, the
   // Chief Secretary, the territorial Secretaries) are all full cabinet rank
-  return office.tier >= 4
-    ? cabsecOfficeId(target, dept)
+  if (office.tier >= 4) return cabsecOfficeId(target, dept);
+  // a single-tier Executive has no junior departmental rung: a tier-3 rung there
+  // is the party's spokesperson on the brief. Whether the player's party holds
+  // the Executive post itself is decided by `constrainToPartyPosts`.
+  return CHAMBERS[target].ladder === 'singleTier'
+    ? spokespersonOfficeId(target, dept)
     : devolvedMinisterOfficeId(target, dept);
 }

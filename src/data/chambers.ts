@@ -1,6 +1,34 @@
 import { ArenaId, DevolvedArenaId, GameDay, OfficeId, PartyId, RegionId } from '../types/game';
 import { isoToDay } from '../engine/clock';
 import { HOLYROOD_REGIONS, SENEDD_2026_CONSTITUENCIES, SENEDD_REGIONS } from './devolvedSeats';
+import { NI_CONSTITUENCIES } from './niWestminster';
+
+/** the nouns the chamber's voice substitutes for Westminster's in generated
+ *  prose. Data, so a new chamber never falls through to another's words. */
+export interface VoiceProfile {
+  /** Whitehall and the Cabinet Office */
+  civilService: string;
+  /** the Treasury */
+  treasury: string;
+  /** the Parliamentary Private Secretary rung, or null where the chamber has none */
+  pps: { singular: string; plural: string; abbr: string; abbrPlural: string } | null;
+  /** the Chief Whip, as the government's business manager is called */
+  chiefWhip: string;
+  /** Portcullis House: where members have their offices */
+  lobby: string;
+  /** does "Parliament" stay as a word for this chamber (the Scottish Parliament
+   *  is one; the Senedd and the Assembly are not) */
+  keepsParliamentWord: boolean;
+  /** what a "parliament" (a term) is called when the word does not stay */
+  termNoun: string;
+  /** what Prime Minister's Questions becomes */
+  questions: string;
+  /** prefix the UK parties with the place adjective ("Scottish Labour"); false
+   *  where the chamber's parties are its own */
+  partyPrefixes: boolean;
+  /** the Green party's name here, where it is a separate party */
+  greenParty?: string;
+}
 
 /** Everything about a chamber that differs from every other chamber and is DATA
  *  rather than logic. The alternative — `if (arena === 'uk')` branches scattered
@@ -40,6 +68,30 @@ export interface ChamberProfile {
   speakerOffice: OfficeId;
   /** every party that has sat in the chamber across the eras on offer */
   parties: PartyId[];
+  /** the parties that alternate in government here: their polling reverts to
+   *  their last result rather than being pulled toward a structural baseline */
+  majorParties: PartyId[];
+  /** true where every large party sits in the government by right, led by a
+   *  First and deputy First Minister from different communities (Stormont) */
+  jointExecutive: boolean;
+  /** 'twoTier': Cabinet Secretaries over Ministers; 'singleTier': one rank of
+   *  Minister, with junior posts only in the head of government's office */
+  ladder: 'twoTier' | 'singleTier';
+  /** the deputy head of government's title */
+  deputyHead: string;
+  /** the ministerial rank nouns, before any brief: "Secretary of State for",
+   *  "Cabinet Secretary for", "Minister" (the NI brief carries its own preposition) */
+  ranks: { senior: string; junior: string };
+  /** does the chamber have a Parliamentary Private Secretary rung to offer (the
+   *  Commons and Holyrood do; the Senedd and the Assembly do not) */
+  hasPps: boolean;
+  /** the calendar set-pieces this chamber holds, by `CALENDAR` key */
+  calendarKeys: string[];
+  /** the polling level the chamber's pressure thresholds are calibrated at,
+   *  relative to Westminster's: a Stormont First Minister polls under 30% by
+   *  design and is not in crisis for it */
+  pressureScale: number;
+  voice: VoiceProfile;
 }
 
 /** a Holyrood or (pre-2026) Senedd electoral region: FPTP constituencies plus
@@ -56,8 +108,10 @@ export type SeatSystem =
   | { kind: 'fptp' }
   /** the Additional Member System: constituencies plus regional top-up lists */
   | { kind: 'ams'; regions: ListRegion[] }
-  /** closed-list proportional representation in multi-member constituencies */
-  | { kind: 'listPr'; districts: { id: string; name: string }[]; seatsPer: number };
+  /** closed-list proportional representation in multi-member constituencies.
+   *  `changeHeadline` is what the history says when a chamber first fights an
+   *  election under it after another system. */
+  | { kind: 'listPr'; districts: { id: string; name: string }[]; seatsPer: number; changeHeadline?: string };
 
 const DAY = 1;
 const YEAR = 365 * DAY;
@@ -86,6 +140,21 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     leaderOffice: 'leader',
     speakerOffice: 'speaker',
     parties: ['con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc', 'ukip', 'brexit'],
+    majorParties: ['con', 'lab'],
+    jointExecutive: false,
+    ladder: 'twoTier',
+    deputyHead: 'Deputy Prime Minister',
+    ranks: { senior: 'Secretary of State for', junior: 'Minister of State for' },
+    hasPps: true,
+    calendarKeys: ['pmqsWinter', 'budget', 'locals', 'pmqsSummer', 'recess', 'conference'],
+    pressureScale: 1,
+    // the Commons needs no voice: generated prose is written in its words
+    voice: {
+      civilService: 'Whitehall', treasury: 'the Treasury',
+      pps: { singular: 'Parliamentary Private Secretary', plural: 'Parliamentary Private Secretaries', abbr: 'PPS', abbrPlural: 'PPSs' },
+      chiefWhip: 'Chief Whip', lobby: 'Portcullis House', keepsParliamentWord: true,
+      termNoun: 'parliament', questions: 'PMQs', partyPrefixes: false,
+    },
   },
   scotland: {
     arena: 'scotland',
@@ -106,6 +175,21 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     leaderOffice: 'leader',
     speakerOffice: 'speaker',
     parties: ['snp', 'lab', 'con', 'ld', 'sgp', 'alba', 'reform', 'ukip'],
+    majorParties: ['snp', 'lab', 'con'],
+    jointExecutive: false,
+    ladder: 'twoTier',
+    deputyHead: 'Deputy First Minister',
+    ranks: { senior: 'Cabinet Secretary for', junior: 'Minister for' },
+    hasPps: true,
+    calendarKeys: ['pmqsWinter', 'budget', 'locals', 'pmqsSummer', 'recess', 'conference'],
+    pressureScale: 1,
+    voice: {
+      civilService: 'St Andrew’s House', treasury: 'the Scottish Government’s finance directorate',
+      pps: { singular: 'Parliamentary Liaison Officer', plural: 'Parliamentary Liaison Officers', abbr: 'PLO', abbrPlural: 'PLOs' },
+      chiefWhip: 'Minister for Parliamentary Business', lobby: 'the Garden Lobby',
+      keepsParliamentWord: true, termNoun: 'parliament', questions: 'FMQs', partyPrefixes: true,
+      greenParty: 'Scottish Greens',
+    },
   },
   wales: {
     arena: 'wales',
@@ -128,10 +212,64 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     leaderOffice: 'leader',
     speakerOffice: 'speaker',
     parties: ['lab', 'pc', 'con', 'ld', 'green', 'reform', 'ukip'],
+    majorParties: ['lab', 'con', 'pc'],
+    jointExecutive: false,
+    ladder: 'twoTier',
+    deputyHead: 'Deputy First Minister',
+    ranks: { senior: 'Cabinet Secretary for', junior: 'Minister for' },
+    hasPps: false,
+    calendarKeys: ['pmqsWinter', 'budget', 'locals', 'pmqsSummer', 'recess', 'conference'],
+    pressureScale: 1,
+    voice: {
+      civilService: 'Cathays Park', treasury: 'the Welsh Treasury',
+      pps: { singular: 'parliamentary aide', plural: 'parliamentary aides', abbr: 'aide', abbrPlural: 'aides' },
+      chiefWhip: 'Trefnydd', lobby: 'Tŷ Hywel',
+      keepsParliamentWord: false, termNoun: 'Senedd term', questions: 'FMQs', partyPrefixes: true,
+    },
+  },
+  ni: {
+    arena: 'ni',
+    seat: 'Stormont',
+    house: 'the Northern Ireland Assembly',
+    houseThe: 'the Assembly',
+    member: 'MLA',
+    members: 'MLAs',
+    head: 'First Minister',
+    headOffice: 'Stormont Castle',
+    government: 'the Executive',
+    place: 'Northern Ireland',
+    // "Northern Irish" is avoided by half the place; the possessive is what the
+    // Assembly's own documents use
+    placeAdjective: 'Northern Ireland',
+    speakerTitle: 'Speaker of the Assembly',
+    regions: ['ni'],
+    termDays: 5 * YEAR,
+    fixedTerm: true,
+    leaderOffice: 'leader',
+    speakerOffice: 'speaker',
+    parties: ['dup', 'sf', 'uup', 'sdlp', 'alliance', 'tuv', 'gpni', 'pbp'],
+    majorParties: ['dup', 'sf', 'uup', 'sdlp', 'alliance'],
+    jointExecutive: true,
+    ladder: 'singleTier',
+    // the lower-case d is the office's own style
+    deputyHead: 'deputy First Minister',
+    ranks: { senior: 'Minister', junior: 'Junior Minister' },
+    hasPps: false,
+    // no First Minister's Questions duel: the Executive answers as a body
+    calendarKeys: ['budget', 'locals', 'recess', 'conference'],
+    // the largest party polls under 30%, where a Westminster government would be in crisis
+    pressureScale: 0.7,
+    voice: {
+      civilService: 'Stormont Castle', treasury: 'the Department of Finance',
+      pps: null,
+      chiefWhip: 'Chief Whip', lobby: 'the Great Hall',
+      keepsParliamentWord: false, termNoun: 'Assembly term', questions: 'Question Time',
+      partyPrefixes: false,
+    },
   },
 };
 
-export const DEVOLVED_ARENAS: DevolvedArenaId[] = ['scotland', 'wales'];
+export const DEVOLVED_ARENAS: DevolvedArenaId[] = ['scotland', 'wales', 'ni'];
 
 /** the devolved chamber whose nation a region is, if that chamber is built.
  *  Northern Ireland returns null until the Assembly exists. */
@@ -192,16 +330,21 @@ export function chamberAt(arena: ArenaId | undefined, day: GameDay): ChamberProf
   return base;
 }
 
-/** the ministerial rank nouns in a devolved chamber on a given day */
+/** the ministerial rank nouns in a chamber on a given day: the profile's, except
+ *  that Welsh ministers were "Minister for" and "Deputy Minister for" until
+ *  March 2024 */
 export function ministerialTitlesAt(
   arena: ArenaId, day: GameDay
 ): { senior: string; junior: string } {
   if (arena === 'wales' && day < WELSH_CABSEC_DAY) {
     return { senior: 'Minister for', junior: 'Deputy Minister for' };
   }
-  if (arena === 'uk') return { senior: 'Secretary of State for', junior: 'Minister of State for' };
-  return { senior: 'Cabinet Secretary for', junior: 'Minister for' };
+  return chamberOf(arena).ranks;
 }
+
+/** polling day of the first Assembly election at five members per constituency
+ *  (Assembly Members (Reduction of Numbers) Act (Northern Ireland) 2016) */
+export const NI_FIVE_SEAT_DAY: GameDay = isoToDay('2017-03-02');
 
 // ---------------------------------------------------------------------------
 // seat systems
@@ -211,14 +354,29 @@ export function ministerialTitlesAt(
  *  one that changes: AMS (40 + 20) until the 2026 election, then sixteen
  *  six-member constituencies by closed-list d'Hondt. */
 export function seatSystemAt(arena: ArenaId | undefined, day: GameDay): SeatSystem {
-  if (arena === 'scotland') return { kind: 'ams', regions: HOLYROOD_REGIONS };
-  if (arena === 'wales') {
-    if (day >= SENEDD_EXPANSION_DAY) {
-      return { kind: 'listPr', districts: SENEDD_2026_CONSTITUENCIES, seatsPer: 6 };
-    }
-    return { kind: 'ams', regions: SENEDD_REGIONS };
+  switch (arena ?? 'uk') {
+    case 'scotland':
+      return { kind: 'ams', regions: HOLYROOD_REGIONS };
+    case 'wales':
+      if (day >= SENEDD_EXPANSION_DAY) {
+        return {
+          kind: 'listPr', districts: SENEDD_2026_CONSTITUENCIES, seatsPer: 6,
+          changeHeadline: 'The Senedd expands to ninety-six members, elected in sixteen six-member constituencies',
+        };
+      }
+      return { kind: 'ams', regions: SENEDD_REGIONS };
+    case 'ni':
+      // the Assembly is elected by STV in the Westminster constituencies; until
+      // the transfer count arrives each constituency is allocated by d'Hondt
+      return {
+        kind: 'listPr',
+        districts: NI_CONSTITUENCIES.map((c) => ({ id: c.id, name: c.name })),
+        seatsPer: day >= NI_FIVE_SEAT_DAY ? 5 : 6,
+        changeHeadline: 'The Assembly shrinks to ninety members, five for each constituency',
+      };
+    case 'uk':
+      return { kind: 'fptp' };
   }
-  return { kind: 'fptp' };
 }
 
 /** the total size of the House a seat system elects */

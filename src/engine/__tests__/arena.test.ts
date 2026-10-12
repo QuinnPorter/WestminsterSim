@@ -17,7 +17,7 @@ import {
 import { DEVOLVED_LEGISLATURES, legislatureAt } from '../../data/devolved';
 import { HOLYROOD_CONSTITUENCIES, SENEDD_CONSTITUENCIES, SENEDD_2026_CONSTITUENCIES } from '../../data/devolvedSeats';
 import { counterpartParty, leaderOfTitle, PARTIES, partyNameIn, withArticle } from '../../data/parties';
-import { houseHeading } from '../../data/chambers';
+import { houseHeading, houseSizeOf, seatSystemAt } from '../../data/chambers';
 import { seatPlayerJuniorPartner, withdrawFromCoalitionCore, materializeForced, deputyTitleFor } from '../career';
 import { timelineRows } from '../../screens/ProfileScreen';
 import { chamberVoice } from '../chamberVoice';
@@ -56,30 +56,52 @@ describe('devolved data', () => {
   const every = DEVOLVED_ARENAS.flatMap(
     (arena) => DEVOLVED_LEGISLATURES[arena].map((snap) => ({ arena, snap }))
   );
-  const HOUSE: Record<DevolvedArenaId, number> = { scotland: 129, wales: 60 };
+  /** the seat system each legislature was elected under */
+  const systemOf = (arena: DevolvedArenaId, snap: { election: string }) =>
+    seatSystemAt(arena, isoToDay(snap.election));
+  const houseOf = (arena: DevolvedArenaId, snap: { election: string }) =>
+    houseSizeOf(systemOf(arena, snap), 0);
 
   it('every legislature seats exactly the House it had', () => {
     for (const { arena, snap } of every) {
-      expect(sum(snap.seats), `${arena} ${snap.election}`).toBe(HOUSE[arena]);
-      const constituencies = Object.values(snap.constituencySeats).reduce((a, r) => a + sum(r), 0);
-      expect(constituencies, `${arena} ${snap.election} constituencies`).toBe(arena === 'scotland' ? 73 : 40);
-      expect(sum(snap.listSeats), `${arena} ${snap.election} lists`).toBe(arena === 'scotland' ? 56 : 20);
-      // constituencies + lists = the House, party by party
-      for (const p of Object.keys(snap.seats) as PartyId[]) {
-        const c = Object.values(snap.constituencySeats).reduce((a, r) => a + (r[p] ?? 0), 0);
-        expect(c + (snap.listSeats[p] ?? 0), `${arena} ${snap.election} ${p}`).toBe(snap.seats[p]);
+      const system = systemOf(arena, snap);
+      expect(sum(snap.seats), `${arena} ${snap.election}`).toBe(houseOf(arena, snap));
+      if (system.kind === 'ams') {
+        const wantConst = system.regions.reduce((a, r) => a + r.constituencies, 0);
+        const wantList = system.regions.reduce((a, r) => a + r.listSeats, 0);
+        const constituencies = Object.values(snap.constituencySeats!).reduce((a, r) => a + sum(r), 0);
+        expect(constituencies, `${arena} ${snap.election} constituencies`).toBe(wantConst);
+        expect(sum(snap.listSeats!), `${arena} ${snap.election} lists`).toBe(wantList);
+        // constituencies + lists = the House, party by party
+        for (const p of Object.keys(snap.seats) as PartyId[]) {
+          const c = Object.values(snap.constituencySeats!).reduce((a, r) => a + (r[p] ?? 0), 0);
+          expect(c + (snap.listSeats![p] ?? 0), `${arena} ${snap.election} ${p}`).toBe(snap.seats[p]);
+        }
+      } else if (system.kind === 'listPr') {
+        // every constituency returns exactly its seats, and the rows add up to the House
+        const rows = snap.districtSeats!;
+        expect(Object.keys(rows).sort()).toEqual(system.districts.map((d) => d.id).sort());
+        for (const [id, row] of Object.entries(rows)) {
+          expect(sum(row), `${arena} ${snap.election} ${id}`).toBe(system.seatsPer);
+        }
+        for (const p of Object.keys(snap.seats) as PartyId[]) {
+          const c = Object.values(rows).reduce((a, r) => a + (r[p] ?? 0), 0);
+          expect(c, `${arena} ${snap.election} ${p}`).toBe(snap.seats[p]);
+        }
       }
     }
   });
 
-  it('vote shares sum to about one, on both ballots', () => {
+  it('vote shares sum to about one, on every ballot the chamber has', () => {
     for (const { arena, snap } of every) {
       const list = sum(snap.shares);
-      const cons = sum(snap.constituencyShares);
-      expect(list, `${arena} ${snap.election} list`).toBeGreaterThan(0.85);
+      expect(list, `${arena} ${snap.election} headline`).toBeGreaterThan(0.85);
       expect(list).toBeLessThanOrEqual(1.001);
-      expect(cons, `${arena} ${snap.election} constituency`).toBeGreaterThan(0.85);
-      expect(cons).toBeLessThanOrEqual(1.001);
+      if (snap.constituencyShares) {
+        const cons = sum(snap.constituencyShares);
+        expect(cons, `${arena} ${snap.election} constituency`).toBeGreaterThan(0.85);
+        expect(cons).toBeLessThanOrEqual(1.001);
+      }
     }
   });
 
@@ -93,17 +115,24 @@ describe('devolved data', () => {
       expect(ranked[0][0]).toBe(snap.governing);
       expect(snap.opposition).not.toBe(snap.governing);
       expect(snap.seats[snap.opposition] ?? 0).toBeGreaterThan(0);
-      expect(snap.arrangement === 'majority').toBe((snap.seats[snap.governing] ?? 0) * 2 > HOUSE[arena]);
+      expect(snap.arrangement === 'majority').toBe((snap.seats[snap.governing] ?? 0) * 2 > houseOf(arena, snap));
     }
   });
 
   it('every party on a ballot has a share, and every share is on the ballot', () => {
     for (const { arena, snap } of every) {
       for (const p of snap.parties) {
-        expect(snap.shares[p], `${arena} ${snap.election} ${p} list share`).toBeGreaterThan(0);
-        expect(snap.constituencyShares[p], `${arena} ${snap.election} ${p} constituency share`).toBeGreaterThan(0);
+        expect(snap.shares[p], `${arena} ${snap.election} ${p} headline share`).toBeGreaterThan(0);
+        if (snap.constituencyShares) {
+          expect(snap.constituencyShares[p], `${arena} ${snap.election} ${p} constituency share`).toBeGreaterThan(0);
+        }
       }
-      for (const p of Object.keys(snap.shares) as PartyId[]) expect(snap.parties).toContain(p);
+      // every share is on the ballot, independents and the parties that won
+      // nothing aside (the Assembly's first-preference table lists them too)
+      for (const p of Object.keys(snap.shares) as PartyId[]) {
+        if (p === 'ind' || (snap.seats[p] ?? 0) === 0) continue;
+        expect(snap.parties, `${arena} ${snap.election} ${p}`).toContain(p);
+      }
     }
   });
 

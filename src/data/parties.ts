@@ -77,6 +77,18 @@ export const PARTIES: Record<PartyId, Party> = {
     id: 'tuv', name: 'Traditional Unionist Voice', shortName: 'TUV', colour: '#0C3A6D',
     ideology: 78, contestsRegions: NI, designation: 'unionist', devolvedOnly: 'ni',
   },
+  // the Green Party in Northern Ireland is a separate party from the Green
+  // Party of England and Wales (and the Scottish Greens); People Before Profit
+  // stands on both sides of the border. Neither stands for Westminster in the
+  // model, so they sit outside the Commons ballot like the Scottish Greens.
+  gpni: {
+    id: 'gpni', name: 'Green Party Northern Ireland', shortName: 'Green', colour: '#5FB043',
+    ideology: -65, contestsRegions: NI, designation: 'other', devolvedOnly: 'ni',
+  },
+  pbp: {
+    id: 'pbp', name: 'People Before Profit', shortName: 'PBP', colour: '#E91D50',
+    ideology: -80, contestsRegions: NI, designation: 'other', devolvedOnly: 'ni',
+  },
   // devolved-only parties. Neither stands for Westminster: the Scottish Greens
   // are a separate party from the Green Party of England and Wales, and Alba's
   // two MPs were defectors, never elected as such.
@@ -188,6 +200,8 @@ const CHAMBER_NAMES: Record<DevolvedArenaId, Partial<Record<PartyId, { name: str
     ld: { name: 'Welsh Liberal Democrats' },
     green: { name: 'Wales Green Party' },
   },
+  // Northern Ireland's parties are their own in every chamber
+  ni: {},
 };
 
 /** a party's name as it is known in a chamber */
@@ -232,19 +246,19 @@ export function counterpartParty(from: PartyId, to: ArenaId): PartyId | null {
   if (from === 'spk' || from === 'ind') return null;
   // an abstentionist party has no career to offer at Westminster
   if (abstainsIn(from, to)) return null;
-  if (to === 'scotland') {
-    if (from === 'green') return 'sgp';
-    if (from === 'pc') return null;
-    return from;
+  const party = PARTIES[from];
+  // the Greens are three separate parties, one per island nation
+  const GREENS: Partial<Record<ArenaId, PartyId>> = { uk: 'green', wales: 'green', scotland: 'sgp', ni: 'gpni' };
+  if (from === 'green' || from === 'sgp' || from === 'gpni') return GREENS[to] ?? null;
+  if (to === 'uk') {
+    // a devolved-only party has no Westminster home
+    return party.devolvedOnly ? null : from;
   }
-  if (to === 'wales') {
-    if (from === 'sgp') return 'green';
-    if (from === 'snp' || from === 'alba') return null;
-    return from;
-  }
-  // to Westminster
-  if (from === 'sgp') return 'green';
-  if (from === 'alba') return null;
+  // a party that does not stand in the nation has no counterpart there; the
+  // UK parties are the same organisations in Scotland and Wales, and Northern
+  // Ireland's parties are their own
+  if (!party.contestsRegions.includes(to)) return null;
+  if (party.devolvedOnly && party.devolvedOnly !== to) return null;
   return from;
 }
 
@@ -254,6 +268,5 @@ export function counterpartParty(from: PartyId, to: ArenaId): PartyId | null {
  *  little less efficiently and reverts harder toward its baseline. */
 export function isMajorIn(p: PartyId, arena: ArenaId | undefined): boolean {
   if (!arena || arena === 'uk') return !!PARTIES[p]?.major;
-  if (arena === 'scotland') return p === 'snp' || p === 'lab' || p === 'con';
-  return p === 'lab' || p === 'con' || p === 'pc';
+  return CHAMBERS[arena].majorParties.includes(p);
 }
