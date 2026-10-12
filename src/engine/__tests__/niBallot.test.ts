@@ -9,7 +9,7 @@ import { OFFICES } from '../../data/offices';
 import { createNewGame, SAVE_VERSION } from '../newGame';
 import { dressNiSeats } from '../../generation/constituency';
 import { runElection } from '../election';
-import { partyPollingShare, updatePolling } from '../polling';
+import { onNiBallot, partyPolling, partyPollingShare, updatePolling } from '../polling';
 import { applyPollingShock } from '../effects';
 import { initCalendar, nextStep } from '../scheduler';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
@@ -129,6 +129,22 @@ describe('Northern Ireland at Westminster: the ballot', () => {
     expect(g.pollHistory[0].ni).toBeDefined();
     expect(partyPollingShare(g, 'dup')).toBeCloseTo(ni.shares.dup!, 9);
     expect(partyPollingShare(g, 'con')).toBeCloseTo(g.polling.shares.con!, 9);
+    expect(partyPolling(g, 'dup')).toBeGreaterThan(20);
+    expect(onNiBallot(g)).toBe(false);
+    const niMp = game({ seed: 1, era: '2017', partyId: 'dup' });
+    expect(onNiBallot(niMp)).toBe(true);
+    // an NI member who sits as an independent still reads Northern Ireland's polls
+    niMp.player.partyId = 'ind';
+    expect(onNiBallot(niMp)).toBe(true);
+  });
+
+  it('the ballot remembers its last result and reverts toward it', () => {
+    const g = game({ seed: 21, era: '2019', partyId: 'con', region: 'london' });
+    const rng = new Rng(g.rngState);
+    g.day = g.nextElectionBy;
+    updatePolling(g, rng, g.day);
+    const { result } = runElection(g, rng);
+    expect(g.polling.ni!.lastResult).toEqual(result.regionalShares!.ni);
   });
 
   it('a shock to an NI party moves the NI ballot and leaves the GB poll untouched', () => {
@@ -156,7 +172,7 @@ describe('Northern Ireland at Westminster: the ballot', () => {
     updatePolling(b, rb, b.day + 400);
     expect(ra.state).toBe(rb.state);
     expect(a.polling.shares).toEqual(b.polling.shares);
-    expect(b.polling.ni, 'lazily seeded').toBeDefined();
+    expect(b.polling.ni, 'the ballot is created at birth or on load, never on the fly').toBeUndefined();
     expect(a.polling.ni!.rngState).not.toBe(game({ seed: 4, era: '2015', partyId: 'con', region: 'london' }).polling.ni!.rngState);
   });
 

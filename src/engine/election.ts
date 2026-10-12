@@ -7,7 +7,7 @@ import { REGIONS } from '../data/regions';
 import { seatSystemAt, SeatSystem } from '../data/chambers';
 import { generateName } from '../generation/characters';
 import { countSeats, rebuildForListPr } from '../generation/constituency';
-import { arenaBaseline, arenaPolledParties, ensureNiBallot } from './polling';
+import { arenaBaseline, arenaPolledParties, niBallotOf } from './polling';
 import { Rng } from './rng';
 import { seatsForMajorityIn, totalSeats } from './seats';
 import {
@@ -183,6 +183,13 @@ function computeSeat(
   }
 
   const sens = arena === 'uk' ? REGIONS[seat.region].swingSensitivity : 1;
+  // a separately polled ballot is normalised over its own parties, while the
+  // seat's shares also carry independents and others: a move on the ballot's
+  // scale lands on the seat scaled by the slice of the seat's vote the ballot
+  // covers
+  const regionalScale = regional
+    ? regional.parties.reduce((a, q) => a + ((seat.base ?? seat.shares)[q] ?? 0), 0)
+    : 1;
   const shares: Partial<Record<PartyId, number>> = {};
   // swing always from the IMMUTABLE build-time baseline (never the last result), so
   // the map can't compound/polarise election-on-election (old saves: fall back to shares)
@@ -218,8 +225,8 @@ function computeSeat(
       v += swing;
     } else if (regional && regional.parties.includes(p)) {
       // the seat's own ballot moved: the NI poll is already Northern Ireland's
-      // mood on Northern Ireland's scale, so the move is applied whole
-      v += (regional.national[p] ?? 0) - (regional.anchor[p] ?? 0);
+      // mood, so no coverage division and no regional sensitivity apply
+      v += ((regional.national[p] ?? 0) - (regional.anchor[p] ?? 0)) * regionalScale;
     } else if (p === 'ind') {
       v -= 0.02; // independents' personal vote fades
     }
@@ -434,10 +441,11 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
   // Northern Ireland's seats are fought on their own ballot, which carries its
   // own random stream: the GB count draws exactly what it drew before the
   // ballot existed
-  const niBallot = arena === 'uk' ? ensureNiBallot(state) : undefined;
+  const niBallot = niBallotOf(state);
   const niSwing: RegionalSwing | undefined = niBallot
     ? { parties: niBallot.parties, national: regionalElectionShares(niBallot), anchor: niBallot.anchor }
     : undefined;
+  if (niBallot && niSwing) niBallot.lastResult = { ...niSwing.national };
 
   // the national vote-leader gets a small per-seat winner's bonus so a clear lead
   // converts into a single-party majority more often (see computeSeat)

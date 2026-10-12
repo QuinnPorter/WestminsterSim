@@ -1,7 +1,8 @@
 import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { Hemicycle } from '../components/Hemicycle';
-import { onNiBallot, PollGraph } from '../components/PollGraph';
+import { PollGraph } from '../components/PollGraph';
+import { onNiBallot } from '../engine/polling';
 import { arenaPolledParties, partyPolling } from '../engine/polling';
 import { abstainsIn, partyNameIn } from '../data/parties';
 import { chamberOf, houseHeading } from '../data/chambers';

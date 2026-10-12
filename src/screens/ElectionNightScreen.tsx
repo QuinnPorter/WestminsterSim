@@ -3,7 +3,7 @@ import { ElectionResult, GameState, PartyId } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { ResultBar } from '../components/ResultBar';
-import { onNiBallot } from '../components/PollGraph';
+import { onNiBallot } from '../engine/polling';
 import { formatFull } from '../engine/clock';
 import { totalSeats } from '../engine/seats';
 import { chamberAt } from '../data/chambers';

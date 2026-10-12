@@ -203,6 +203,7 @@ export function createNewGame(input: CreationInput): GameState {
   relationships.push({ characterId: journalist.id, kind: 'journalist', value: rng.int(-10, 10) });
 
   const player = buildPlayer(input, playerSeatId, startDay);
+  const niBallot = seedNiBallot(era, seed);
 
   // working majority excluding SF + Speaker
   const majority = workingMajorityIn(seats, govParty, 'uk');
@@ -241,8 +242,8 @@ export function createNewGame(input: CreationInput): GameState {
     },
     // the GB poll, and alongside it Northern Ireland's own ballot on its own
     // stream, seeded from the career's seed without a draw
-    polling: { shares: { ...data.baselineShares }, lastUpdated: startDay, ni: seedNiBallot(era, seed) },
-    pollHistory: [{ day: startDay, shares: { ...data.baselineShares }, ni: { ...seedNiBallot(era, seed).shares } }],
+    polling: { shares: { ...data.baselineShares }, lastUpdated: startDay, ni: niBallot },
+    pollHistory: [{ day: startDay, shares: { ...data.baselineShares }, ni: { ...niBallot.shares } }],
     history: [
       {
         kind: 'enteredParliament',

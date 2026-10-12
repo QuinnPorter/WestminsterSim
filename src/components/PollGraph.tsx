@@ -1,13 +1,7 @@
 import { GameState, PartyId, PollSnapshot } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
-import { arenaPolledParties } from '../engine/polling';
+import { arenaPolledParties, onNiBallot } from '../engine/polling';
 import { formatMonthYear } from '../engine/clock';
-
-/** a Northern Ireland MP reads Northern Ireland's polls, not the GB tracker */
-export function onNiBallot(game: GameState): boolean {
-  const regions = PARTIES[game.player.partyId]?.contestsRegions ?? [];
-  return (game.arena ?? 'uk') === 'uk' && regions.length > 0 && regions.every((r) => r === 'ni');
-}
 
 /** a small multi-line poll tracker for the current parliament */
 export function PollGraph({ game, width = 320, height = 140 }: {

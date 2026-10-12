@@ -299,16 +299,16 @@ function westminsterWinner(p: PartyId): PartyId {
  * seats' shares are rescaled so the vote they imply matches the published
  * NI-wide result, with every winner still ahead.
  *
- * Deterministic and key-preserving by construction: it takes no Rng, and it
- * only ever rewrites values of share keys a seat already has. The election
- * engine draws one random number per share key per seat, so adding a key here
- * would move the Commons random stream for every career.
+ * Deterministic and key-preserving by construction: it takes no Rng, and the
+ * calibration only ever rewrites values of share keys a seat already has. The
+ * election engine draws one random number per share key per seat, so adding a
+ * key here would move the Commons random stream for every career.
  */
 export function dressNiSeats(seatMap: SyntheticSeat[], era: Era): void {
   const data = NI_WESTMINSTER[era];
   const niSeats = seatMap.filter((s) => s.region === 'ni');
   // only the real House has the real seats
-  if (!data || niSeats.length !== NI_CONSTITUENCIES.length) return;
+  if (niSeats.length !== NI_CONSTITUENCIES.length) return;
   const day = isoToDay(data.election);
 
   // names: every real constituency to an unused seat its winner holds
@@ -321,45 +321,11 @@ export function dressNiSeats(seatMap: SyntheticSeat[], era: Era): void {
     seat.name = niConstituencyName(c, day);
   }
 
-  // climate: scale each seat's existing keys toward the NI-wide vote. The target
-  // for a key is the party's real share; keys the published table does not
-  // carry (an off-ballot party on a seat) keep their value and absorb the rest.
-  for (let pass = 0; pass < 4; pass++) {
-    const implied: Partial<Record<PartyId, number>> = {};
-    for (const seat of niSeats) {
-      for (const [p, v] of Object.entries(seat.shares) as [PartyId, number | undefined][]) {
-        implied[p] = (implied[p] ?? 0) + (v ?? 0);
-      }
-    }
-    for (const seat of niSeats) {
-      for (const p of Object.keys(seat.shares) as PartyId[]) {
-        const want = data.shares[p];
-        const have = (implied[p] ?? 0) / niSeats.length;
-        if (want === undefined || want <= 0 || have <= 0) continue;
-        seat.shares[p] = (seat.shares[p] ?? 0) * (want / have);
-      }
-      let sum = 0;
-      for (const v of Object.values(seat.shares)) sum += v ?? 0;
-      if (sum <= 0) continue;
-      for (const p of Object.keys(seat.shares) as PartyId[]) {
-        seat.shares[p] = (seat.shares[p] ?? 0) / sum;
-      }
-      // the real winner stays ahead: swap values, never keys
-      const best = (Object.keys(seat.shares) as PartyId[])
-        .reduce((a, p) => ((seat.shares[p] ?? 0) > (seat.shares[a] ?? 0) ? p : a), seat.winner);
-      if (best !== seat.winner) {
-        const swap = seat.shares[best] ?? 0;
-        seat.shares[best] = seat.shares[seat.winner] ?? 0;
-        seat.shares[seat.winner] = swap;
-      }
-    }
-  }
-  for (const seat of niSeats) {
-    // rewrite the baseline in the seat's own key order
-    for (const p of Object.keys(seat.shares) as PartyId[]) {
-      if (seat.base) seat.base[p] = seat.shares[p];
-    }
-  }
+  // climate: rescale each seat's existing keys so the vote the eighteen seats
+  // imply matches the published NI-wide result, every winner still ahead
+  const keys = new Set<PartyId>();
+  for (const seat of niSeats) for (const p of Object.keys(seat.shares) as PartyId[]) keys.add(p);
+  calibrateToVoteShares(niSeats, data.shares, [...keys], { existingKeysOnly: true });
 }
 
 /** pick the player's seat from `candidates`: one their party holds, else the most
@@ -394,10 +360,16 @@ function carveOutPlayerSeat(rng: Rng, candidates: SyntheticSeat[], playerParty: 
 export function calibrateToVoteShares(
   seatMap: SyntheticSeat[],
   target: Partial<Record<PartyId, number>>,
-  parties: PartyId[]
+  parties: PartyId[],
+  /** `existingKeysOnly`: never add a share key a seat lacks. The election
+   *  engine draws one random number per key per seat, so a key added here
+   *  would move the chamber's random stream. */
+  opts: { existingKeysOnly?: boolean } = {}
 ): void {
   if (seatMap.length === 0) return;
   const total = parties.reduce((a, p) => a + (target[p] ?? 0), 0) || 1;
+  const keysOf = (seat: SyntheticSeat): PartyId[] =>
+    opts.existingKeysOnly ? parties.filter((p) => seat.shares[p] !== undefined) : parties;
 
   for (let pass = 0; pass < 4; pass++) {
     const implied: Partial<Record<PartyId, number>> = {};
@@ -405,7 +377,7 @@ export function calibrateToVoteShares(
       for (const p of parties) implied[p] = (implied[p] ?? 0) + (seat.shares[p] ?? 0);
     }
     for (const seat of seatMap) {
-      for (const p of parties) {
+      for (const p of keysOf(seat)) {
         const want = (target[p] ?? 0) / total;
         const have = (implied[p] ?? 0) / seatMap.length;
         if (have <= 0 || want <= 0) continue;
@@ -427,7 +399,14 @@ export function calibrateToVoteShares(
       }
     }
   }
-  for (const seat of seatMap) seat.base = { ...seat.shares };
+  for (const seat of seatMap) {
+    if (opts.existingKeysOnly && seat.base) {
+      // rewrite the baseline in the seat's own key order
+      for (const p of Object.keys(seat.shares) as PartyId[]) seat.base[p] = seat.shares[p];
+    } else {
+      seat.base = { ...seat.shares };
+    }
+  }
 }
 
 export function countSeats(seatMap: SyntheticSeat[]): Partial<Record<PartyId, number>> {

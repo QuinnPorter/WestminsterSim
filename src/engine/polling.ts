@@ -30,21 +30,16 @@ export function seedNiBallot(era: Era, seed: number): RegionalBallot {
   return { shares: { ...anchor }, anchor, parties, rngState: (seed ^ NI_STREAM_SALT) >>> 0 };
 }
 
-/** the Commons' NI ballot, created on first use for a save that predates it.
- *  Only the Commons has one; a devolved chamber returns undefined. */
-export function ensureNiBallot(state: GameState): RegionalBallot | undefined {
-  if ((state.arena ?? 'uk') !== 'uk') return undefined;
-  if (!state.polling.ni) state.polling.ni = seedNiBallot(state.startEra, state.rngState);
-  return state.polling.ni;
+/** the Commons' NI ballot, when the live chamber is the Commons. Every Commons
+ *  is created with one (`createNewGame`) or given one on load (the v11
+ *  migration); a devolved chamber has none. */
+export function niBallotOf(state: GameState): RegionalBallot | undefined {
+  return (state.arena ?? 'uk') === 'uk' ? state.polling.ni : undefined;
 }
 
-/** the NI ballot's last result in the Commons, else its anchor: what its
- *  fundamentals revert toward */
-export function lastNiShares(state: GameState, ballot: RegionalBallot): Partial<Record<PartyId, number>> {
-  const results = Object.values(state.elections)
-    .filter((r) => (r.arena ?? 'uk') === 'uk' && r.regionalShares?.ni)
-    .sort((a, b) => b.date - a.date);
-  return results[0]?.regionalShares?.ni ?? ballot.anchor;
+/** what the NI ballot's polling reverts toward: its last result, else its anchor */
+function niFundamentals(ballot: RegionalBallot): Partial<Record<PartyId, number>> {
+  return ballot.lastResult ?? ballot.anchor;
 }
 
 /** a party's current polling, 0..1, on whichever ballot polls it */
@@ -54,6 +49,12 @@ export function partyPollingShare(state: GameState, party: PartyId): number {
   const ni = state.polling.ni;
   if (ni && ni.parties.includes(party)) return ni.shares[party] ?? ni.anchor[party] ?? 0;
   return 0;
+}
+
+/** does the player read Northern Ireland's polls rather than the GB tracker: a
+ *  member for a Northern Ireland seat at Westminster, whatever their party */
+export function onNiBallot(state: GameState): boolean {
+  return (state.arena ?? 'uk') === 'uk' && state.player.region === 'ni' && !!state.polling.ni;
 }
 
 /** vote shares at the last election (or game start) — the swing anchor */
@@ -191,21 +192,22 @@ export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
   // the Northern Ireland ballot walks alongside, on its own stream. Every NI
   // party reverts toward its last result (none is a "minor" party there), and
   // no NI party governs at Westminster, so there is no drag.
-  const ni = ensureNiBallot(state);
+  const ni = niBallotOf(state);
   if (ni) {
     const niRng = new Rng(ni.rngState);
-    stepBallot(ni.shares, ni.parties, lastNiShares(state, ni), null, state.parliamentStart, niRng, from, toDay);
+    stepBallot(ni.shares, ni.parties, niFundamentals(ni), null, state.parliamentStart, niRng, from, toDay);
     ni.rngState = niRng.state;
   }
   state.polling.lastUpdated = toDay;
 }
 
 export function pollingLead(state: GameState): number {
-  const gov = state.polling.shares[state.government.governingParty] ?? 0;
-  const opp = state.polling.shares[state.government.oppositionParty] ?? 0;
+  const gov = partyPollingShare(state, state.government.governingParty);
+  const opp = partyPollingShare(state, state.government.oppositionParty);
   return (gov - opp) * 100;
 }
 
+/** a party's polling in points, on whichever ballot polls it */
 export function partyPolling(state: GameState, party: PartyId): number {
-  return (state.polling.shares[party] ?? 0) * 100;
+  return partyPollingShare(state, party) * 100;
 }

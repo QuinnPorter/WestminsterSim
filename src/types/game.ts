@@ -264,6 +264,8 @@ export interface RegionalBallot {
   parties: PartyId[];
   /** the ballot's own PRNG state */
   rngState: number;
+  /** the ballot's shares at its last election, which its polling reverts toward */
+  lastResult?: Partial<Record<PartyId, number>>;
 }
 
 export interface PollingState {
