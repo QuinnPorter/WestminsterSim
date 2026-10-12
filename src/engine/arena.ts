@@ -21,7 +21,8 @@ import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
 import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
 import { initCalendar } from './calendar';
-import { formExecutive } from './executive';
+import { formExecutive, isJointExecutive, makePlayerDeputyFirstMinister } from './executive';
+import { castContext } from './cast';
 import { resignationPressure, runElection } from './election';
 import { totalSeats, workingMajorityIn } from './seats';
 import { playerListRank } from './listSeats';
@@ -80,25 +81,11 @@ export function thawArena(state: GameState, snap: ArenaSnapshot): void {
 /** every npc id in play, live and dormant, so a new chamber's cast cannot
  *  collide with one the player has left behind */
 function globalIdCounter(state: GameState): { value: number } {
-  let max = 0;
-  const scan = (chars: Record<string, Character>) => {
-    for (const id of Object.keys(chars)) {
-      const n = Number(id.replace('npc_', ''));
-      if (!Number.isNaN(n) && n >= max) max = n + 1;
-    }
-  };
-  scan(state.characters);
-  for (const snap of Object.values(state.dormant ?? {})) scan(snap.characters);
-  return { value: max };
+  return castContext(state, { includeDormant: true }).idCounter;
 }
 
 function globalUsedNames(state: GameState): Set<string> {
-  const used = new Set<string>([state.player.name]);
-  for (const c of Object.values(state.characters)) used.add(c.name);
-  for (const snap of Object.values(state.dormant ?? {})) {
-    for (const c of Object.values(snap.characters)) used.add(c.name);
-  }
-  return used;
+  return castContext(state, { includeDormant: true }).usedNames;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +113,7 @@ export function buildDevolvedArena(
 
   const { seatMap, playerSeatId } = system.kind === 'ams'
     ? generateDevolvedSeatMap(rng, arena, snap, system.regions, playerParty, state.startEra)
-    : generateListPrSeatMap(rng, arena, snap, system.districts, system.seatsPer, playerParty, 2);
+    : generateListPrSeatMap(arena, snap, system.districts, system.seatsPer, playerParty, 2);
   const seats = countSeats(seatMap);
 
   const usedNames = globalUsedNames(state);
@@ -149,7 +136,7 @@ export function buildDevolvedArena(
   const cabinet: CabinetPost[] = [];
   const shadowCabinet: CabinetPost[] = [];
   // a joint Executive's benches are built by its formation below, party by party
-  for (const officeId of chamber.jointExecutive ? [] : cabinetOfficesFor(arena)) {
+  for (const officeId of isJointExecutive(arena) ? [] : cabinetOfficesFor(arena)) {
     cabinet.push({
       officeId,
       characterId: add(generateCharacter(rng, usedNames, {
@@ -196,16 +183,14 @@ export function buildDevolvedArena(
   }];
   const polling = { shares: { ...shares }, lastUpdated: since };
 
-  if (chamber.jointExecutive) {
+  if (isJointExecutive(arena)) {
     // the Executive the real election produced, installed on the chamber as it
     // will be thawed: the same government, cast and tenure records
     const forming: GameState = {
       ...state, arena, day: since, seats, seatMap, government, characters, pmHistory, loHistory,
       history: [], polling,
     };
-    formExecutive(forming, rng, {
-      snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false, headline: false,
-    });
+    formExecutive(forming, rng, { snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false });
   }
 
   return {
@@ -344,9 +329,9 @@ function installNpcGovernment(
     });
   }
 
-  if (chamber.jointExecutive) {
+  if (isJointExecutive(arena)) {
     // the Executive forms by right around the result; the player is not here
-    formExecutive(state, rng, { shares: state.polling.shares, playerSeated: false });
+    formExecutive(state, rng, { playerSeated: false, cast: { usedNames, idCounter } });
     gv.termsInPower = gv.governingParty === prevGoverning ? (gv.termsInPower ?? 1) + 1 : 1;
     gv.loInheritedPolls = partyPollingShare(state, gv.oppositionParty) * 100;
     return;
@@ -512,7 +497,7 @@ export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
       state.pollHistory = [pollSnapshot(state, pollDay)];
       state.history.push({
         kind: 'event', date: pollDay,
-        headline: chamber.jointExecutive
+        headline: isJointExecutive(arena)
           ? `${partyNameIn(state.government.governingParty, arena)} returned as the largest party at ${chamber.seat}`
           : `${partyNameIn(result.governingParty, arena)} ${
             result.outcome === 'majority' ? 'wins a majority' : 'forms a minority government'
@@ -1072,12 +1057,7 @@ export function installPlayerAsLeader(state: GameState, rng: Rng): void {
   }
   // the deputy First Minister's party has just changed leader: the post follows
   if (state.government.executive && state.government.coalitionPartner === party) {
-    state.government.deputyPmId = 'player';
-    state.government.deputyTitle = 'dfm';
-    state.player.flags._isDeputyPM = true;
-    state.player.flags._everDeputyPM = true;
-    state.player.flags._everDeputyArena = arena;
-    state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', title: 'dfm' });
+    makePlayerDeputyFirstMinister(state);
   }
   state.history.push({
     kind: 'roleChange', arena, date: state.day, officeId: 'leader',

@@ -10,8 +10,9 @@ export interface VoiceProfile {
   civilService: string;
   /** the Treasury */
   treasury: string;
-  /** the Parliamentary Private Secretary rung, or null where the chamber has none */
-  pps: { singular: string; plural: string; abbr: string; abbrPlural: string } | null;
+  /** the Parliamentary Private Secretary rung's words; a chamber without the
+   *  rung (`hasPps` false) still needs a word for the prose that mentions it */
+  pps: { singular: string; plural: string; abbr: string; abbrPlural: string };
   /** the Chief Whip, as the government's business manager is called */
   chiefWhip: string;
   /** Portcullis House: where members have their offices */
@@ -261,7 +262,7 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     pressureScale: 0.7,
     voice: {
       civilService: 'Stormont Castle', treasury: 'the Department of Finance',
-      pps: null,
+      pps: { singular: 'special adviser', plural: 'special advisers', abbr: 'adviser', abbrPlural: 'advisers' },
       chiefWhip: 'Chief Whip', lobby: 'the Great Hall',
       keepsParliamentWord: false, termNoun: 'Assembly term', questions: 'Question Time',
       partyPrefixes: false,

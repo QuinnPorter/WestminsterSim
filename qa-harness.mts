@@ -7,7 +7,8 @@
  * Prints one block per game to stdout. */
 import { createNewGame, CreationInput } from './src/engine/newGame';
 import { resolveChoiceCore, continueCore, acknowledgeElectionCore } from './src/engine/turn';
-import { nextStep, initCalendar } from './src/engine/scheduler';
+import { nextStep } from './src/engine/scheduler';
+import { initCalendar } from './src/engine/calendar';
 import { buildLegacy } from './src/engine/career';
 import { Rng } from './src/engine/rng';
 import { PLAYABLE_NI } from './src/data/parties';

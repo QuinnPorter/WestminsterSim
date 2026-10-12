@@ -18,13 +18,14 @@ import {
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, reconcilePlayerOffice, canChairCommittee, pickCommittee,
   resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
-  noteReshuffle, reshuffleOnCooldown, offerableOffice,
+  noteReshuffle, reshuffleOnCooldown,
 } from './career';
+import { offerableOffice } from './executive';
 import { OFFICES } from '../data/offices';
 import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
 import { runElection } from './election';
 import { gainStat } from './effects';
-import { partyPolling, pollingLead, lastElectionShares, updatePolling } from './polling';
+import { calibratedPolling, partyPolling, pollingLead, lastElectionShares, updatePolling } from './polling';
 import { yearOf, monthOf } from './clock';
 import { Rng, clamp } from './rng';
 import { seatsForMajorityIn } from './seats';
@@ -44,7 +45,7 @@ function softMandatePressure(state: GameState): number {
 // ---------- calendar ----------
 // the table and its initialisation live in calendar.ts; the scheduler only
 // fires what the live chamber holds
-export { initCalendar } from './calendar';
+
 
 // ---------- calendar variant rotation ----------
 //
@@ -936,7 +937,8 @@ function nextStepCore(state: GameState, rng: Rng): void {
     const yearsSinceFormation = (state.day - state.parliamentStart) / 365;
     const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
     // a joint Executive's parties govern by right, not on a majority
-    if (arr !== 'majority' && !state.government.executive && yearsSinceFormation > 0.6 && state.day >= coupCool) {
+    const precarious = arr === 'minority' || arr === 'supplyConfidence' || arr === 'coalition';
+    if (precarious && yearsSinceFormation > 0.6 && state.day >= coupCool) {
       const govParty = state.government.governingParty;
       const majorityLine = seatsForMajorityIn(state.seats, state.arena);
       const govSeats = state.seats[govParty] ?? 0;
@@ -994,8 +996,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // their own rebellious backbenches or sheer longevity faces an authority
   // crisis — usually survivable, occasionally fatal to the premiership
   if (playerIsPM(state) && state.day >= coupCool) {
-    // on the chamber's own scale: a Stormont First Minister polls in the twenties by design
-    const polls = partyPolling(state, state.player.partyId) / chamberOf(state.arena).pressureScale;
+    const polls = calibratedPolling(state, state.player.partyId);
     const tenureYears = (state.day - state.government.pmSinceDay) / 365;
     let pressure = 0;
     // B3 (player-PMs can fall): a sitting PM only faces ~150 of these checks across a
@@ -1068,7 +1069,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     state.government.pmId !== 'player' && state.player.hasSeat &&
     state.day >= ((state.player.flags._pmHeaveCooldownUntil as number) ?? 0)
   ) {
-    const polls = partyPolling(state, state.government.governingParty) / chamberOf(state.arena).pressureScale;
+    const polls = calibratedPolling(state, state.government.governingParty);
     if (polls < 28) {
       const hazard = Math.min(0.03, (28 - polls) * 0.004);
       if (rng.chance(hazard)) {
@@ -1152,7 +1153,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
       && !reshuffleOfferThisMonth(state) && !reshuffleOnCooldown(state)
       && !newLeaderBeatPending) {
     // a party deep in the polling mire reshuffles in desperation
-    const inTheMire = partyPolling(state, state.player.partyId) < 28 * chamberOf(state.arena).pressureScale;
+    const inTheMire = calibratedPolling(state, state.player.partyId) < 28;
     const hazard = RESHUFFLE_HAZARD + (inTheMire ? EMERGENCY_RESHUFFLE_BONUS : 0);
     if (rng.chance(hazard)) {
       runReshuffle(state, rng, inTheMire);

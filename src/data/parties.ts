@@ -242,13 +242,14 @@ export function polledPartiesForArena(arena: ArenaId, era: Era, day?: number): P
  *  these are the same organisations — except that a Green Party of England and
  *  Wales member joins the Scottish Greens at Holyrood (a separate party), and
  *  Alba has no Westminster home at all. */
+/** the Greens are three separate parties, one per island nation */
+const GREENS: Partial<Record<ArenaId, PartyId>> = { uk: 'green', wales: 'green', scotland: 'sgp', ni: 'gpni' };
+
 export function counterpartParty(from: PartyId, to: ArenaId): PartyId | null {
   if (from === 'spk' || from === 'ind') return null;
   // an abstentionist party has no career to offer at Westminster
   if (abstainsIn(from, to)) return null;
   const party = PARTIES[from];
-  // the Greens are three separate parties, one per island nation
-  const GREENS: Partial<Record<ArenaId, PartyId>> = { uk: 'green', wales: 'green', scotland: 'sgp', ni: 'gpni' };
   if (from === 'green' || from === 'sgp' || from === 'gpni') {
     // the Westminster Greens do not stand in Northern Ireland, so a Green MLA
     // has no Commons home; a Scottish Green does (the party stands in Scotland)
@@ -263,7 +264,6 @@ export function counterpartParty(from: PartyId, to: ArenaId): PartyId | null {
   // UK parties are the same organisations in Scotland and Wales, and Northern
   // Ireland's parties are their own
   if (!party.contestsRegions.includes(to)) return null;
-  if (party.devolvedOnly && party.devolvedOnly !== to) return null;
   return from;
 }
 

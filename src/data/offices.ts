@@ -129,14 +129,8 @@ const DEVOLVED_BRIEF_NAMES: Record<DevolvedArenaId, Partial<Record<DepartmentId,
     socialJustice: 'Social Justice',
     culture: 'Culture, Skills and Social Partnership',
   },
+  // the other briefs are their departments' casual names
   ni: {
-    finance: 'Finance',
-    health: 'Health',
-    education: 'Education',
-    economy: 'the Economy',
-    justice: 'Justice',
-    infrastructure: 'Infrastructure',
-    communities: 'Communities',
     agriculture: 'Agriculture, Environment and Rural Affairs',
   },
 };
@@ -194,6 +188,12 @@ export function devolvedMinisterOfficeId(arena: DevolvedArenaId, dept: Departmen
 export function spokespersonOfficeId(arena: DevolvedArenaId, dept: DepartmentId): OfficeId {
   return `${arena}_spokes_${dept}`;
 }
+/** is this a party's spokesperson rung in a single-tier chamber */
+export function isSpokespersonOffice(officeId: OfficeId | null): boolean {
+  const office = officeId ? OFFICES[officeId] : undefined;
+  return !!office?.department && !!office.arena && office.arena !== 'uk'
+    && officeId === spokespersonOfficeId(office.arena, office.department);
+}
 /** the two junior ministers in the Executive Office, one from the First
  *  Minister's party and one from the deputy First Minister's */
 export const TEO_JUNIOR_FM: OfficeId = 'ni_junior_teo_fm';
@@ -238,16 +238,13 @@ function buildDevolvedOffices(): Record<OfficeId, Office> {
       };
     }
     if (CHAMBERS[arena].jointExecutive) {
-      out[TEO_JUNIOR_FM] = {
-        id: TEO_JUNIOR_FM, tier: 3, arena, rank: 1,
-        title: 'Junior Minister, the Executive Office',
-        shadowTitle: 'Junior Minister, the Executive Office',
-      };
-      out[TEO_JUNIOR_DFM] = {
-        id: TEO_JUNIOR_DFM, tier: 3, arena, rank: 1,
-        title: 'Junior Minister, the Executive Office',
-        shadowTitle: 'Junior Minister, the Executive Office',
-      };
+      for (const id of [TEO_JUNIOR_FM, TEO_JUNIOR_DFM]) {
+        out[id] = {
+          id, tier: 3, arena, rank: 1,
+          title: 'Junior Minister, the Executive Office',
+          shadowTitle: 'Junior Minister, the Executive Office',
+        };
+      }
     }
   }
   return out;
@@ -479,8 +476,8 @@ export function officeTitleIn(
     const devolved = office.arena as DevolvedArenaId;
     const brief = devolvedBriefName(devolved, office.department);
     // a spokesperson rung is a party post whoever holds it
-    if (officeId === spokespersonOfficeId(devolved, office.department)) {
-      return minorPartyName ? `${minorPartyName} Spokesperson for ${brief}` : `Spokesperson for ${brief}`;
+    if (isSpokespersonOffice(officeId)) {
+      return minorPartyName ? `${minorPartyName} ${office.title}` : office.title;
     }
     const nouns = ministerialTitlesAt(office.arena, day ?? Number.MAX_SAFE_INTEGER);
     const noun = office.tier === 4 ? nouns.senior : nouns.junior;
@@ -564,6 +561,10 @@ const NI_ANALOGUE: Partial<Record<DepartmentId, DepartmentId>> = {
   socialJustice: 'communities',
   constitution: 'finance',
 };
+/** by chamber, so the lookup is data rather than a branch */
+const ANALOGUE: Record<DevolvedArenaId, Partial<Record<DepartmentId, DepartmentId>>> = {
+  scotland: DEVOLVED_ANALOGUE, wales: DEVOLVED_ANALOGUE, ni: NI_ANALOGUE,
+};
 
 /** …and the way back to Whitehall for a devolved-only brief */
 const UK_ANALOGUE: Partial<Record<DepartmentId, UkDepartmentId>> = {
@@ -615,7 +616,7 @@ export function translateOffice(
   }
 
   const held = DEVOLVED_CABINET[target];
-  const analogue = target === 'ni' ? NI_ANALOGUE : DEVOLVED_ANALOGUE;
+  const analogue = ANALOGUE[target];
   const wanted = office.department
     ? (analogue[office.department] ?? office.department)
     : undefined;

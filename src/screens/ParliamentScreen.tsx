@@ -31,7 +31,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const workingTarget = seatsForMajorityIn(game.seats, arena);
   const leadSeats = game.seats[gov.governingParty] ?? 0;
   // a formal coalition's seats are counted toward the government total
-  const coalitionSeats = gov.arrangement === 'coalition' && gov.coalitionPartner
+  const coalitionSeats = (gov.arrangement === 'coalition' || gov.arrangement === 'executive') && gov.coalitionPartner
     ? (game.seats[gov.coalitionPartner] ?? 0) : 0;
   const govSeats = leadSeats + coalitionSeats;
 
@@ -44,8 +44,8 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const isJuniorPartner = game.player.partyId === gov.coalitionPartner;
   // only a party leader (the PM of the senior party, or the junior partner's
   // leader) can pull their party out of the coalition
-  // the Executive is not a coalition a leader can walk out of (yet)
-  const inCoalition = gov.arrangement === 'coalition' && !gov.executive
+  // (the Executive is its own arrangement, not a coalition a leader can walk out of)
+  const inCoalition = gov.arrangement === 'coalition'
     && playerIsLeader(game)
     && (isJuniorPartner || game.player.partyId === gov.governingParty);
 

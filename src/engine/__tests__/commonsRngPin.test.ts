@@ -4,7 +4,8 @@ import { PARTIES } from '../../data/parties';
 import { createNewGame } from '../newGame';
 import { runElection } from '../election';
 import { updatePolling } from '../polling';
-import { initCalendar, nextStep } from '../scheduler';
+import { nextStep } from '../scheduler';
+import { initCalendar } from '../calendar';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
 import { Rng } from '../rng';
 

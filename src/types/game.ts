@@ -292,6 +292,8 @@ export interface CabinetPost {
   characterId: string; // 'player' refers to the player
 }
 
+export type Arrangement = 'majority' | 'minority' | 'supplyConfidence' | 'coalition' | 'executive';
+
 export interface GovernmentState {
   governingParty: PartyId;
   oppositionParty: PartyId;
@@ -305,7 +307,8 @@ export interface GovernmentState {
   /** day the current PM took office (for longevity resignations) */
   pmSinceDay: GameDay;
   /** how the current government holds power */
-  arrangement: 'majority' | 'minority' | 'supplyConfidence' | 'coalition';
+  /** `'executive'` is Northern Ireland's: the parties sit in government by right */
+  arrangement: Arrangement;
   /** formal junior coalition partner — sits in government */
   coalitionPartner?: PartyId;
   /** party propping up a minority on supply & confidence — NOT in government */

@@ -1,4 +1,4 @@
-import { DevolvedArenaId, GameDay, PartyId } from '../types/game';
+import { Arrangement, DevolvedArenaId, GameDay, PartyId } from '../types/game';
 import { isoToDay } from '../engine/clock';
 import { NI_ASSEMBLY } from './niAssembly';
 import type { ExecutiveSnapshot } from './niAssembly';
@@ -31,7 +31,7 @@ export interface LegislatureSnapshot {
   parties: PartyId[];
   governing: PartyId;
   opposition: PartyId;
-  arrangement: 'majority' | 'minority' | 'supplyConfidence' | 'coalition';
+  arrangement: Arrangement;
   coalitionPartner?: PartyId;
   confidencePartner?: PartyId;
   /** a joint Executive (the Assembly): the one this election actually produced */

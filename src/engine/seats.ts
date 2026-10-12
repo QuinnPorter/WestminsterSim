@@ -1,5 +1,5 @@
 import { ArenaId, PartyId } from '../types/game';
-import { abstainsIn } from '../data/parties';
+import { abstainsIn, outsidePartyPolitics } from '../data/parties';
 
 /** total seats in the House the standings describe. The Commons is 650, Holyrood
  *  129, the Senedd 60 and then 96 — so it is counted rather than fixed. */
@@ -38,4 +38,16 @@ export function workingMajorityIn(
 ): number {
   const own = seats[party] ?? 0;
   return own - (votingSeatsIn(seats, arena) - own);
+}
+
+/** the largest party with seats outside a bloc that can lead the opposition
+ *  (Sinn Féin, the Speaker and independents cannot); ties by the vote where
+ *  given, otherwise by the standings' own order */
+export function largestPartyOutside(
+  seats: Partial<Record<PartyId, number>>, bloc: PartyId[], arena: ArenaId,
+  shares?: Partial<Record<PartyId, number>>
+): PartyId | undefined {
+  return (Object.entries(seats) as [PartyId, number][])
+    .filter(([p, n]) => !bloc.includes(p) && !outsidePartyPolitics(p, arena) && (n ?? 0) > 0)
+    .sort((a, b) => b[1] - a[1] || (shares ? (shares[b[0]] ?? 0) - (shares[a[0]] ?? 0) : 0))[0]?.[0];
 }

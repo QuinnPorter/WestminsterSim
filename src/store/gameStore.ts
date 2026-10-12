@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { GameState } from '../types/game';
 import { CreationInput, createNewGame, SAVE_VERSION } from '../engine/newGame';
-import { initCalendar, nextStep, queueGeneralElection } from '../engine/scheduler';
+import { nextStep, queueGeneralElection } from '../engine/scheduler';
+import { initCalendar } from '../engine/calendar';
 import { CauseId } from '../types/game';
 import {
   acknowledgeElectionCore, continueCore, resolveChoiceCore,

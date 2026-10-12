@@ -1,6 +1,7 @@
 import { Era, GameDay, GameState, PartyId, PollSnapshot, RegionalBallot } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
 import { isMajorIn, polledPartiesForArena } from '../data/parties';
+import { chamberOf } from '../data/chambers';
 import { NI_POLLED, NI_WESTMINSTER } from '../data/niWestminster';
 import { normalisedShares } from '../generation/constituency';
 import { Rng } from './rng';
@@ -220,4 +221,11 @@ export function pollingLead(state: GameState): number {
 /** a party's polling in points, on whichever ballot polls it */
 export function partyPolling(state: GameState, party: PartyId): number {
   return partyPollingShare(state, party) * 100;
+}
+
+/** a party's polling on Westminster's scale, for the pressure thresholds that
+ *  were calibrated there: a Stormont First Minister polls in the twenties by
+ *  design, so the chamber's `pressureScale` lifts it before the comparison */
+export function calibratedPolling(state: GameState, party: PartyId): number {
+  return partyPolling(state, party) / chamberOf(state.arena).pressureScale;
 }

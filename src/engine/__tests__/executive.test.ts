@@ -3,7 +3,7 @@ import { GameState, OfficeId, PartyId } from '../../types/game';
 import { NI_ASSEMBLY } from '../../data/niAssembly';
 import { OFFICES, cabinetOfficesFor, executiveDepartments } from '../../data/offices';
 import {
-  allocateMinistries, designateFirstMinisters, entitledParties, hasOfficialOpposition, inExecutive,
+  allocateMinistries, designateFirstMinisters, entitledParties, hasOfficialOpposition, inGovernmentBloc,
   oppositionMinSeats, pickJusticeParty, planExecutive, OPPOSITION_REFORM_DAY,
 } from '../executive';
 import {
@@ -109,8 +109,8 @@ describe('sharing out the ministries', () => {
     expect(declined).toBeLessThan(36);
   });
   it('Justice: Alliance by convention, an independent possible after the reforms', () => {
-    expect(pickJusticeParty(NI_ASSEMBLY[0].seats, isoToDay('2011-05-05'))).toBe('alliance');
-    expect(pickJusticeParty({ dup: 40, sf: 30 }, isoToDay('2011-05-05'))).toBeUndefined();
+    expect(pickJusticeParty(NI_ASSEMBLY[0].seats, isoToDay('2011-05-05'), new Rng(1))).toBe('alliance');
+    expect(pickJusticeParty({ dup: 40, sf: 30 }, isoToDay('2011-05-05'), new Rng(1))).toBeUndefined();
     const picks = new Set<string>();
     for (let s = 1; s <= 20; s++) picks.add(pickJusticeParty(NI_ASSEMBLY[1].seats, OPPOSITION_REFORM_DAY, new Rng(s)) ?? 'none');
     expect(picks).toEqual(new Set(['alliance', 'ind']));
@@ -130,7 +130,7 @@ describe('a Stormont start', () => {
     expect(gv.executive?.justiceParty).toBe('alliance');
     expect(gv.governingParty).toBe('dup');
     expect(gv.coalitionPartner).toBe('sf');
-    expect(gv.arrangement).toBe('coalition');
+    expect(gv.arrangement).toBe('executive');
     expect(gv.deputyTitle).toBe('dfm');
     expect(g.characters[gv.pmId].partyId).toBe('dup');
     expect(g.characters[gv.deputyPmId!].partyId).toBe('sf');
@@ -179,7 +179,7 @@ describe('a Stormont start', () => {
     for (const post of gv.shadowCabinet) expect(g.characters[post.characterId].partyId).toBe('uup');
     expect(onFrontbenchTrack(g)).toBe(true);
     expect(playerInGovernmentBloc(g)).toBe(false);
-    expect(inExecutive(g, 'uup')).toBe(false);
+    expect(inGovernmentBloc(g, 'uup')).toBe(false);
   });
 });
 
@@ -263,7 +263,7 @@ describe('the Executive and the player', () => {
       applyElectionAftermath(g, rng, result, playerWonSeat);
       const gv = g.government;
       expect(gv.executive?.formedDay).toBe(g.day);
-      expect(gv.arrangement).toBe('coalition');
+      expect(gv.arrangement).toBe('executive');
       expect(g.forcedQueue.some((e) => e.kind === 'coalitionTalks' || e.kind === 'coalitionOffer')).toBe(false);
       const ranked = (Object.entries(result.seats) as [PartyId, number][]).sort((a, b) => b[1] - a[1]);
       expect(gv.governingParty).toBe(ranked[0][0]);

@@ -655,9 +655,10 @@ export function pickDevolvedPlayerSeat(
 // ---------------------------------------------------------------------------
 
 /** the party-by-party d'Hondt allocation of `seats` seats on `shares` */
-function dHondtCounts(shares: Partial<Record<PartyId, number>>, seats: number): Partial<Record<PartyId, number>> {
+/** seats per party in an allocation order */
+function countOrder(order: PartyId[]): Partial<Record<PartyId, number>> {
   const counts: Partial<Record<PartyId, number>> = {};
-  for (const p of dHondt(shares, seats)) counts[p] = (counts[p] ?? 0) + 1;
+  for (const p of order) counts[p] = (counts[p] ?? 0) + 1;
   return counts;
 }
 
@@ -685,7 +686,7 @@ export function calibrateDistrict(
   for (const k of keys) exact[k] = Math.max(0.001, (row[k] ?? 0) / seatsPer);
   const blend = (t: number): Partial<Record<PartyId, number>> => {
     const raw: Partial<Record<PartyId, number>> = {};
-    for (const k of keys) raw[k] = t * (prior[k] ?? 0.001) + (1 - t) * (exact[k] ?? 0);
+    for (const k of keys) raw[k] = t * (prior[k] ?? 0.001) + (1 - t) * exact[k]!;
     return normalisedShares(raw, keys);
   };
   // Votes exactly proportional to seats reproduce the row, but with the last
@@ -693,23 +694,22 @@ export function calibrateDistrict(
   // is reproduced with the widest margin on its last seat: that is the vote
   // the constituency "really" had, and the one a swing moves plausibly. The
   // margin is the gap between the last quotient awarded and the first denied.
-  let best = blend(0);
+  let best: Partial<Record<PartyId, number>> | null = null;
   let bestMargin = -1;
   for (let i = 0; i <= 100; i++) {
     const shares = blend(i / 100);
-    if (!sameCounts(dHondtCounts(shares, seatsPer), row)) continue;
-    const margin = dHondtMargin(shares, seatsPer);
+    const order = dHondt(shares, seatsPer);
+    if (!sameCounts(countOrder(order), row)) continue;
+    const margin = dHondtMargin(shares, order);
     if (margin > bestMargin) { bestMargin = margin; best = shares; }
   }
-  return best;
+  return best ?? blend(0);
 }
 
-/** how safely a d'Hondt count awards its last seat: the relative gap between
+/** how safely a d'Hondt count awarded its last seat: the relative gap between
  *  the last quotient awarded and the best quotient that was not */
-function dHondtMargin(shares: Partial<Record<PartyId, number>>, seatsPer: number): number {
-  const order = dHondt(shares, seatsPer);
-  const held: Partial<Record<PartyId, number>> = {};
-  for (const p of order) held[p] = (held[p] ?? 0) + 1;
+function dHondtMargin(shares: Partial<Record<PartyId, number>>, order: PartyId[]): number {
+  const held = countOrder(order);
   const last = order[order.length - 1];
   const lastQ = (shares[last] ?? 0) / (held[last] ?? 1);
   let nextQ = 0;
@@ -727,7 +727,6 @@ function dHondtMargin(shares: Partial<Record<PartyId, number>>, seatsPer: number
  *  the party runs strongest, flipped from the bottom of the order if the party
  *  holds fewer seats there than that. */
 export function generateListPrSeatMap(
-  rng: Rng,
   arena: DevolvedArenaId,
   snap: LegislatureSnapshot,
   districts: { id: string; name: string }[],
@@ -762,7 +761,6 @@ export function generateListPrSeatMap(
       });
     }
   }
-  void rng; // the map is a deterministic function of the result
   const playerSeatId = placeListPrPlayer(seatMap, districts.map((d) => d.id), playerParty, rank);
   return { seatMap, playerSeatId, playerRegion: region };
 }

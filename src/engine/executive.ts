@@ -2,13 +2,17 @@ import {
   ArenaId, CabinetPost, DepartmentId, Designation, GameState, OfficeId, PartyId,
 } from '../types/game';
 import type { ExecutiveSnapshot } from '../data/niAssembly';
-import { PARTIES, outsidePartyPolitics, partyNameIn } from '../data/parties';
+import { PARTIES, partyNameIn } from '../data/parties';
 import { chamberOf, isDevolved } from '../data/chambers';
 import {
   OFFICES, TEO_JUNIOR_DFM, TEO_JUNIOR_FM, cabinetOfficesFor, cabsecOfficeId, executiveDepartments,
+  isSpokespersonOffice, spokespersonOfficeId, translateOffice,
 } from '../data/offices';
 import { dHondt } from './listSeats';
-import { workingMajorityIn } from './seats';
+import { largestPartyOutside, totalSeats, workingMajorityIn } from './seats';
+import { CastContext, castContext } from './cast';
+import { recordLoChange, recordPmChange } from './tenure';
+import { characterName } from './relationships';
 import { generateCharacter } from '../generation/characters';
 import { isoToDay } from './clock';
 import { Rng } from './rng';
@@ -21,11 +25,11 @@ import { Rng } from './rng';
  * of the other community, and the ministries are shared out by d'Hondt among
  * every party that wants them. There is no winner, so none of the Westminster
  * arrangement machinery (coalition talks, supply and confidence, a minority) is
- * run here. The Executive is carried on the existing fields so that every
- * reader of `governingParty` (the First Minister's party) and `coalitionPartner`
- * (the deputy First Minister's) keeps working, with `government.executive`
- * naming the whole membership. Which chamber does this is
- * `ChamberProfile.jointExecutive`, never an arena literal.
+ * run here: the arrangement is its own, `'executive'`. It is carried on the
+ * existing fields so that every reader of `governingParty` (the First
+ * Minister's party) and `coalitionPartner` (the deputy First Minister's) keeps
+ * working, with `government.executive` naming the whole membership. Which
+ * chamber does this is `ChamberProfile.jointExecutive`, never an arena literal.
  */
 
 /** the official opposition needs a bench worth the name: below this share of
@@ -42,6 +46,10 @@ export const OPPOSITION_REFORM_DAY = isoToDay('2016-05-05');
  *  that decline their ministries after the 2016 reforms */
 export const DECLINE_CHANCE = 0.4;
 
+/** how often a tier-3 climber from the First or deputy First Minister's party
+ *  is offered the Executive Office's junior post rather than a spokesperson brief */
+const TEO_OFFER_CHANCE = 0.3;
+
 /** the order a party reaches for the briefs: the money, then the big spenders */
 const DEPARTMENT_PREFERENCE: DepartmentId[] = [
   'finance', 'economy', 'health', 'education', 'infrastructure', 'communities', 'agriculture', 'justice',
@@ -51,6 +59,10 @@ export function isJointExecutive(arena: ArenaId | undefined): boolean {
   return chamberOf(arena).jointExecutive;
 }
 
+// ---------------------------------------------------------------------------
+// who sits where
+// ---------------------------------------------------------------------------
+
 /** the parties in government: the Executive's membership where there is one,
  *  otherwise the governing party and any coalition partner */
 export function executiveParties(state: GameState): PartyId[] {
@@ -59,21 +71,14 @@ export function executiveParties(state: GameState): PartyId[] {
   return gv.coalitionPartner ? [gv.governingParty, gv.coalitionPartner] : [gv.governingParty];
 }
 
-export function inExecutive(state: GameState, party: PartyId): boolean {
+/** is the party in the government bloc: a governing or coalition party at
+ *  Westminster, any party holding a ministry in a joint Executive */
+export function inGovernmentBloc(state: GameState, party: PartyId): boolean {
   return executiveParties(state).includes(party);
-}
-
-/** false only while a collapsed Executive leaves the chamber without ministers */
-export function executiveInBeing(state: GameState): boolean {
-  return !state.government.executive || state.government.executive.status === 'formed';
 }
 
 export function oppositionMinSeats(house: number): number {
   return Math.ceil(house * OPPOSITION_SHARE);
-}
-
-function houseSize(seats: Partial<Record<PartyId, number>>): number {
-  return Object.values(seats).reduce((a, b) => a + (b ?? 0), 0);
 }
 
 /** does the chamber have an official opposition with a bench? Always at
@@ -82,8 +87,57 @@ function houseSize(seats: Partial<Record<PartyId, number>>): number {
 export function hasOfficialOpposition(state: GameState): boolean {
   if (!state.government.executive) return true;
   const opp = state.government.oppositionParty;
-  if (!opp || inExecutive(state, opp)) return false;
-  return (state.seats[opp] ?? 0) >= oppositionMinSeats(houseSize(state.seats));
+  if (!opp || inGovernmentBloc(state, opp)) return false;
+  return (state.seats[opp] ?? 0) >= oppositionMinSeats(totalSeats(state.seats));
+}
+
+/** the parties whose members sit on a bench: the governing party's cabinet (every
+ *  Executive party's, where there is one) and the official opposition's shadow
+ *  cabinet, which does not exist below the bar */
+export function benchParties(state: GameState, side: 'cabinet' | 'shadowCabinet'): PartyId[] {
+  if (side === 'cabinet') return state.government.executive?.parties ?? [state.government.governingParty];
+  return hasOfficialOpposition(state) ? [state.government.oppositionParty] : [];
+}
+
+/** the party of whoever holds a bench post */
+export function postParty(state: GameState, post: CabinetPost): PartyId | undefined {
+  if (post.characterId === 'player') return state.player.partyId;
+  const c = state.characters[post.characterId];
+  return c && c.active ? c.partyId : undefined;
+}
+
+/** the party holding each Executive department, read off the cabinet */
+export function executiveAllocation(state: GameState): Partial<Record<DepartmentId, PartyId>> {
+  const out: Partial<Record<DepartmentId, PartyId>> = {};
+  for (const post of state.government.cabinet) {
+    const dept = OFFICES[post.officeId]?.department;
+    const party = postParty(state, post);
+    if (dept && party) out[dept as DepartmentId] = party;
+  }
+  return out;
+}
+
+/** the departments a party runs, read off the cabinet */
+export function partyDepartments(state: GameState, party: PartyId): DepartmentId[] {
+  return (Object.entries(executiveAllocation(state)) as [DepartmentId, PartyId][])
+    .filter(([, p]) => p === party)
+    .map(([d]) => d);
+}
+
+/** the Executive Office junior post that goes with a party's head of government
+ *  post, or null for a party holding neither */
+export function teoJuniorFor(state: GameState, party: PartyId): OfficeId | null {
+  if (!state.government.executive) return null;
+  if (party === state.government.governingParty) return TEO_JUNIOR_FM;
+  if (party === state.government.coalitionPartner) return TEO_JUNIOR_DFM;
+  return null;
+}
+
+/** the party an Executive Office junior post belongs to, or undefined for any other office */
+export function teoJuniorParty(state: GameState, officeId: OfficeId): PartyId | undefined {
+  if (officeId === TEO_JUNIOR_FM) return state.government.governingParty;
+  if (officeId === TEO_JUNIOR_DFM) return state.government.coalitionPartner;
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,11 +205,11 @@ export function designateFirstMinisters(
  *  2016, an independent from the Assembly that formed that year. Undefined when
  *  nobody fits, and the brief goes into the d'Hondt pool like any other. */
 export function pickJusticeParty(
-  seats: Partial<Record<PartyId, number>>, day: number, rng?: Rng
+  seats: Partial<Record<PartyId, number>>, day: number, rng: Rng
 ): PartyId | undefined {
   const alliance = (seats.alliance ?? 0) > 0;
   const independent = (seats.ind ?? 0) > 0;
-  if (day < OPPOSITION_REFORM_DAY || !rng) return alliance ? 'alliance' : undefined;
+  if (day < OPPOSITION_REFORM_DAY) return alliance ? 'alliance' : undefined;
   if (alliance && independent) return rng.chance(0.5) ? 'alliance' : 'ind';
   return alliance ? 'alliance' : independent ? 'ind' : undefined;
 }
@@ -203,6 +257,8 @@ export interface ExecutivePlan {
   justice?: PartyId;
   allocation: Partial<Record<DepartmentId, PartyId>>;
   declined: PartyId[];
+  /** the largest party left outside, whatever its size */
+  opposition: PartyId | undefined;
 }
 
 /** Decide an Executive from a result: who leads it, who joins it, who gets what.
@@ -215,14 +271,17 @@ export function planExecutive(
 ): ExecutivePlan | null {
   if (!isDevolved(arena)) return null;
   const departments = executiveDepartments(arena);
+  const finish = (plan: Omit<ExecutivePlan, 'opposition'>): ExecutivePlan => ({
+    ...plan, opposition: largestPartyOutside(seats, plan.parties, arena, shares),
+  });
   if (snapshot) {
-    const justice = snapshot.justice;
-    const entrants = snapshot.parties.filter((p) => p !== justice || designationOf(p) !== undefined);
-    const allocation = allocateMinistries(seats, entrants.filter((p) => p !== 'ind'), departments, justice);
-    return {
-      fm: snapshot.fm, dfm: snapshot.dfm, parties: [...snapshot.parties], justice,
-      allocation, declined: [...snapshot.declined],
-    };
+    // the independent at Justice is a person, not a party in the d'Hondt count
+    const entrants = snapshot.parties.filter((p) => p !== 'ind');
+    return finish({
+      fm: snapshot.fm, dfm: snapshot.dfm, parties: [...snapshot.parties], justice: snapshot.justice,
+      allocation: allocateMinistries(seats, entrants, departments, snapshot.justice),
+      declined: [...snapshot.declined],
+    });
   }
   const heads = designateFirstMinisters(seats, shares);
   if (!heads) return null;
@@ -239,52 +298,12 @@ export function planExecutive(
   const entrants = entitled.filter((p) => !declined.includes(p));
   const allocation = allocateMinistries(seats, entrants, departments, justice);
   const parties = [...new Set<PartyId>([heads.fm, heads.dfm, ...Object.values(allocation) as PartyId[]])];
-  return { ...heads, parties, justice, allocation, declined };
+  return finish({ ...heads, parties, justice, allocation, declined });
 }
 
 // ---------------------------------------------------------------------------
 // installing it
 // ---------------------------------------------------------------------------
-
-export interface CastContext {
-  usedNames: Set<string>;
-  idCounter: { value: number };
-}
-
-function castContext(state: GameState): CastContext {
-  const usedNames = new Set<string>([state.player.name]);
-  let max = 0;
-  for (const c of Object.values(state.characters)) {
-    usedNames.add(c.name);
-    const n = Number(c.id.replace('npc_', ''));
-    if (!Number.isNaN(n) && n >= max) max = n + 1;
-  }
-  return { usedNames, idCounter: { value: max } };
-}
-
-function holderParty(state: GameState, characterId: string): PartyId | undefined {
-  if (characterId === 'player') return state.player.partyId;
-  const c = state.characters[characterId];
-  return c && c.active ? c.partyId : undefined;
-}
-
-/** the party holding each Executive department, read off the cabinet */
-export function executiveAllocation(state: GameState): Partial<Record<DepartmentId, PartyId>> {
-  const out: Partial<Record<DepartmentId, PartyId>> = {};
-  for (const post of state.government.cabinet) {
-    const dept = OFFICES[post.officeId]?.department;
-    const party = holderParty(state, post.characterId);
-    if (dept && party) out[dept as DepartmentId] = party;
-  }
-  return out;
-}
-
-/** the departments the player's party runs, read off the cabinet */
-export function partyDepartments(state: GameState, party: PartyId): DepartmentId[] {
-  return (Object.entries(executiveAllocation(state)) as [DepartmentId, PartyId][])
-    .filter(([, p]) => p === party)
-    .map(([d]) => d);
-}
 
 export interface InstallOptions {
   /** does the player sit in the chamber (false in the moment after losing
@@ -309,25 +328,20 @@ function leaderIdOf(state: GameState, rng: Rng, party: PartyId, seated: boolean,
   return c.id;
 }
 
-function nameOf(state: GameState, id: string, fallback: string): string {
-  return id === 'player' ? state.player.name : (state.characters[id]?.name ?? fallback);
-}
-
-function openTenure(
-  list: { characterId: string; name: string; partyId: PartyId; startDay: number; endDay: number | null }[],
-  id: string, name: string, party: PartyId, day: number
-): void {
-  const open = list.find((t) => t.endDay === null);
-  if (open && open.characterId === id) return;
-  if (open) open.endDay = day;
-  list.push({ characterId: id, name, partyId: party, startDay: day, endDay: null });
+function ensurePost(bench: CabinetPost[], officeId: OfficeId): CabinetPost {
+  let post = bench.find((p) => p.officeId === officeId);
+  if (!post) {
+    post = { officeId, characterId: '' };
+    bench.push(post);
+  }
+  return post;
 }
 
 /** give a post to somebody of `party`, keeping a sitting holder of that party */
 function fillPost(
   state: GameState, rng: Rng, post: CabinetPost, party: PartyId, cast: CastContext, seated: boolean
 ): void {
-  const current = holderParty(state, post.characterId);
+  const current = postParty(state, post);
   if (current === party && (post.characterId !== 'player' || seated)) return;
   const old = state.characters[post.characterId];
   if (old && old.officeId === post.officeId) old.officeId = null;
@@ -339,11 +353,16 @@ function fillPost(
   post.characterId = c.id;
 }
 
-/** the largest party outside the Executive, whatever its size */
-function largestOutside(state: GameState, parties: PartyId[]): PartyId | undefined {
-  return (Object.entries(state.seats) as [PartyId, number][])
-    .filter(([p, n]) => !parties.includes(p) && !outsidePartyPolitics(p, state.arena) && (n ?? 0) > 0)
-    .sort((a, b) => b[1] - a[1])[0]?.[0];
+/** the player takes the deputy First Minister's post: the overlay flags and the
+ *  timeline span, once */
+export function makePlayerDeputyFirstMinister(state: GameState): void {
+  state.government.deputyPmId = 'player';
+  state.government.deputyTitle = 'dfm';
+  if (state.player.flags._isDeputyPM) return;
+  state.player.flags._isDeputyPM = true;
+  state.player.flags._everDeputyPM = true;
+  state.player.flags._everDeputyArena = state.arena ?? 'uk';
+  state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', title: 'dfm' });
 }
 
 /** Make the shadow bench match the opposition: a full bench of the official
@@ -363,14 +382,8 @@ export function syncOppositionBench(
     gv.shadowCabinet = [];
     return;
   }
-  const opp = gv.oppositionParty;
   for (const officeId of cabinetOfficesFor(state.arena)) {
-    let post = gv.shadowCabinet.find((p) => p.officeId === officeId);
-    if (!post) {
-      post = { officeId, characterId: '' };
-      gv.shadowCabinet.push(post);
-    }
-    fillPost(state, rng, post, opp, cast, seated);
+    fillPost(state, rng, ensurePost(gv.shadowCabinet, officeId), gv.oppositionParty, cast, seated);
   }
 }
 
@@ -389,7 +402,7 @@ export function installExecutive(
   gv.governingParty = plan.fm;
   gv.coalitionPartner = plan.dfm;
   delete gv.confidencePartner;
-  gv.arrangement = 'coalition';
+  gv.arrangement = 'executive';
   gv.executive = {
     status: 'formed', parties: [...plan.parties],
     ...(plan.justice ? { justiceParty: plan.justice } : {}),
@@ -403,22 +416,19 @@ export function installExecutive(
     gv.pmId = fmId;
     gv.pmSinceDay = state.day;
   }
-  openTenure(state.pmHistory, fmId, nameOf(state, fmId, chamberOf(arena).head), plan.fm, state.day);
+  recordPmChange(state, fmId);
 
   const dfmId = leaderIdOf(state, rng, plan.dfm, seated, cast);
-  gv.deputyPmId = dfmId;
-  gv.deputyTitle = 'dfm';
   if (dfmId === 'player') {
-    if (!state.player.flags._isDeputyPM) {
-      state.player.flags._isDeputyPM = true;
-      state.player.flags._everDeputyPM = true;
-      state.player.flags._everDeputyArena = arena;
-      state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', title: 'dfm' });
+    makePlayerDeputyFirstMinister(state);
+  } else {
+    gv.deputyPmId = dfmId;
+    gv.deputyTitle = 'dfm';
+    if (state.player.flags._isDeputyPM) {
+      delete state.player.flags._isDeputyPM;
+      delete state.player.flags._govOverlayOpen;
+      state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'end' });
     }
-  } else if (state.player.flags._isDeputyPM) {
-    delete state.player.flags._isDeputyPM;
-    delete state.player.flags._govOverlayOpen;
-    state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'end' });
   }
 
   // the ministers: each department to its party, the Chief Whip (party
@@ -426,16 +436,12 @@ export function installExecutive(
   // Executive party's member already holds it
   const roster = cabinetOfficesFor(arena);
   for (const officeId of roster) {
-    let post = gv.cabinet.find((p) => p.officeId === officeId);
-    if (!post) {
-      post = { officeId, characterId: '' };
-      gv.cabinet.push(post);
-    }
+    const post = ensurePost(gv.cabinet, officeId);
     const dept = OFFICES[officeId]?.department as DepartmentId | undefined;
     if (dept) {
       fillPost(state, rng, post, plan.allocation[dept] ?? plan.fm, cast, seated);
     } else {
-      const current = holderParty(state, post.characterId);
+      const current = postParty(state, post);
       if (!current || !plan.parties.includes(current)) fillPost(state, rng, post, plan.fm, cast, seated);
     }
   }
@@ -444,12 +450,9 @@ export function installExecutive(
 
   // the opposition: the largest party outside the Executive, with a bench only
   // above the bar
-  const opp = largestOutside(state, plan.parties) ?? gv.oppositionParty;
-  gv.oppositionParty = opp;
-  const loId = leaderIdOf(state, rng, opp, seated, cast);
-  gv.loId = loId;
-  state.loHistory = state.loHistory ?? [];
-  openTenure(state.loHistory, loId, nameOf(state, loId, 'the Leader of the Opposition'), opp, state.day);
+  gv.oppositionParty = plan.opposition ?? gv.oppositionParty;
+  gv.loId = leaderIdOf(state, rng, gv.oppositionParty, seated, cast);
+  recordLoChange(state, gv.loId);
   syncOppositionBench(state, rng, { ...opts, cast });
 }
 
@@ -457,32 +460,31 @@ export function installExecutive(
  *  Executive is the one the real election produced. Returns the plan, or null
  *  where the chamber has no joint Executive. */
 export function formExecutive(
-  state: GameState, rng: Rng,
-  opts: InstallOptions & { snapshot?: ExecutiveSnapshot; shares?: Partial<Record<PartyId, number>>; headline?: boolean } = {}
+  state: GameState, rng: Rng, opts: InstallOptions & { snapshot?: ExecutiveSnapshot } = {}
 ): ExecutivePlan | null {
   const arena = state.arena ?? 'uk';
   if (!isJointExecutive(arena)) return null;
-  const plan = planExecutive(
-    state.seats, opts.shares ?? state.polling.shares, rng, state.day, arena, opts.snapshot
-  );
+  const plan = planExecutive(state.seats, state.polling.shares, rng, state.day, arena, opts.snapshot);
   if (!plan) return null;
   installExecutive(state, rng, plan, opts);
-  if (opts.headline !== false) {
-    const fm = nameOf(state, state.government.pmId, chamberOf(arena).head);
-    const dfm = nameOf(state, state.government.deputyPmId ?? '', chamberOf(arena).deputyHead);
+  const deputyHead = chamberOf(arena).deputyHead;
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${characterName(state, state.government.pmId)} and ${characterName(state, state.government.deputyPmId ?? '')} are nominated First Minister and ${deputyHead}; the Executive is formed`,
+  });
+  if (plan.declined.length > 0) {
+    const s = plan.declined.length === 1 ? 's' : '';
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${fm} and ${dfm} are nominated First Minister and ${chamberOf(arena).deputyHead}; the Executive is formed`,
+      headline: `${plan.declined.map((p) => partyNameIn(p, arena)).join(' and ')} decline${s} a place in the Executive and take${s} the opposition benches`,
     });
-    if (plan.declined.length > 0) {
-      state.history.push({
-        kind: 'event', date: state.day,
-        headline: `${plan.declined.map((p) => partyNameIn(p, arena)).join(' and ')} decline${plan.declined.length === 1 ? 's' : ''} a place in the Executive and take${plan.declined.length === 1 ? 's' : ''} the opposition benches`,
-      });
-    }
   }
   return plan;
 }
+
+// ---------------------------------------------------------------------------
+// the ladder
+// ---------------------------------------------------------------------------
 
 /** a post the player's party actually holds, or a spokesperson brief it does
  *  not run itself: the single-tier ladder's offers must fit the share-out.
@@ -503,15 +505,22 @@ export function constrainToPartyPosts(
     const others = held.filter((d) => d !== current);
     return others.length > 0 ? cabsecOfficeId(arena, rng.pick(others)) : null;
   }
-  if (target.startsWith(`${arena}_spokes_`)) {
+  if (isSpokespersonOffice(target)) {
     // the heads' parties have a junior rung of their own in the Executive Office
-    const teo = party === state.government.governingParty ? TEO_JUNIOR_FM
-      : party === state.government.coalitionPartner ? TEO_JUNIOR_DFM : null;
-    if (teo && state.player.officeId !== teo && rng.chance(0.3)) return teo;
+    const teo = teoJuniorFor(state, party);
+    if (teo && state.player.officeId !== teo && rng.chance(TEO_OFFER_CHANCE)) return teo;
     if (held.includes(dept)) {
       const free = executiveDepartments(arena).filter((d) => !held.includes(d) && d !== current);
-      return free.length > 0 ? `${arena}_spokes_${rng.pick(free)}` : null;
+      return free.length > 0 ? spokespersonOfficeId(arena, rng.pick(free)) : null;
     }
   }
   return target;
+}
+
+/** a Westminster-shaped office id fitted to the live chamber: translated onto
+ *  its ladder, and in a chamber whose ministries are shared out by party,
+ *  constrained to a post the player's party holds. Null when nothing fits. */
+export function offerableOffice(state: GameState, rng: Rng, officeId: OfficeId | null): OfficeId | null {
+  const translated = translateOffice(officeId, state.arena ?? 'uk', (xs) => rng.pick(xs));
+  return constrainToPartyPosts(state, rng, translated);
 }

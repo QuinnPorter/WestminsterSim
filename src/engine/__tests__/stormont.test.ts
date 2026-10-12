@@ -96,7 +96,7 @@ describe('a multi-member map from a real result', () => {
     it(`${snap.election}: the map returns every constituency's real result`, () => {
       const system = seatSystemAt('ni', isoToDay(snap.election));
       if (system.kind !== 'listPr') throw new Error('expected listPr');
-      const { seatMap, playerSeatId } = generateListPrSeatMap(new Rng(7), 'ni', snap, system.districts, system.seatsPer, 'dup', 2);
+      const { seatMap, playerSeatId } = generateListPrSeatMap('ni', snap, system.districts, system.seatsPer, 'dup', 2);
       expect(seatMap).toHaveLength(108);
       for (const d of system.districts) {
         const won: Partial<Record<PartyId, number>> = {};
@@ -117,7 +117,7 @@ describe('a multi-member map from a real result', () => {
     const snap = NI_ASSEMBLY[0];
     const system = seatSystemAt('ni', isoToDay(snap.election));
     if (system.kind !== 'listPr') throw new Error('expected listPr');
-    const { seatMap, playerSeatId } = generateListPrSeatMap(new Rng(7), 'ni', snap, system.districts, system.seatsPer, 'pbp', 1);
+    const { seatMap, playerSeatId } = generateListPrSeatMap('ni', snap, system.districts, system.seatsPer, 'pbp', 1);
     const player = seatMap.find((s) => s.id === playerSeatId)!;
     expect(player.winner).toBe('pbp');
     expect(player.listRank).toBe(6);
@@ -129,7 +129,7 @@ describe('a multi-member map from a real result', () => {
     const six = seatSystemAt('ni', isoToDay(snap.election));
     const five = seatSystemAt('ni', NI_FIVE_SEAT_DAY);
     if (six.kind !== 'listPr' || five.kind !== 'listPr') throw new Error('expected listPr');
-    const old = generateListPrSeatMap(new Rng(7), 'ni', snap, six.districts, six.seatsPer, 'sf', 2);
+    const old = generateListPrSeatMap('ni', snap, six.districts, six.seatsPer, 'sf', 2);
     const rebuilt = rebuildForListPr(
       new Rng(3), old.seatMap, five.districts, five.seatsPer, old.playerSeatId, 'sf', 2, snap.parties,
       listPrRebuildOptions('ni', 5)

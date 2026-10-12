@@ -27,8 +27,7 @@ function rules(arena: ArenaId, day: GameDay): [RegExp, string][] {
   const c = chamberAt(arena, day);
   const v = chamberOf(arena).voice;
   const houseNoArticle = c.house.replace(/^the /, '');
-  // a chamber with no PPS rung still has to say something for the word
-  const pps = v.pps ?? { singular: 'special adviser', plural: 'special advisers', abbr: 'adviser', abbrPlural: 'advisers' };
+  const pps = v.pps;
   // the two ministerial tiers, as the chamber styled them on the day: a Welsh
   // cabinet minister was "Minister for X" and the junior rung "Deputy Minister
   // for X" until March 2024, Cabinet Secretary and Minister after it
