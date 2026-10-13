@@ -1297,7 +1297,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // a prestige scrutiny role, won by a ballot of the whole House in the Commons and
   // from the party's share of the chairs in a devolved chamber
   if (
-    canChairCommittee(state) && !state.player.committeeChair &&
+    canChairCommittee(state) && !state.player.committeeChair && executiveInBeing(state) &&
     (state.player.stats.profile > 45 || state.player.stats.competence > 50) &&
     // the ~100-day settling-in wait applies only at the start of the game (the first
     // parliament, before any general election); after an election a fresh chair can

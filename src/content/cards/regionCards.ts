@@ -200,7 +200,7 @@ export const REGION_CARDS: DecisionCard[] = [
     body: 'The Windsor Framework comes to the floor on Wednesday: the Stormont brake, the green lanes, the end of the sausage war and the start of something your constituents in {constituency} have strong views about in both directions. The government has a majority without you and would like you anyway. Dublin is watching. So is every lorry driver at Larne. Your eighteen seats are the only ones in the House for which this is not a foreign policy question.',
     tags: ['westminster', 'policy', 'serious'],
     weight: 13, cooldownDays: 1200, oncePerCareer: true,
-    requires: { region: ['ni'] },
+    requires: { region: ['ni'], partyIn: ['dup', 'uup'], era: ['2019', '2024'] },
     choices: [
       {
         label: 'Vote for it',
@@ -250,7 +250,7 @@ export const REGION_CARDS: DecisionCard[] = [
     body: 'The Troubles legacy bill is back: an end to prosecutions and inquests in return for an information recovery body nobody in Northern Ireland asked for. Every party at Stormont opposes it, which has not happened since the Agreement, and so does Dublin, and so do the victims’ groups who sit in your {constituency} surgery on alternate Fridays with photographs. The veterans’ lobby in England backs it; so does the government, which has the votes. You will be asked to speak, and then to vote, and then to go home.',
     tags: ['westminster', 'serious'],
     weight: 12, cooldownDays: 900,
-    requires: { region: ['ni'] },
+    requires: { region: ['ni'], era: ['2019', '2024'] },
     choices: [
       {
         label: 'Speak against it, with the families in the gallery',
@@ -265,7 +265,7 @@ export const REGION_CARDS: DecisionCard[] = [
       {
         label: 'Stay out of it: the soldiers’ families are constituents too',
         effects: { stats: { constituencyApproval: -2, integrity: -2, partyStanding: 1 } },
-        outcomeText: 'You abstain and issue a statement about balance. In {constituency} the balance is read by both sides as a vote for the other. The veterans’ lobby does not write to thank you. It had assumed you were theirs.',
+        outcomeText: 'You abstain and issue a statement about balance. In {constituency} the balance is read by both sides as a vote for the other. Neither lobby writes to thank you.',
       },
     ],
   },
@@ -425,7 +425,7 @@ export const REGION_CARDS: DecisionCard[] = [
     body: 'The Belfast Agreement turns a round number this spring and the Americans are coming: a president, two former ones, and a congressional delegation who will each need a photograph and a word. The Secretary of State is hosting a conference at Queen’s. Your party’s view of the Agreement is on the record and your constituents’ view in {constituency} is more complicated than either. A seat on the platform is on offer. So is a sentence in your speech that your party has not cleared.',
     tags: ['media', 'party'],
     weight: 9, cooldownDays: 1200,
-    requires: { region: ['ni'] },
+    requires: { region: ['ni'], era: ['2019', '2024'] },
     choices: [
       {
         label: 'Take the platform and say what you think',

@@ -6,6 +6,7 @@ import { partyNameIn } from '../data/parties';
 import { committeeNameFor } from '../data/committees';
 import { heldMayoralty } from '../data/mayoralties';
 import { isOutsideLeader } from './outsideLeader';
+import { CardToken } from '../content/tokens';
 
 import { getRelationship, relationshipName } from './relationships';
 import {
@@ -73,7 +74,8 @@ export function resolveTokens(state: GameState, text: string): string {
   const other = otherGovernment(state);
   // the mayoralty held or sought, successor office included
   const mayoralty = heldMayoralty(state.player, state.day);
-  const map: Record<string, string> = {
+  // typed against the token list, so the two cannot drift
+  const map: Record<CardToken, string> = {
     leader: relationshipName(state, 'leader'),
     pm: state.government.pmId === 'player' ? state.player.name
       : state.characters[state.government.pmId]?.name ?? `the ${chamber.head}`,
@@ -110,7 +112,7 @@ export function resolveTokens(state: GameState, text: string): string {
     mayoralty: mayoralty?.name ?? 'the mayoralty',
     city: mayoralty?.city ?? 'the city',
   };
-  return text.replace(/\{(\w+)\}/g, (m, key) => map[key] ?? m);
+  return text.replace(/\{(\w+)\}/g, (m, key: string) => (map as Record<string, string>)[key] ?? m);
 }
 
 /** the leader, party and name of the government the player is NOT part of: the
@@ -168,6 +170,7 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
   const tier = playerTier(state);
   if (req.minTier !== undefined && tier < req.minTier) return false;
   if (req.maxTier !== undefined && tier > req.maxTier) return false;
+  if (req.minPeakTier !== undefined && Number(state.player.flags._peakTier ?? 0) < req.minPeakTier) return false;
   // a coalition junior partner holds real government office, so counts as
   // "in government" for governing-vs-opposition card gating
   if (req.inGovernment !== undefined && playerInGovernmentBloc(state) !== req.inGovernment) return false;

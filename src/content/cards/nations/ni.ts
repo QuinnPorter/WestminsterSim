@@ -367,7 +367,7 @@ export const NI_CARDS: DecisionCard[] = [
     body: 'Question Time for {department} is on Tuesday and you lead for {party}. The minister is from another Executive party, which means you are attacking a colleague in government you share. You have a question that would hurt. The {whip} would like to know whether it hurts the Executive or just the minister.',
     tags: ['westminster', 'policy'],
     weight: 12, cooldownDays: 240,
-    requires: { arena: ['ni'], minTier: 3, maxTier: 3 },
+    requires: { arena: ['ni'], minTier: 3, maxTier: 3, inGovernment: true },
     choices: [
       {
         label: 'Ask the hard question',

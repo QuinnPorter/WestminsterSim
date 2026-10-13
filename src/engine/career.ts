@@ -4527,7 +4527,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       const body = incumbent
         ? (commons
           ? `A new parliament means a fresh ballot for the chair of the ${committee}. Colleagues across the House have valued your scrutiny — but the post is in the gift of MPs, and you must stand again. Put your name forward?`
-          : `A new ${chamber.house.toLowerCase()} means the committee places are shared out again, and the group has to decide whether the ${committee} stays yours. Your scrutiny was valued; so are the ambitions of the people who want the chair. Do you ask to keep it?`)
+          : `A new ${chamber.house.replace(/^the /, '')} means the committee places are shared out again, and the group has to decide whether the ${committee} stays yours. Your scrutiny was valued; so are the ambitions of the people who want the chair. Do you ask to keep it?`)
         : (commons
           ? `The chair of the ${committee} is vacant, and it is elected by the whole House. It is a prize for a respected backbencher: a platform to scrutinise the government, summon ministers, and build a reputation independent of the front bench. Do you stand?`
           : `The ${chair.toLowerCase()}'s seat on the ${committee} has fallen to your party in the share-out, and the group must put a name forward. It is a prize for a respected ${chamber.member}: a platform to scrutinise the ${chamber.government}, summon ministers, and build a reputation independent of the front bench. Do you put yours?`);
@@ -7438,6 +7438,8 @@ export function resolveForcedChoice(
       const committee = committeeNameFor(state.arena, dept);
       const chair = committeeChairNoun(state.arena);
       const house = chamberAt(state.arena, state.day).houseThe;
+      // the Commons votes as a House; a devolved group decides in a room upstairs
+      const commons = (state.arena ?? 'uk') === 'uk';
       // guard: only a pure backbencher can chair — if the player has since taken
       // office or the Chair, an incumbent loses the chair and the contest passes
       if (!canChairCommittee(state)) {
@@ -7482,13 +7484,19 @@ export function resolveForcedChoice(
           });
           return {
             text: decisive
-              ? rng.pick([
+              ? rng.pick(commons ? [
                 `The corridor keeps you without a fight: no serious rival even troubles the ballot, and you keep the ${chair.toLowerCase()} of the ${committee} for another term.`,
                 `A record of fair, forensic scrutiny pays its dividend — you are returned to the ${chair.toLowerCase()} of the ${committee} comfortably, with members from every side glad to keep you.`,
+              ] : [
+                `The group keeps you in the ${chair.toLowerCase()} of the ${committee} for another term without a word against: your record on the corridor did the work.`,
+                `Nobody in the group wants it enough to say so; the ${committee} stays yours, and the whips are glad of one decision that made itself.`,
               ])
-              : rng.pick([
+              : rng.pick(commons ? [
                 `The committee corridor keeps you, if only just: a challenger runs you closer than last time, but you hold the ${chair.toLowerCase()} of the ${committee}.`,
                 `It is a contest this time, not a coronation — but when the ballot closes you have the numbers, and the gavel of the ${committee} stays in your hand.`,
+              ] : [
+                `A colleague wants it this time, and the group has to choose: a show of hands in a room upstairs, and you keep the ${chair.toLowerCase()} of the ${committee} by a margin nobody writes down.`,
+                `It is a contest in the group this time, not a coronation — but you have the numbers in the room, and the gavel of the ${committee} stays in your hand.`,
               ]),
             deltas,
           };
@@ -7502,13 +7510,19 @@ export function resolveForcedChoice(
         });
         return {
           text: decisive
-            ? rng.pick([
+            ? rng.pick(commons ? [
               `It is barely a contest: your name carries ${house} on the first ballot. You are the new ${chair} of the ${committee} — a backbench platform with real teeth.`,
               `Members from all sides line up behind you, and the rival fields melt away. You take the ${chair.toLowerCase()} of the ${committee} with a mandate to match.`,
+            ] : [
+              `The group puts your name forward and nobody else's: you are the new ${chair} of the ${committee}, a backbench platform with real teeth.`,
+              `Your record does the work and the group backs you without a vote worth the name. The ${chair.toLowerCase()} of the ${committee} is yours for the term.`,
             ])
-            : rng.pick([
+            : rng.pick(commons ? [
               `The ballot goes your way — narrowly, after a real fight. You are the new ${chair} of the ${committee}, a backbench platform with real teeth.`,
               `You edge it on a knife-edge ballot, a better-connected rival pushed aside by a handful of votes. The ${chair.toLowerCase()} of the ${committee} is yours.`,
+            ] : [
+              `The group splits and a better-connected rival makes it a contest; you have the numbers in the room, narrowly, and the ${chair.toLowerCase()} of the ${committee} is yours.`,
+              `A knife-edge show of hands in a committee room upstairs, and the ${committee} is yours — a backbench platform with real teeth.`,
             ]),
           deltas,
         };

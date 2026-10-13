@@ -134,7 +134,7 @@ export const NI_COLLAPSE_CARDS: DecisionCard[] = [
   {
     id: 'nic_waiting_list_no_minister',
     title: 'Nobody to resign',
-    body: 'The waiting-list figures are out, they are the worst ever recorded anywhere in these islands, and the usual thing happens: the opposition calls for the Health Minister to resign. There is no Health Minister. A permanent secretary gives a careful statement about the limits of their authority, and the Assembly that would question them is not sitting. You are asked for a comment on a system with nobody in charge.',
+    body: 'The waiting-list figures are out, they are the worst ever recorded anywhere in these islands, and the usual thing happens: the opposition calls for the Health Minister to resign. There is no Health Minister to resign, or only a caretaker nobody can remove. A permanent secretary gives a careful statement about the limits of their authority, and the Assembly that would question them is not sitting. You are asked for a comment on a system with nobody in charge.',
     tags: ['policy', 'serious'],
     weight: 12, cooldownDays: 300,
     requires: { arena: ['ni'], minTier: 0, executiveStatus: ['collapsed'] },
@@ -162,7 +162,7 @@ export const NI_COLLAPSE_CARDS: DecisionCard[] = [
     body: 'You were the minister. The department you ran is still there, the staff still come in, and the permanent secretary still sends you a courtesy note on Mondays about what they have decided without you. This week it is a decision you would have taken the other way. You have no power, and some influence, and a phone.',
     tags: ['policy', 'personal'],
     weight: 12, cooldownDays: 240,
-    requires: { arena: ['ni'], minTier: 0, executiveStatus: ['collapsed'], flags: { _peakTier: 4 } },
+    requires: { arena: ['ni'], maxTier: 2, minPeakTier: 4, executiveStatus: ['collapsed'] },
     choices: [
       {
         label: 'Ring the permanent secretary and say so',

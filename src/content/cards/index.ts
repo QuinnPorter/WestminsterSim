@@ -1,4 +1,6 @@
 import { DecisionCard } from '../../types/content';
+import { CARD_TOKEN_KEYS } from '../tokens';
+import { CHAMBERS } from '../../data/chambers';
 import { PERSONAL_CARDS } from './personal';
 import { BACKBENCHER_CARDS } from './backbencher';
 import { CONSTITUENCY_CARDS } from './constituency';
@@ -92,15 +94,9 @@ export const ALL_CARDS: DecisionCard[] = [
   ...OUTSIDE_LEADER_CARDS,
 ];
 
-/** every `{token}` the card engine resolves (`resolveTokens` in engine/cardEngine.ts);
- *  kept in step by `cardEngine.test.ts` */
-export const CARD_TOKENS = new Set([
-  'leader', 'pm', 'lo', 'whip', 'rival', 'ally', 'mentor', 'journalist', 'constituency', 'department',
-  'committee', 'cmtdept', 'party', 'govparty', 'oppparty', 'house', 'housefull', 'hill', 'member', 'members',
-  'head', 'headoffice', 'government', 'nation', 'speaker', 'otherleader', 'otherparty', 'othergov',
-  'mayoralty', 'city',
-]);
-const ARENAS = new Set(['uk', 'scotland', 'wales', 'ni']);
+/** every `{token}` a card may use (the resolver in engine/cardEngine.ts is typed against the same list) */
+export const CARD_TOKENS = new Set<string>(CARD_TOKEN_KEYS);
+const ARENAS = new Set(Object.keys(CHAMBERS));
 
 export function validateCards(cards: DecisionCard[]): string[] {
   const errors: string[] = [];

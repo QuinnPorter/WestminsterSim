@@ -14,6 +14,8 @@ export interface Requirement {
   arena?: ArenaId[];
   minTier?: OfficeTier;
   maxTier?: OfficeTier;
+  /** only fire when the player has held at least this rank at some point */
+  minPeakTier?: OfficeTier;
   inGovernment?: boolean;
   department?: DepartmentId[];
   /** only fire when the player holds one of these specific offices (e.g. a
