@@ -33,9 +33,11 @@ export const WALKOUT_HAZARD = 0.0025;
 /** the deal hazard per tick while collapsed, plus this much more per year collapsed */
 export const DEAL_HAZARD = 0.02;
 export const DEAL_HAZARD_PER_YEAR = 0.015;
-/** the Secretary of State extends the period this often, at most this many times */
-export const EXTENSION_CHANCE = 0.7;
-export const MAX_EXTENSIONS = 3;
+/** the Secretary of State always extends the first lapse (an election straight
+ *  after an election settles nothing: 2017 and 2022 both went to legislation,
+ *  not the polls), then extends this often, at most this many times */
+export const EXTENSION_CHANCE = 0.85;
+export const MAX_EXTENSIONS = 6;
 export const EXTENSION_DAYS = 120;
 /** an extraordinary election is called for this many days out */
 export const EXTRAORDINARY_ELECTION_LEAD = 45;
@@ -240,7 +242,7 @@ export function secretaryOfStateMoves(state: GameState, rng: Rng): void {
     return;
   }
   const used = ex.extensions ?? 0;
-  if (used < MAX_EXTENSIONS && rng.chance(EXTENSION_CHANCE)) {
+  if (used === 0 || (used < MAX_EXTENSIONS && rng.chance(EXTENSION_CHANCE))) {
     ex.extensions = used + 1;
     ex.deadline = state.day + EXTENSION_DAYS;
     state.history.push({

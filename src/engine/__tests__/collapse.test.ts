@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { GameState, PartyId } from '../../types/game';
 import { NI_ASSEMBLY, NI_EXECUTIVE_HISTORY, formationLaw } from '../../data/niAssembly';
-import { cabinetOfficesFor } from '../../data/offices';
+import { OFFICES, cabinetOfficesFor, spokespersonOfficeId } from '../../data/offices';
 import { decideFormation, executiveInBeing, hasOfficialOpposition } from '../executive';
 import {
-  COLLAPSE_CAP_DAYS, catchUpExecutive, collapseExecutive, collapseTick, restoreExecutive,
+  COLLAPSE_CAP_DAYS, MAX_EXTENSIONS, catchUpExecutive, collapseExecutive, collapseTick, restoreExecutive,
   secretaryOfStateMoves, stormontStoodOn,
 } from '../collapse';
 import {
@@ -16,7 +16,8 @@ import { updatePolling } from '../polling';
 import { createNewGame } from '../newGame';
 import { nextStep } from '../scheduler';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
-import { resolveTokens } from '../cardEngine';
+import { cardEligible, resolveTokens } from '../cardEngine';
+import { ALL_CARDS } from '../../content/cards';
 import { isoToDay } from '../clock';
 import { Rng } from '../rng';
 
@@ -157,19 +158,25 @@ describe('falling and re-forming', () => {
     expect(g.government.deputyPmId).toBe('player');
   });
 
-  it('the Secretary of State extends up to three times, then calls an election forty-five days out', () => {
-    const g = game({ seed: 7, arena: 'ni', election: '2022-05-05', partyId: 'uup', era: '2019' });
-    const ex = g.government.executive!;
-    const rng = new Rng(1);
-    let elections = 0;
-    for (let i = 0; i < 6; i++) {
-      const before = g.nextElectionBy;
+  it('the Secretary of State always extends the first lapse, at most six times, then calls an election forty-five days out', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = game({ seed: 7, arena: 'ni', election: '2022-05-05', partyId: 'uup', era: '2019' });
+      const ex = g.government.executive!;
+      const rng = new Rng(seed);
+      const start = g.nextElectionBy;
       secretaryOfStateMoves(g, rng);
-      if (g.nextElectionBy !== before) elections++;
+      expect(g.nextElectionBy).toBe(start); // the first lapse is extended, never an election
+      expect(ex.extensions).toBe(1);
+      let elections = 0;
+      for (let i = 0; i < MAX_EXTENSIONS && elections === 0; i++) {
+        const before = g.nextElectionBy;
+        secretaryOfStateMoves(g, rng);
+        if (g.nextElectionBy !== before) elections++;
+      }
+      expect(ex.extensions).toBeLessThanOrEqual(MAX_EXTENSIONS);
+      expect(elections).toBe(1);
+      expect(g.nextElectionBy - g.day).toBeLessThanOrEqual(45 + 168);
     }
-    expect(ex.extensions).toBeLessThanOrEqual(3);
-    expect(elections).toBeGreaterThanOrEqual(1);
-    expect(g.nextElectionBy - g.day).toBeLessThanOrEqual(45 + 168);
   });
 
   it('after an ordinary election the heads are usually nominated; after an extraordinary one they usually are not', () => {
@@ -285,6 +292,26 @@ describe('the player as a head', () => {
 });
 
 describe('the dormant Assembly through real history', () => {
+  it('a minister’s cards reach only a minister: a caretaker keeps them, a spokesperson never has them', () => {
+    const quango = ALL_CARDS.find((c) => c.id === 'dv_quango_appointment')!;
+    const g = game({ seed: 11, arena: 'ni', partyId: 'dup' });
+    const rng = new Rng(11);
+    giveOffice(g, rng, 'ni_minister_finance', 'promoted');
+    expect(cardEligible(g, quango)).toBe(true);
+    collapseExecutive(g, 'dfmWalkout', 'sf');
+    expect(cardEligible(g, quango)).toBe(true); // a caretaker still runs the department
+    g.day = g.nextElectionBy;
+    collapseTick(g, rng);
+    expect(g.player.officeId).toBeNull();
+    expect(cardEligible(g, quango)).toBe(false);
+    // an Executive party's spokesperson for a brief it does not hold is not a minister
+    const s = game({ seed: 12, arena: 'ni', partyId: 'dup' });
+    const brief = cabinetOfficesFor('ni').find((o) => holders(s)[o] !== 'dup')!;
+    s.player.officeId = spokespersonOfficeId('ni', OFFICES[brief].department!);
+    expect(OFFICES[s.player.officeId]?.tier).toBe(3);
+    expect(cardEligible(s, quango)).toBe(false);
+  });
+
   it('a 2019 Commons career drafted to Stormont in 2024 finds the Executive the real deal restored', () => {
     const g = game({ seed: 31, arena: 'uk', partyId: 'lab', region: 'london', era: '2024' });
     g.player.region = 'ni';

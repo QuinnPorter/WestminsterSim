@@ -638,8 +638,8 @@ spokesperson rung for every party, with offers fitted to the share-out (`offerab
 the designates on `pmId` and the partner field with `executive.status: 'collapsed'`; nobody holds
 the two offices, the ministers stay as caretakers until the law removes them (until the election
 before the 2022 Act; twenty-four weeks after an election, forty-eight after a vacancy, after it),
-and the Secretary of State's clock runs: extensions, then an extraordinary election forty-five
-days out, with a hard cap of three and a half years. A deal re-forms it through `formExecutive`.
+and the Secretary of State's clock runs: extensions (the first lapse always, up to six), then an
+extraordinary election forty-five days out, with a hard cap of three and a half years. A deal re-forms it through `formExecutive`.
 A player leading a head party decides on the cards (`executiveCrisis`, `executiveTalks`); the NPC
 world rolls (`decideFormation`). Real history is scripted, not simulated: `NI_EXECUTIVE_HISTORY`
 plays the 2017 and 2022 collapses and the 2020 and 2024 restorations to the day for a dormant
