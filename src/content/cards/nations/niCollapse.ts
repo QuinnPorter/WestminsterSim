@@ -256,4 +256,79 @@ export const NI_COLLAPSE_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'nic_pay_cut_lands',
+    title: 'Twenty-seven per cent',
+    body: 'The Secretary of State has done what was threatened and cut MLA pay by more than a quarter, by letter, from the first of the month. The letter also says the office-cost allowance, which pays the constituency staff who are doing the only governing anyone in {nation} is getting, will be reviewed next. A colleague is organising a legal challenge; the party would like a line; your staff would like to know whether they are in the review. The front pages are happy for the first time in months.',
+    tags: ['personal', 'party', 'media'],
+    weight: 12, cooldownDays: 400,
+    requires: { arena: ['ni'], minTier: 0, executiveStatus: ['collapsed'] },
+    choices: [
+      {
+        label: 'Take the cut, say so, and fight for the staff',
+        effects: { stats: { integrity: 3, constituencyApproval: 2, partyStanding: -1 } },
+        outcomeText: 'You say the cut is fair and the staff are not the problem, and write to Hillsborough to say so in detail. The allowance is spared. Your salary is not. Colleagues who wanted the challenge note that you have made it harder for them, and that you did not need to.',
+      },
+      {
+        label: 'Back the legal challenge',
+        effects: { stats: { partyStanding: 2, constituencyApproval: -4, integrity: -1 } },
+        outcomeText: 'The challenge is lodged in the name of a group of MLAs that includes you. It is a reasonable argument about the law and an impossible one about everything else, and your surgery that Friday is a long one. The case is lost in the spring.',
+      },
+      {
+        label: 'Call for pay to stop altogether until the Assembly sits',
+        effects: { stats: { profile: 4, constituencyApproval: 3, partyStanding: -3 } },
+        outcomeText: 'You say that if there is no Assembly there should be no Assembly salary. Your colleagues, who have mortgages, assume you have a private income. You do not. The clip runs on every bulletin, and the Secretary of State thanks you for it, which does not help.',
+      },
+    ],
+  },
+  {
+    id: 'nic_armagh_without_ministers',
+    title: 'Armagh, informally',
+    body: 'The North-South Ministerial Council cannot meet, since one side of it has no ministers, and the Irish minister whose sector matches your committee has written to the committee’s members, as individuals, suggesting lunch in Armagh to “keep the channels open”. There will be a photograph and a jointly funded programme with a deadline in it. For some of your constituents the lunch is common sense; for others it is a minister from another state dealing with {nation} over its head. Your party has not said. You have been asked.',
+    tags: ['policy', 'party'],
+    weight: 11, cooldownDays: 365,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 4, executiveStatus: ['collapsed'] },
+    choices: [
+      {
+        label: 'Go',
+        effects: { stats: { competence: 3, profile: 1, partyStanding: -2, constituencyApproval: -1 } },
+        outcomeText: 'Lunch, a photograph, and a sentence in a press release that keeps the programme alive until a minister exists to sign it. The photograph is used, in the half of {constituency} that uses such things, with a caption about who you were sitting beside.',
+      },
+      {
+        label: 'Go, as a committee visit, with no photograph',
+        effects: { stats: { competence: 2, integrity: 2 } },
+        outcomeText: 'You go with the committee and without the cameras. The programme survives. The minister is faintly puzzled by a visitor who refuses to be seen, and the party is content, because there is nothing to be seen.',
+      },
+      {
+        label: 'Decline, and say why',
+        effects: { stats: { partyStanding: 2, integrity: 1, competence: -2 } },
+        outcomeText: 'You write that the Council has two sides and that one of them is not in a position to attend, and that this is the point. The programme’s deadline passes. The minister understands the position, and a scheme in {constituency} does not get its money.',
+      },
+    ],
+  },
+  {
+    id: 'nic_ed_temporary_closure',
+    title: 'Temporarily, from Monday',
+    body: 'The health trust is closing the emergency department nearest {constituency} to overnight admissions from Monday, “temporarily and on safety grounds”, because it cannot staff it. In a normal year a minister would have been asked to stop it, or to own it. There is no minister; the permanent secretary says the decision is clinical; the clinicians say they have been asking for a plan for eight years and there is nobody to give them one. There is a public meeting tonight and the hall is already full.',
+    tags: ['constituency', 'crisis', 'policy'],
+    weight: 13, cooldownDays: 365,
+    requires: { arena: ['ni'], minTier: 0, executiveStatus: ['collapsed'] },
+    choices: [
+      {
+        label: 'Back the clinicians, in front of the hall',
+        effects: { stats: { integrity: 3, competence: 2, constituencyApproval: -4 } },
+        outcomeText: 'You tell four hundred people that the doctors are right and the department is not safe as it stands, and that the people who could have fixed it are the ones not forming a government. You are booed for the first sentence and listened to for the second. “Temporary” lasts three years.',
+      },
+      {
+        label: 'Lead the campaign to keep it open',
+        effects: { stats: { constituencyApproval: 5, profile: 2, competence: -2 } },
+        outcomeText: 'Marches, a petition, a vigil at the gates of Stormont. The trust delays the closure by a month, loses two more consultants in the uncertainty, and closes it anyway. You are the face of the campaign, which in {constituency} is a good thing to be and in the trust’s boardroom is not.',
+      },
+      {
+        label: 'Use it to demand the Executive be restored',
+        effects: { stats: { partyStanding: 2, profile: 2, constituencyApproval: -1 } },
+        outcomeText: 'You turn the hall into an argument about the stalemate, which it is. The hall did not come for that and says so. The clip runs under the word “blame”, and whichever party is not nominating is not named, since you cannot be sure it is not yours.',
+      },
+    ],
+  },
 ];

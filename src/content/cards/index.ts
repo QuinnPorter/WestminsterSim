@@ -92,25 +92,49 @@ export const ALL_CARDS: DecisionCard[] = [
   ...OUTSIDE_LEADER_CARDS,
 ];
 
+/** every `{token}` the card engine resolves (`resolveTokens` in engine/cardEngine.ts);
+ *  kept in step by `cardEngine.test.ts` */
+export const CARD_TOKENS = new Set([
+  'leader', 'pm', 'lo', 'whip', 'rival', 'ally', 'mentor', 'journalist', 'constituency', 'department',
+  'committee', 'cmtdept', 'party', 'govparty', 'oppparty', 'house', 'housefull', 'hill', 'member', 'members',
+  'head', 'headoffice', 'government', 'nation', 'speaker', 'otherleader', 'otherparty', 'othergov',
+  'mayoralty', 'city',
+]);
+const ARENAS = new Set(['uk', 'scotland', 'wales', 'ni']);
+
 export function validateCards(cards: DecisionCard[]): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
+  const checkTokens = (id: string, text: string) => {
+    for (const m of text.matchAll(/\{(\w+)\}/g)) {
+      if (!CARD_TOKENS.has(m[1])) errors.push(`${id}: unknown token {${m[1]}}`);
+    }
+  };
   for (const card of cards) {
     if (seen.has(card.id)) errors.push(`duplicate card id: ${card.id}`);
     seen.add(card.id);
+    checkTokens(card.id, card.title);
+    checkTokens(card.id, card.body);
+    for (const a of card.requires?.arena ?? []) {
+      if (!ARENAS.has(a)) errors.push(`${card.id}: unknown arena ${a}`);
+    }
     if (card.weight <= 0) errors.push(`${card.id}: weight must be > 0`);
     if (card.choices.length < 2 || card.choices.length > 4) {
       errors.push(`${card.id}: must have 2-4 choices`);
     }
     if (card.tags.length === 0) errors.push(`${card.id}: needs at least one tag`);
     for (const choice of card.choices) {
+      checkTokens(card.id, choice.label);
       if (Array.isArray(choice.outcomeText)) {
         if (choice.outcomeText.length === 0) {
           errors.push(`${card.id}: weighted outcome list is empty`);
         }
         for (const o of choice.outcomeText) {
           if (o.weight <= 0) errors.push(`${card.id}: outcome weight must be > 0`);
+          checkTokens(card.id, o.text);
         }
+      } else {
+        checkTokens(card.id, choice.outcomeText);
       }
     }
   }

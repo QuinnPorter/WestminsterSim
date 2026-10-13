@@ -590,4 +590,460 @@ export const NI_CARDS: DecisionCard[] = [
       },
     ],
   },
+
+  // ── more from the constituency and the backbenches ─────────────────────
+  {
+    id: 'ni_rhi_boilers',
+    title: 'Burn to earn',
+    body: 'A poultry farmer in {constituency} has heard about a renewable heat scheme that pays more for every unit of heat than the wood pellets cost to make it, and asks you, as his MLA, whether he should put a second boiler in a shed he does not use. The scheme is lawful, the department’s own leaflet encourages take-up, and a man two farms over has four boilers and a new jeep. You have read the leaflet. Nobody appears to have read the sums.',
+    tags: ['constituency', 'scandal', 'policy'],
+    weight: 11, cooldownDays: 900, oncePerCareer: true,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 3 },
+    choices: [
+      {
+        label: 'Tell him it is legal and to get on with it',
+        effects: { stats: { constituencyApproval: 3, integrity: -2, competence: -1 } },
+        outcomeText: 'He puts in two boilers. Three years later the scheme is the biggest scandal in {nation}’s history, there is a public inquiry, and his name is on a list that is published. Yours is in his diary, in his handwriting, under the word “advice”.',
+      },
+      {
+        label: 'Write to the department asking how the tariff was set',
+        effects: { stats: { competence: 3, integrity: 2, constituencyApproval: -1 } },
+        outcomeText: 'The reply, four months later, is a page about the scheme in England and nothing about this one. You file it. When the inquiry comes you are the only MLA who can produce a letter dated before the cost controls, and {journalist} calls you prescient, which is a word that pays late.',
+      },
+      {
+        label: 'Tip off {journalist}',
+        effects: { stats: { profile: 3, partyStanding: -2, integrity: 1 } },
+        outcomeText: 'The story runs: a shed, a boiler, a thermometer reading forty degrees. It is a good story and an early one, and the scheme stays open another eighteen months anyway, because closing it would mean somebody admitting it. Your party notes who handed the paper a stick.',
+      },
+    ],
+  },
+  {
+    id: 'ni_a5_vigil',
+    title: 'Fifty names on the verge',
+    body: 'The families who have lost someone on the A5 are holding a vigil at the roadside in {constituency}, with a placard for each death since the new road was first promised. The dual carriageway has been through two public inquiries and a judicial review, Dublin has offered money and withdrawn it and offered it again, and a farmers’ group has a fresh challenge lodged on the carbon figures. The Infrastructure Minister has sent a statement. The families would prefer a person.',
+    tags: ['constituency', 'policy', 'serious'],
+    weight: 11, cooldownDays: 450,
+    requires: { arena: ['ni'], minTier: 0 },
+    choices: [
+      {
+        label: 'Stand with the families and call for the diggers',
+        effects: { stats: { constituencyApproval: 4, profile: 2, competence: -1 } },
+        outcomeText: 'You hold a candle in the wind off the Sperrins and say the road must be built. Everyone there agrees. The farmers’ group, whose members also vote in {constituency}, note that you have called their court case a delay, which it is, and which is not what they call it.',
+      },
+      {
+        label: 'Ask for interim safety work on the existing road',
+        effects: { stats: { competence: 3, constituencyApproval: 1, profile: -1 } },
+        outcomeText: 'Barriers, a lower limit, average-speed cameras on the worst stretch. It is not the road and nobody wanted to hear it, and in two years the figures on the placards stop climbing as fast. The dual carriageway is still in court.',
+      },
+      {
+        label: 'Blame the delay on the courts, publicly',
+        effects: { stats: { profile: 3, partyStanding: 1, integrity: -2 } },
+        outcomeText: 'You say a road should not be stopped by a spreadsheet about carbon. It is a popular sentence. The judge, when the case comes, quotes it, and finds that the department’s spreadsheet was in fact wrong.',
+      },
+    ],
+  },
+  {
+    id: 'ni_casement_park',
+    title: 'The stadium that is not there',
+    body: 'The stadium in west Belfast has been promised for a decade. It has planning permission, a design, a football tournament hoping to use it and no money: the cost has trebled, the sporting body has its share, the Executive has the share agreed by the last Executive but one, and the gap is {othergov}’s to fill or not. Two other stadiums, for two other sports, were built on time. A radio presenter wants to know whether you would spend the money on it, and the question is not about sport.',
+    tags: ['policy', 'media', 'serious'],
+    weight: 10, cooldownDays: 480,
+    requires: { arena: ['ni'], minTier: 0 },
+    choices: [
+      {
+        label: 'Say it should be built: three sports were promised three grounds',
+        effects: { stats: { integrity: 2, profile: 2, constituencyApproval: -1 } },
+        outcomeText: 'You say a promise to one community is a promise, and that two of the three grounds exist. It is the right answer on paper, and the paper is read in both halves of {nation} in different tones. A supporters’ club sends you a scarf. Somebody else sends a photograph of a hospital.',
+      },
+      {
+        label: 'Say the money should go to grassroots pitches instead',
+        effects: { stats: { constituencyApproval: 2, partyStanding: 1, competence: 1 } },
+        outcomeText: 'Three hundred changing rooms instead of one stadium. It is a sensible sentence and it is heard, in west Belfast, as the sentence that has always been said about that ground. The pitches are not built either.',
+      },
+      {
+        label: 'Say the Treasury should pay, since the tournament is theirs',
+        effects: { stats: { partyStanding: 2, profile: 1, competence: -1 } },
+        outcomeText: 'You put the bill in London’s post, where every bill in {nation} is eventually sent. London declines, the tournament goes elsewhere, and the site remains a fence with a hoarding on it that has been repainted twice.',
+      },
+    ],
+  },
+  {
+    id: 'ni_sea_border_pallet',
+    title: 'The pallet at Larne',
+    body: 'A garden centre in {constituency} has a pallet of bare-root fruit trees sitting in a shed at the port. The paperwork that would release it is paperwork the Protocol requires, the Framework was meant to simplify and the haulier has never seen before. The owner has rung you because the last three people she rang were in Brussels, London and a call centre in Cardiff. She does not want a position on the constitution. She wants her trees before they wake up.',
+    tags: ['constituency', 'policy'],
+    weight: 12, cooldownDays: 365,
+    requires: { arena: ['ni'], minTier: 0 },
+    choices: [
+      {
+        label: 'Work the trader scheme with her, form by form',
+        effects: { stats: { competence: 3, constituencyApproval: 3, profile: -1 } },
+        outcomeText: 'You and a member of staff spend two days on a government website that has clearly never been used by anyone who sells trees. The pallet is released on the Thursday. The owner tells everyone in the garden centre that you did it, and nobody outside the garden centre.',
+      },
+      {
+        label: 'Make it the case study in a speech about the sea border',
+        effects: { stats: { profile: 3, partyStanding: 2, constituencyApproval: -2 } },
+        outcomeText: 'The trees appear in the Assembly, in a photograph, as whichever thing your party says they are: proof the arrangements are unworkable, or proof the Framework needs time. The owner, who voted the other way, asks that her shop’s name not be used again.',
+      },
+      {
+        label: 'Tell her to source from Wicklow instead',
+        effects: { stats: { competence: 1, constituencyApproval: -1, partyStanding: -1 } },
+        outcomeText: 'You point out that a nursery across the border can send her the same trees with no forms at all. It is true and useful and she takes it, and her supplier in Lincolnshire, who had the account for thirty years, writes to his own MP about you.',
+      },
+    ],
+  },
+  {
+    id: 'ni_two_invitations',
+    title: 'The field and the festival',
+    body: 'Two invitations have arrived for the same week in {constituency}: one to the demonstration field on the Twelfth, where the lodges will gather and a platform party will speak, and one to the opening night of the community festival on the other side of town, where a different platform party will speak. Your predecessor went to one of them every year and was never seen at the other. Both organisers have said, separately, that it would mean a lot.',
+    tags: ['constituency', 'personal'],
+    weight: 10, cooldownDays: 365,
+    requires: { arena: ['ni'], minTier: 0 },
+    choices: [
+      {
+        label: 'Go to both',
+        effects: { stats: { integrity: 2, profile: 2, partyStanding: -2, constituencyApproval: 1 } },
+        outcomeText: 'You stand in a field in a suit on Tuesday and in a marquee in a different suit on Friday, and are photographed at both. Each photograph is shared with approval in the half of {constituency} it was taken in and with a different caption in the other. Your {whip} asks what you thought you were doing.',
+      },
+      {
+        label: 'Go to the one your party goes to',
+        effects: { stats: { partyStanding: 2, constituencyApproval: 1 } },
+        outcomeText: 'You go where you were always going to go and are welcomed as you were always going to be. The other organiser sends a polite note saying perhaps next year, which is what she wrote to your predecessor for eleven years.',
+      },
+      {
+        label: 'Go to neither, and plead the surgery',
+        effects: { stats: { integrity: -1, constituencyApproval: -2, competence: 1 } },
+        outcomeText: 'You hold a constituency surgery on both days and see thirty people. It is useful work and nobody photographs it, and both organisers conclude, correctly, that you were avoiding them.',
+      },
+    ],
+  },
+  {
+    id: 'ni_phone_in',
+    title: 'Three hours of live radio',
+    body: 'The morning phone-in, which has a bigger audience than any programme in {nation} and knows it, wants you live at nine on a story about a colleague’s expenses that broke overnight. The presenter will have the receipts; the callers will have views; the colleague is in {party} and has not yet said anything. The producer says they are going ahead with or without you, and that “without” will be mentioned on air, more than once.',
+    tags: ['media', 'party'],
+    weight: 12, cooldownDays: 300,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 4 },
+    choices: [
+      {
+        label: 'Go on and defend the colleague',
+        effects: { stats: { partyStanding: 3, integrity: -2, profile: 1 } },
+        outcomeText: 'You spend forty minutes saying the matter is being looked into, which is what you were told to say. A caller from Dungannon reads the receipts out. The colleague resigns at noon, and the clip of you is the one that runs beside it.',
+      },
+      {
+        label: 'Go on and say what you actually think',
+        effects: { stats: { integrity: 3, profile: 3, partyStanding: -4 } },
+        outcomeText: 'You say that if the receipts are what they look like, the colleague should go. The presenter is briefly silent, which has not happened before. The colleague goes that afternoon and does not speak to you again, and neither, for a fortnight, does the {whip}.',
+      },
+      {
+        label: 'Send a statement and stay off',
+        effects: { stats: { profile: -2, partyStanding: 1 } },
+        outcomeText: 'The statement is read out in a voice. The presenter spends ten minutes on your absence and the callers are not kind about it. The colleague survives the week. You are not sure you did.',
+      },
+    ],
+  },
+  {
+    id: 'ni_redesignation',
+    title: 'The word on the form',
+    body: 'Every MLA signs a designation at the start of the mandate: unionist, nationalist or other. A key vote this week needs cross-community support and is one designated vote short on one side. A party officer has floated the idea, quietly and then less quietly, that a member of {party} could re-designate for the day; it has been done before, once, and the people who did it were called every name there is. Your name has come up as someone whose form could change.',
+    tags: ['party', 'westminster', 'serious'],
+    weight: 9, cooldownDays: 600,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 3, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Change the word',
+        effects: { stats: { partyStanding: 3, competence: 1, integrity: -3, profile: 2 } },
+        outcomeText: 'You sign a new form, the vote passes, and for a week you are the most famous MLA in {nation}, and not in the way you had hoped. The word is changed back. The Speaker’s office files both forms. Somebody keeps a copy of the first one.',
+      },
+      {
+        label: 'Refuse',
+        effects: { stats: { integrity: 3, partyStanding: -2 } },
+        outcomeText: 'You say the form says what you are and you are not a procedural device. The vote falls, and the thing it would have done is done three months later by a different route, and the party officer forgets whose idea it was.',
+      },
+      {
+        label: 'Propose a weighted majority instead, in public',
+        effects: { stats: { profile: 3, competence: 2, partyStanding: -2 } },
+        outcomeText: 'You say a system in which identity decides arithmetic will always produce this, and that the rule should be a plain weighted majority. Every party agrees in principle and none in time for Tuesday. The vote falls. The speech is quoted in a report nobody acts on.',
+      },
+    ],
+  },
+  {
+    id: 'ni_speaker_election',
+    title: 'A Speaker for both sides',
+    body: 'The Assembly cannot do business until it has elected a Speaker, and a Speaker needs cross-community support, which means a candidate from one designation needs votes from the other. The candidate on offer is somebody you have clashed with in committee for years, and the {whip} has told the group that the deal is done and the vote is Monday. A colleague is going round the group suggesting a few abstentions would “send a message” without sinking anybody. It would sink the sitting.',
+    tags: ['westminster', 'party'],
+    weight: 10, cooldownDays: 900,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 3, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Vote as the whip asks',
+        effects: { stats: { partyStanding: 2, competence: 1 } },
+        outcomeText: 'You vote for a person you do not like and the Assembly sits on Tuesday. The new Speaker, who has a long memory and a list of who voted how, calls you early in the first debate, which is either gratitude or a test.',
+      },
+      {
+        label: 'Abstain with the message-senders',
+        effects: { stats: { partyStanding: -3, profile: 1, integrity: -1 } },
+        outcomeText: 'Four abstentions. The candidate falls one short, the chamber adjourns without a Speaker, and the message that is sent is that {party} cannot count. A second ballot on Thursday elects the same person. You are not called in any debate for a month.',
+      },
+      {
+        label: 'Go and see the candidate first',
+        effects: { stats: { competence: 3, integrity: 1, profile: 1 } },
+        outcomeText: 'You spend half an hour in a corridor with someone you have never spoken to without a microphone between you, and come away with an undertaking about committee time that is worth more than any message. You vote. The Assembly sits. The undertaking is kept, mostly.',
+      },
+    ],
+  },
+  {
+    id: 'ni_programme_for_government',
+    title: 'Outcomes, not targets',
+    body: 'The Executive has published its draft Programme for Government, two years into the mandate, and it is forty pages of “outcomes”: a {nation} where everyone is healthier, better educated and more prosperous, with indicators and no dates. Your committee is asked for a response by Friday. The officials who wrote it will say, correctly, that targets get missed and outcomes do not; the people who read your response will ask what the government intends to do, and by when.',
+    tags: ['policy', 'westminster'],
+    weight: 10, cooldownDays: 600,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 3, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Demand dated targets',
+        effects: { stats: { competence: 3, profile: 1, partyStanding: -1 } },
+        outcomeText: 'Your response says a programme without a date is a brochure. It is quoted in the chamber by every opposition voice and by two Executive ministers, who thought the same and could not say it. The final document gains six dates, three of them after the next election.',
+      },
+      {
+        label: 'Welcome the framework',
+        effects: { stats: { partyStanding: 2, integrity: -1 } },
+        outcomeText: 'You write that an outcomes approach is mature government. It is a phrase from the document, and the officials are grateful, and the Audit Office three years later finds that no indicator has been measured twice in the same way.',
+      },
+      {
+        label: 'Attach a list of what {constituency} needs',
+        effects: { stats: { constituencyApproval: 3, competence: -1 } },
+        outcomeText: 'A road, a school and a health centre, in an appendix to a document about wellbeing indicators. The appendix is noted. The school appears, four years on, in a different document, and you are not sure it was you.',
+      },
+    ],
+  },
+  {
+    id: 'ni_legacy_act_motion',
+    title: 'The motion on legacy',
+    body: 'London has legislated to end Troubles-era inquests and civil cases and move everything into a single commission offering conditional immunity, and the Assembly, which has no power over it, is to debate a motion rejecting it. Every party at Stormont has opposed the Act, for reasons that do not overlap, and the victims’ groups in {constituency} are split three ways about whether a motion that changes nothing is worth anything. You are down to speak for twenty minutes.',
+    tags: ['westminster', 'policy', 'serious'],
+    weight: 9, cooldownDays: 900, oncePerCareer: true,
+    requires: { arena: ['ni'], minTier: 0 },
+    choices: [
+      {
+        label: 'Speak about one family',
+        effects: { stats: { integrity: 3, profile: 2, partyStanding: -1 } },
+        outcomeText: 'You read one name and one date into the record and say what the commission would mean for that one case. The chamber is quiet in the way it is only when nobody is scoring. A family in the gallery asks for a copy. Your party would have liked the other nineteen minutes spent on the Act.',
+      },
+      {
+        label: 'Speak about the principle, hard',
+        effects: { stats: { partyStanding: 3, profile: 2, constituencyApproval: -1 } },
+        outcomeText: 'You give the speech your party wants and it is a good speech, and it is quoted by the groups who agree with it. The groups who do not, who also lost people, hear in it the sentence they always hear.',
+      },
+      {
+        label: 'Say the Assembly should ask for the powers instead',
+        effects: { stats: { competence: 3, profile: 1, partyStanding: -2 } },
+        outcomeText: 'You say a chamber that keeps voting on things it cannot change should ask to be able to change them, and propose that legacy be devolved. It is a serious idea and the only one of the day that frightens anybody, in Dublin and London and in your own party.',
+      },
+    ],
+  },
+  {
+    id: 'ni_regional_rate',
+    title: 'The only tax you set',
+    body: 'The Finance Minister’s budget raises the regional rate by seven per cent, which is the only tax the Executive sets and the only one anyone in {constituency} notices, and a note on the final page says revenue options under consideration include water charges, which every party has promised never to introduce and {othergov} keeps suggesting. The vote is Tuesday and the {whip} has not yet said which way. Your inbox has.',
+    tags: ['policy', 'westminster'],
+    weight: 11, cooldownDays: 420,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 3, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Back the rise, and say why',
+        effects: { stats: { competence: 3, integrity: 2, constituencyApproval: -3 } },
+        outcomeText: 'You say a health service cannot be run on the rates of 2010 and that anyone who says otherwise is selling something. It is a brave speech. {journalist} prints your rates bill, which you declared, alongside a pensioner’s, which she did not.',
+      },
+      {
+        label: 'Oppose it with no alternative',
+        effects: { stats: { constituencyApproval: 3, competence: -2, partyStanding: 1 } },
+        outcomeText: 'You say families cannot take another rise, which is true, and are asked what you would cut, and name a strategy document. The rise passes anyway. You are on the right side of the doorsteps and the wrong side of the arithmetic.',
+      },
+      {
+        label: 'Say the words “water charges” out loud',
+        effects: { stats: { profile: 4, partyStanding: -3, integrity: 1 } },
+        outcomeText: 'You say that a place which keeps running out of money and keeps refusing to charge for water is making a choice, and should say so. Every party, including yours, condemns it within the hour. Three ministers tell you privately that you are right.',
+      },
+    ],
+  },
+  {
+    id: 'ni_irish_language_chamber',
+    title: 'The language on the floor',
+    body: 'A colleague has opened a speech in Irish and been interrupted by a point of order, and the Speaker has ruled, carefully, that members may speak in the language of their choice and that the translation will follow. The next point of order is about Ulster-Scots. Standing Orders are now to be reviewed and your committee is asked what the rules should say. Every party has a position and the positions are the ones they had in 1998. The committee would like a form of words by Friday.',
+    tags: ['westminster', 'policy', 'serious'],
+    weight: 9, cooldownDays: 600,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 3 },
+    choices: [
+      {
+        label: 'Propose both languages, with an interpreter and a budget line',
+        effects: { stats: { competence: 3, integrity: 1, partyStanding: -1 } },
+        outcomeText: 'A rule, a booth, and a cost. It is a proposal about procedure and it is argued about as something else, and it passes after a year with an amendment nobody understands. Members speak in three languages, briefly, and then mostly in English, as before.',
+      },
+      {
+        label: 'Say English only, for the cost',
+        effects: { stats: { partyStanding: 2, constituencyApproval: 1, integrity: -2 } },
+        outcomeText: 'You cite a figure for interpreters. The figure is correct this time. It is heard, by half the chamber, as a sentence about something other than money, and the half that hears it that way includes some of your own voters.',
+      },
+      {
+        label: 'Say members may use any language, with no translation',
+        effects: { stats: { profile: 2, competence: -1 } },
+        outcomeText: 'Your compromise means a speech in Irish or Ulster-Scots is heard by its speaker and understood by almost nobody else, which some members call freedom and others call theatre. It is adopted. The official report gains some interesting pages.',
+      },
+    ],
+  },
+  {
+    id: 'ni_dhondt_pick',
+    title: 'The share-out',
+    body: 'The Executive is being formed by d’Hondt, and {party}’s turn to pick a department comes round at eleven. The group is in a room off the Great Hall with a list. Finance and Economy are gone. Health is there, with the longest waiting lists in these islands and a budget that is never enough; Education, with a school estate falling down; Infrastructure, with the A5 and a water system the Audit Office keeps writing about. Your {leader} asks what the group thinks. The group looks at you.',
+    tags: ['party', 'policy'],
+    weight: 10, cooldownDays: 1200,
+    requires: { arena: ['ni'], minTier: 0, maxTier: 3, inGovernment: true, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Take Health: somebody has to',
+        effects: { stats: { integrity: 3, competence: 1, partyStanding: -2 } },
+        outcomeText: 'You say a party that wants to be taken seriously takes the hardest brief. The group is impressed in the way groups are impressed by people who have volunteered them for something. {party} takes Health. Four years of the lists follow, with your party’s name on them, and a reputation for seriousness that outlasts the minister.',
+      },
+      {
+        label: 'Take Education: the voters have children',
+        effects: { stats: { partyStanding: 2, constituencyApproval: 2 } },
+        outcomeText: 'Education it is: every school in {nation} with a minister from {party} on its letterhead. The roofs still leak. Parents know who to write to, which is both the point and the cost.',
+      },
+      {
+        label: 'Take Infrastructure: it has ribbons to cut',
+        effects: { stats: { competence: 2, profile: 1, integrity: -1 } },
+        outcomeText: 'Roads, bridges, a water system. There are photographs in Infrastructure and your {leader} likes a photograph. Then the sewers in {constituency} back up in a wet March and the photographs are of something else.',
+      },
+    ],
+  },
+
+  // ── more for a minister in the Executive ───────────────────────────────
+  {
+    id: 'ni_spad_appointment',
+    title: 'The adviser',
+    body: 'As a minister you may appoint one special adviser, and the party has sent you a name: a long-standing staffer who knows every councillor in {nation} and was mentioned, in passing and not warmly, in the last public inquiry. Since that inquiry the appointment is supposed to be the minister’s alone, with a code and a declaration. Your Permanent Secretary has sent the code, highlighted. Your {leader} has sent the name, twice.',
+    tags: ['party', 'scandal'],
+    weight: 11, cooldownDays: 600,
+    requires: { arena: ['ni'], minTier: 4, inGovernment: true, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Appoint the party’s name',
+        effects: { stats: { partyStanding: 3, competence: 1, integrity: -2 } },
+        outcomeText: 'The adviser arrives and is extremely good at the job, which is the problem the inquiry identified. Papers move; officials learn who to ask. Eighteen months later {journalist} prints a text message from your adviser to a councillor about a planning application, and your name is in the second paragraph.',
+      },
+      {
+        label: 'Appoint someone of your own choosing',
+        effects: { stats: { competence: 2, integrity: 2, partyStanding: -3 } },
+        outcomeText: 'You pick a former official with no party card and a filing habit. The department runs well and the party stops copying you into things. Your {leader} describes your adviser, in a meeting you are not at, as “the civil servant”.',
+      },
+      {
+        label: 'Appoint the party’s name, and publish the declaration',
+        effects: { stats: { integrity: 1, partyStanding: 1, competence: 1 } },
+        outcomeText: 'You take the name and publish everything: the code, the declaration, the salary. It is the first time anyone has, and it is not thanked. When the text message comes, the declaration is what you point to, and it is, narrowly, enough.',
+      },
+    ],
+  },
+  {
+    id: 'ni_hospital_reconfiguration',
+    title: 'The paper on acute services',
+    body: 'The Health Minister has brought the Executive a paper that every review for fifteen years has recommended: {nation} has too many acute hospitals for its size, and the emergency department nearest {constituency} is to become an urgent-care centre, with ambulances going forty minutes further. Every party signed the strategy that says this must happen. No party has yet voted for the hospital in its own constituency to be the one. The paper is for decision on Thursday and you sit at the table.',
+    tags: ['policy', 'crisis', 'serious'],
+    weight: 11, cooldownDays: 500,
+    requires: { arena: ['ni'], minTier: 4, inGovernment: true, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Back the paper',
+        effects: { stats: { integrity: 3, competence: 3, constituencyApproval: -5 } },
+        outcomeText: 'You vote for it. The department nearest {constituency} closes its doors to blue lights the following spring, and the forty minutes is forty minutes. There is a candlelit protest with your face on a placard. Stroke outcomes across {nation} improve the year after, which nobody in {constituency} is in a mood to hear.',
+      },
+      {
+        label: 'Oppose it, for your own constituency',
+        effects: { stats: { constituencyApproval: 4, partyStanding: 1, integrity: -3, competence: -1 } },
+        outcomeText: 'You say the paper is right everywhere but here. So does every other minister with a hospital. The paper is withdrawn for “further engagement”, which is where the last four went, and the waiting lists are the longest in these islands for another year.',
+      },
+      {
+        label: 'Ask for it to be deferred for a costed ambulance plan',
+        effects: { stats: { competence: 2, partyStanding: 1, constituencyApproval: -1 } },
+        outcomeText: 'A reasonable request that buys six months and one more plan. The Health Minister knows what you have done and says so, gently, in the corridor. The closure comes anyway, and you can tell the hall you got the extra ambulances, which is true.',
+      },
+    ],
+  },
+  {
+    id: 'ni_fiscal_framework',
+    title: 'The offer from the Treasury',
+    body: 'The Treasury has offered the Executive a new fiscal framework: the block grant topped up to the level an independent council says {nation} actually needs, in return for a plan to raise revenue locally. The plan can be rates, prescription charges, university fees or water, each of them something somebody at the table has promised never to do. The Finance Minister wants the Executive to agree a list on Thursday. Every possible list hurts a party’s own voters, and the money is real.',
+    tags: ['policy', 'serious'],
+    weight: 10, cooldownDays: 600,
+    requires: { arena: ['ni'], minTier: 4, inGovernment: true, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Back a list, and put your own party’s sacred cow on it',
+        effects: { stats: { integrity: 3, competence: 3, partyStanding: -4 } },
+        outcomeText: 'You say a party that will not raise a penny should not complain about the pounds. The list goes to London with something of yours on it, the framework is signed, and {nation}’s budget is set by need for the first time. Your group meets without you to discuss it.',
+      },
+      {
+        label: 'Back a list made of other parties’ cows',
+        effects: { stats: { partyStanding: 3, competence: 1, integrity: -2 } },
+        outcomeText: 'Every item on your list is a thing someone else promised to protect. So is every item on theirs. The Executive meets for six hours and produces no list; the offer lapses; the Finance Minister says, in public, that one party in particular was unhelpful, and does not need to name it.',
+      },
+      {
+        label: 'Refuse the framework on principle',
+        effects: { stats: { partyStanding: 2, profile: 1, competence: -2 } },
+        outcomeText: 'You say need should be funded without conditions, which is the Executive’s position, and the Treasury’s reply is that it has been hearing that for twenty years. The money stays in London. The waiting lists stay where they are.',
+      },
+    ],
+  },
+  {
+    id: 'ni_british_irish_council',
+    title: 'The summit on the island',
+    body: 'The British-Irish Council meets this summer in Guernsey, and your department’s sectoral work is on the agenda, alongside a plenary with the Prime Minister, the Taoiseach, the First Ministers from Edinburgh and Cardiff and the Chief Ministers of three Crown dependencies. It is two days in a hotel with sea views. {journalist} has already requested the costs. It is also the one room in which {nation} sits as an equal with every government in these islands, and that happens once a year.',
+    tags: ['policy', 'funny'],
+    weight: 8, cooldownDays: 600,
+    requires: { arena: ['ni'], minTier: 4, inGovernment: true, executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Go, and come back with something',
+        effects: { stats: { competence: 3, profile: 1, constituencyApproval: -1 } },
+        outcomeText: 'You spend two days in a hotel and twenty minutes in a corridor with a Treasury minister who could not otherwise be got, and come home with a line about {department}’s capital budget that saves a scheme. The expenses story runs. The scheme does not need to.',
+      },
+      {
+        label: 'Send officials and save the fare',
+        effects: { stats: { integrity: 1, partyStanding: 1, competence: -1 } },
+        outcomeText: 'Three officials go, take notes, and return. The communiqué notes {nation}’s absence at ministerial level. The Treasury minister spends the corridor with someone from Cardiff, who comes home with a line.',
+      },
+      {
+        label: 'Go, and take the press with you',
+        effects: { stats: { profile: 3, competence: -1, constituencyApproval: 1 } },
+        outcomeText: 'You invite {journalist} along and show them the working day: eleven hours of sessions and a sandwich. The piece is fair. The photograph the paper uses is of the hotel.',
+      },
+    ],
+  },
+
+  // ── more for the First Minister ────────────────────────────────────────
+  {
+    id: 'ni_joint_appearance',
+    title: 'Where the two chairs go',
+    body: 'The deputy First Minister’s office has proposed that the two of you appear together at an event your party has never attended: a match, a service, a commemoration, the kind of occasion that is somebody else’s calendar. The proposal is framed as leadership, and it is also a trap, since the photograph will be used by their side as a concession and by yours as one too. The return invitation, to something of yours, has been left unspoken. The event is Sunday.',
+    tags: ['party', 'personal', 'serious'],
+    weight: 10, cooldownDays: 500,
+    requires: { arena: ['ni'], leaderRole: ['pm'], executiveStatus: ['formed'] },
+    choices: [
+      {
+        label: 'Go, together',
+        effects: { stats: { integrity: 3, profile: 3, partyStanding: -4, competence: 1 } },
+        outcomeText: 'You go. The photograph is on every front page, and it is, whatever anyone says about it, a photograph of two people standing in the same place. Your party’s group meets on Monday without the usual courtesies. The return invitation arrives the week after, and is accepted.',
+      },
+      {
+        label: 'Go together, but somewhere of your choosing',
+        effects: { stats: { competence: 3, partyStanding: 1, profile: 1 } },
+        outcomeText: 'You counter-propose a children’s hospice that both communities use, and the two of you go there instead. It is a smaller photograph and a safer one, and the deputy First Minister’s office notes that you negotiate even your own gestures. The hospice is glad of the visit.',
+      },
+      {
+        label: 'Decline',
+        effects: { stats: { partyStanding: 2, integrity: -1, profile: -1 } },
+        outcomeText: 'You send a note that the diary does not allow it. The deputy First Minister goes alone, and is photographed alone, and the empty space beside them is the story. Your party is relieved. Nobody else is.',
+      },
+    ],
+  },
 ];

@@ -374,4 +374,279 @@ export const MAYOR_CARDS: DecisionCard[] = [
       },
     ],
   },
+  {
+    id: 'mayor_bed_every_night',
+    title: 'A bed every night',
+    body: 'Rough sleeping in {city} has doubled since you took office, which is not your fault and is your problem. Your officials have costed a scheme: a bed, a hot meal and a caseworker for anyone on the streets, every night of the year, no questions about local connection. The councils say it will draw people in from everywhere else. The charities say it is the first serious thing anyone has proposed. The money would come from the fare cap’s contingency.',
+    tags: ['policy', 'serious'],
+    weight: 12, cooldownDays: 800,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Open the beds, every night',
+        effects: { stats: { constituencyApproval: 3, integrity: 3, profile: 2, competence: -1 } },
+        outcomeText: 'The count on the streets falls by a third in the first winter, and a reporter comes up from London to write about it. The councils were right too: people arrive from Lancashire and Cheshire and further, and the beds are full by October. The contingency is gone.',
+      },
+      {
+        label: 'Winter only, and local connection applies',
+        effects: { stats: { competence: 2, constituencyApproval: 1, integrity: -1 } },
+        outcomeText: 'A scheme that works from November to March and turns away a man from Stoke in April. The charities use the word “rationing” and the finance director uses the word “sustainable”. Both are accurate.',
+      },
+      {
+        label: 'It is the councils’ statutory duty',
+        effects: { stats: { competence: -2, constituencyApproval: -3, integrity: -2 } },
+        outcomeText: 'You are right about the law and wrong about the job. The councils do what they can, which is a leaflet and a phone number. The doorways of {city}’s centre stay occupied, and so, in the public mind, do you.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_cancelled_rail_leg',
+    title: 'The line that was promised',
+    body: 'The Prime Minister has cancelled the rail line to {city} that three governments promised, and {pm}’s people have announced that the money will go on “local transport priorities” instead, to be set by you. It is a bribe with a map. The business lobby wants you to fight for the line; your transport team wants to spend the money before somebody in the Treasury remembers it; the other mayors want a joint front, which means waiting for them.',
+    tags: ['policy', 'westminster', 'crisis'],
+    weight: 13, cooldownDays: 1000, oncePerCareer: true,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Take the money and spend it fast',
+        effects: { stats: { competence: 4, constituencyApproval: 2, profile: 1, partyStanding: -2 } },
+        outcomeText: 'Tram extensions, a bus station, a station roof that has leaked since 1987: all funded, all yours. The business lobby calls it a betrayal of the region’s ambition. The region, which has to get to work on Tuesday, finds the trams more use than the ambition.',
+      },
+      {
+        label: 'Refuse it and fight for the line',
+        effects: { stats: { profile: 5, partyStanding: 3, competence: -2, constituencyApproval: -1 }, addHeadline: 'The mayor rejects the government’s rail money and demands the line be built' },
+        outcomeText: 'You hold the press conference at the fenced-off site, in a hard hat, with no digger. The line stays cancelled. The money sits in a Treasury account for two years and then, quietly, goes to Kent.',
+      },
+      {
+        label: 'Hold out for a joint deal with the other mayors',
+        effects: { stats: { profile: 2, competence: 1, constituencyApproval: -1 } },
+        outcomeText: 'Seven mayors, three parties, one letter, which takes eleven weeks to agree a verb. The government gives the group a slightly larger pot and a committee. {city} gets its share a year late, with somebody else’s logo on the announcement.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_skills_budget',
+    title: 'The skills budget',
+    body: 'The adult skills budget for {city} is yours now: a hundred million pounds a year that used to be spent by a quango in Coventry on courses nobody finished. The colleges want it as a block grant. The employers want it spent on the things they used to pay for themselves. Your officials want a bootcamp scheme with a name. The one thing everyone agrees on is that the quango did it badly, which is a low bar to be measured against.',
+    tags: ['policy'],
+    weight: 10, cooldownDays: 700,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Give the colleges the grant',
+        effects: { stats: { constituencyApproval: 2, competence: 1, partyStanding: 1 } },
+        outcomeText: 'The colleges are grateful and the principals say so at length. The completion rates go up a little, because the colleges now report them. The employers stop coming to your meetings, which you notice a year later.',
+      },
+      {
+        label: 'Spend it on what employers say they need',
+        effects: { stats: { competence: 3, profile: 1, constituencyApproval: -1, integrity: -1 } },
+        outcomeText: 'Welding, care, logistics, data: short courses with jobs at the end of them. It works, and the colleges tell the local paper that the mayor has handed public money to private companies, which is one way of describing a job.',
+      },
+      {
+        label: 'Launch the bootcamps',
+        effects: { stats: { profile: 3, competence: -2 } },
+        outcomeText: 'A name, a launch, a minister in a hi-vis vest. The first cohort is eighty people, the target was eight hundred, and the evaluation uses the phrase “early-stage learning”. The quango in Coventry sends a note of sympathy.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_levelling_up_bids',
+    title: 'The bidding round',
+    body: 'The Levelling Up Fund is open again and the ten councils of {city} are each preparing a bid, against each other and against every other town in England, for a pot that will fund perhaps one in five of them. Each bid costs a council a quarter of a million in consultants. Whitehall would like the mayor to “co-ordinate”. The council leaders would like the mayor to back their bid, singular, and have each made that clear in writing.',
+    tags: ['policy', 'westminster'],
+    weight: 10, cooldownDays: 600,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Rank the bids and send one list',
+        effects: { stats: { competence: 3, integrity: 1, constituencyApproval: -2 } },
+        outcomeText: 'You put the town with the worst high street first and the leader of the town placed ninth stops returning calls. Two bids win, which is a good rate and which the eight losers attribute to the ranking rather than to arithmetic.',
+      },
+      {
+        label: 'Back every bid equally',
+        effects: { stats: { constituencyApproval: 1, partyStanding: 1, competence: -2 } },
+        outcomeText: 'Ten letters of support, each describing a different project as the region’s top priority. Whitehall notices, and funds one. The consultants, at least, have had a good year.',
+      },
+      {
+        label: 'Refuse to play: demand the money as a block',
+        effects: { stats: { profile: 3, integrity: 2, competence: -1, constituencyApproval: -1 } },
+        outcomeText: 'You call the fund a beauty contest run by people who have never been to {city}, which is accurate and gets you on the radio. The councils bid anyway, without you, and one of them wins, and its leader thanks the minister.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_airport_expansion',
+    title: 'The second runway',
+    body: 'The combined authority owns a third of {city}’s airport, which pays a dividend that props up the bus network and wants to build a second runway. The airport’s board has the plans and a forecast. The climate campaigners have the science and your manifesto, which they are quoting. The villages under the flight path have a solicitor. The unions have ten thousand jobs on a banner. The dividend is nine million a year and rising.',
+    tags: ['policy', 'serious'],
+    weight: 11, cooldownDays: 1000,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Back the runway, for the jobs and the dividend',
+        effects: { stats: { competence: 2, constituencyApproval: 2, profile: 1, integrity: -3 } },
+        outcomeText: 'The planes come and so does the money, and the buses keep running on it. Your manifesto is read aloud outside your office by students who will be voting for a long time. {party}’s green wing adds you to a list.',
+      },
+      {
+        label: 'Oppose it as a shareholder',
+        effects: { stats: { integrity: 4, profile: 2, competence: -2, constituencyApproval: -2 }, addHeadline: 'The mayor votes against expanding the region’s own airport' },
+        outcomeText: 'You use the authority’s shares to block the board, which has never happened and which the board’s lawyers say may not be possible. The runway is shelved. The dividend forecast is revised down and the bus budget with it, which nobody marches about.',
+      },
+      {
+        label: 'Order a review and a consultation',
+        effects: { stats: { competence: 1, profile: -1, integrity: -1 } },
+        outcomeText: 'Eighteen months, two consultancies, four thousand responses. The review says the runway is good for the economy and bad for the climate, which you knew, and recommends a decision, which is what you had hoped it would make for you.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_royal_visit',
+    title: 'The visit',
+    body: 'A member of the royal family is coming to {city} to open the interchange you spent four years building, and the Palace’s advance party has arrived with a running order in which you appear once, at the end, for the handshake. {pm}’s office has asked whether the Prime Minister might also come, and has made clear that it is not a question. The local paper has cleared the front page. Your press officer would like to know what the picture is going to be.',
+    tags: ['media', 'funny'],
+    weight: 9, cooldownDays: 500,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Follow the running order',
+        effects: { stats: { constituencyApproval: 2, partyStanding: 1, profile: 1 } },
+        outcomeText: 'You stand at the end of the line and shake the hand, and the front page is the royal and the interchange, which is what the interchange deserved. The Prime Minister stands next to you in the one photograph of you, and it is captioned with their name.',
+      },
+      {
+        label: 'Rewrite the running order',
+        effects: { stats: { profile: 3, constituencyApproval: 1, competence: -1, partyStanding: -1 } },
+        outcomeText: 'You give a speech before the ribbon in which the words “this region built this” appear four times. The Palace is too polite to object and the Prime Minister’s office is not. The picture is you, which was the point, and the royal checking a watch, which was not.',
+      },
+      {
+        label: 'Decline the Prime Minister, politely',
+        effects: { stats: { constituencyApproval: 3, profile: 2, partyStanding: -3 } },
+        outcomeText: 'You tell Downing Street the running order is the Palace’s and the Palace, when asked, agrees with you. The Prime Minister does not come. {city} enjoys that enormously. Your party’s leadership, which may one day need Downing Street’s goodwill, does not.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_development_corporation',
+    title: 'The development corporation',
+    body: 'You can designate a Mayoral Development Corporation over the old industrial land east of {city}’s centre: planning powers lifted from the council and handed to a board you appoint, one landowner where there were ninety, a thirty-year plan. It is how the Olympic Park happened and how the Docklands happened, and the people who live on the edge of the land remember how the Docklands happened. The council leader whose borough it is has not been consulted, and knows.',
+    tags: ['policy', 'serious'],
+    weight: 11, cooldownDays: 900,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Designate it, and take the planning powers',
+        effects: { stats: { competence: 4, profile: 2, constituencyApproval: -2, partyStanding: -1 } },
+        outcomeText: 'The board meets, the masterplan is published, and the first crane goes up within two years, which in English planning is a miracle. The council leader calls it a coup, in your party’s newspaper, and the residents’ association puts your face on a poster with the word “Docklands”.',
+      },
+      {
+        label: 'Set it up with the council as a partner',
+        effects: { stats: { competence: 2, constituencyApproval: 1, profile: -1 } },
+        outcomeText: 'A joint board, a joint chair, a joint veto. It is slower and it is fairer and the first crane goes up in year five. The council leader gets a seat and a say, and uses both, at length.',
+      },
+      {
+        label: 'Leave planning with the borough',
+        effects: { stats: { constituencyApproval: 1, competence: -3 } },
+        outcomeText: 'Ninety landowners, one council, no plan. The land east of the centre stays a scrapyard with potential, as it has been since 1981, and the developers who were circling go to Birmingham, where the mayor said yes.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_council_of_mayors',
+    title: 'The council of mayors',
+    body: 'The metro mayors meet quarterly, on a Thursday, in a room the Cabinet Office finds for them, and {pm} has agreed to attend the next one. The mayors of the other party want a joint statement on funding that would embarrass the government. Your own party’s mayors want nothing said that would embarrass the leader, who may be the government next. {mentor} says the club is the most useful thing in your diary. The club is a WhatsApp group with a coat of arms.',
+    tags: ['party', 'westminster'],
+    weight: 10, cooldownDays: 500,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Sign the joint statement',
+        effects: { stats: { profile: 3, competence: 2, partyStanding: -3 } },
+        outcomeText: 'Seven mayors of three parties and one letter about fair funding, and the government cannot call it partisan because it is not. The Treasury moves a little. Your leader’s office asks, in writing, who authorised you to stand next to the opposition.',
+      },
+      {
+        label: 'Water it down until everyone can sign',
+        effects: { stats: { competence: 1, partyStanding: 1, profile: -1 } },
+        outcomeText: 'A statement that calls for “continued dialogue” and is signed by everybody and read by nobody. The club survives, which was your argument, and achieves nothing, which was theirs.',
+      },
+      {
+        label: 'Walk out of the room',
+        effects: { stats: { profile: 2, partyStanding: 2, competence: -2, constituencyApproval: -1 } },
+        outcomeText: 'You leave before the vote and brief that the club has become a cabal. The clip plays well with the party and poorly in {city}, where people had assumed the mayors talking to each other was the point. You are not invited to the dinner.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_last_reporter',
+    title: 'The last reporter',
+    body: '{city}’s daily paper is cutting its political staff to one reporter, who will cover the combined authority, ten councils, the police and the football from a shared office in Reading. Your press team is quietly delighted: fewer awkward questions, more of your own videos. The one reporter has asked for a weekly sit-down interview, on the record, and has pointed out that without it the only scrutiny of the mayoralty will be {journalist}, who comes up from London twice a year to write about buses.',
+    tags: ['media'],
+    weight: 9, cooldownDays: 600,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Give the weekly interview',
+        effects: { stats: { integrity: 3, profile: 1, constituencyApproval: 1, competence: -1 }, relationships: [{ kind: 'journalist', delta: 2 }] },
+        outcomeText: 'Fifty-two interviews a year, two of which go badly and one of which goes very badly. The paper runs them on page five. People in {city} know what their mayor thinks about things, which turns out to be a form of accountability and also, occasionally, a problem.',
+      },
+      {
+        label: 'Make your own media instead',
+        effects: { stats: { profile: 3, constituencyApproval: 1, integrity: -2 } },
+        outcomeText: 'A podcast, a newsletter, a video team of three. The numbers are good and every question in them is yours. The reporter writes a piece about a mayoralty that interviews itself, which is read by everyone in the building and nobody outside it.',
+      },
+      {
+        label: 'Fund a local democracy reporter',
+        effects: { stats: { competence: 2, integrity: 1, partyStanding: -1 } },
+        outcomeText: 'The authority pays for a reporter it cannot control, through a trust it cannot instruct, and the first thing the reporter does is a story about the authority paying for a reporter. It is a good story. So are the next hundred.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_commonwealth_games',
+    title: 'The Games',
+    body: 'A city on another continent has pulled out of hosting the Commonwealth Games with three years to go, and the organisers have asked whether {city} would step in. The government would pay most of it; the authority would pay the rest, a sum your finance director has written down and underlined. There is a stadium that needs a roof, a velodrome that needs a reason, and a fortnight of the world’s attention. The last city that did this is still paying for it, and still pleased.',
+    tags: ['policy', 'media'],
+    weight: 10, cooldownDays: 1200, oncePerCareer: true,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Bid, and take the Games',
+        effects: { stats: { profile: 6, constituencyApproval: 3, competence: -2 }, addHeadline: 'The mayor brings the Commonwealth Games to the region' },
+        outcomeText: 'Three years of cranes and then eleven days in which everything works and {city} is on television looking like somewhere people might want to live. The bill is a third over. The velodrome has a reason. The stadium roof is yours now, forever.',
+      },
+      {
+        label: 'Bid, but only on the government’s money',
+        effects: { stats: { competence: 3, profile: 1, constituencyApproval: -1 } },
+        outcomeText: 'You set a ceiling and hold it, and the organisers take the Games to a city that did not. The finance director frames your letter. {city} watches the opening ceremony from somewhere else, on a Friday night, and wonders.',
+      },
+      {
+        label: 'Decline: there are buses to run',
+        effects: { stats: { competence: 1, constituencyApproval: -2, profile: -2 } },
+        outcomeText: 'Prudent, defensible and dull. The buses are no better for it, and the city that took the Games gets its station rebuilt on the government’s account. You find yourself explaining, for years, what the money you did not spend was spent on.',
+      },
+    ],
+  },
+  {
+    id: 'mayor_fare_cap_bill',
+    title: 'The cost of the cap',
+    body: 'The bus fare cap was the best thing you did and it is now the most expensive: ridership is up a fifth, which was the aim, and every extra passenger costs the authority money, which was not on the leaflet. The gap is forty million this year. The operators’ contract says the risk is yours. {govparty}’s ministers, who have their own national cap to pay for, have declined to help and have said so in a tone.',
+    tags: ['policy', 'crisis'],
+    weight: 11, cooldownDays: 600,
+    requires: { mayor: true },
+    choices: [
+      {
+        label: 'Hold the cap and find the forty million',
+        effects: { stats: { constituencyApproval: 4, competence: 1, integrity: 1, partyStanding: -1 } },
+        outcomeText: 'The highways budget takes the hit and so does a tram extension that was two years away. The buses are full and cheap and the potholes on the ring road are a political issue by spring. You have chosen which complaint to receive.',
+      },
+      {
+        label: 'Raise the cap by fifty pence',
+        effects: { stats: { competence: 3, constituencyApproval: -3 } },
+        outcomeText: 'Two pounds becomes two pounds fifty and ridership dips and recovers, as the modelling said it would. The headline is that the mayor’s promise has been broken, which is a fair description of a cap that has moved. The books balance.',
+      },
+      {
+        label: 'Cut the quiet routes to pay for it',
+        effects: { stats: { competence: -2, constituencyApproval: -4, integrity: -1 } },
+        outcomeText: 'The cap holds in the centre and the evening buses to the estates on the edge of {city} stop at seven. The people who lose them were the people the cap was for. Someone makes that point at a public meeting, slowly, and it is filmed.',
+      },
+    ],
+  },
 ];

@@ -5,12 +5,12 @@ import {
   UkDepartmentId,
 } from '../types/game';
 import type { CreationInput } from './newGame';
-import { COMMITTEE_NAMES, committeeChairTitle } from '../data/committees';
+import { COMMITTEE_NAMES, committeeChairNoun, committeeChairTitle, committeeNameFor } from '../data/committees';
 import {
   DEPARTMENTS, GREAT_OFFICES, OFFICES, cabinetOfficesFor, departmentInfo,
-  isGreatOffice, officeArena, officeTitle, officeTitleFor, officeTitleIn, translateOffice, isSpokespersonOffice,
+  isGreatOffice, officeArena, officeTitle, officeTitleFor, officeTitleIn, translateOffice, isSpokespersonOffice, executiveDepartments,
 } from '../data/offices';
-import { chamberAt, chamberOf, nextFixedElectionDay } from '../data/chambers';
+import { chamberAt, chamberOf, ministerialTitlesAt, nextFixedElectionDay } from '../data/chambers';
 import { leaderOfTitle, outsidePartyPolitics, partyNameIn, partyNameWithArticle } from '../data/parties';
 import { partyPollingShare, pollSnapshot } from './polling';
 import { largestPartyOutside, seatsForMajorityIn, workingMajorityIn } from './seats';
@@ -245,8 +245,8 @@ export function playerOfficeTitle(state: GameState): string {
   if (state.player.officeId === null) {
     // a select-committee chairmanship is a prestige backbench role (held with no
     // frontbench office) — it takes over the title pill from "Backbench MP"
-    if (arena === 'uk' && state.player.committeeChair) {
-      return committeeChairTitle(state.player.committeeChair);
+    if (state.player.committeeChair) {
+      return committeeChairTitle(state.player.committeeChair, arena);
     }
     return `Backbench ${chamberAt(arena, state.day).member}`;
   }
@@ -314,17 +314,18 @@ export function playerStatusTitle(state: GameState): string {
 /** the player can win a committee chair only as a pure backbencher with a seat
  *  (no frontbench office, not the Speaker) — matching the real convention */
 export function canChairCommittee(state: GameState): boolean {
-  // the select-committee chair ladder is modelled for the Commons only; Holyrood
-  // and the Senedd have strong committee systems that are not yet built, and
-  // offering a Commons committee at Holyrood reads as a bug
-  return (state.arena ?? 'uk') === 'uk'
-    && state.player.hasSeat && state.player.officeId === null && !state.player.flags._isSpeaker;
+  return state.player.hasSeat && state.player.officeId === null && !state.player.flags._isSpeaker;
 }
 
 /** pick a committee for a contest, biased toward the player's causes/background
  *  (their expertise), else any department */
-export function pickCommittee(state: GameState, rng: Rng): UkDepartmentId {
-  const depts = Object.keys(COMMITTEE_NAMES) as UkDepartmentId[];
+export function pickCommittee(state: GameState, rng: Rng): DepartmentId {
+  // the Commons' departmental select committees, or the devolved chamber's
+  // committee for each of its government's departments
+  const arena = state.arena ?? 'uk';
+  const depts: DepartmentId[] = arena === 'uk'
+    ? (Object.keys(COMMITTEE_NAMES) as UkDepartmentId[])
+    : executiveDepartments(arena);
   const affinity = new Set<DepartmentId>([
     ...causeDepartments(state.player.causes ?? []),
     ...(BACKGROUNDS[state.player.background]?.deptAffinity ?? []),
@@ -336,13 +337,13 @@ export function pickCommittee(state: GameState, rng: Rng): UkDepartmentId {
 /** take a committee chair (a backbench overlay — officeId stays null). Opens a
  *  concurrent tenure span in the career timeline; a re-election (same committee
  *  already held) keeps the open span continuous rather than starting a new one. */
-function setCommitteeChair(state: GameState, dept: UkDepartmentId): void {
+function setCommitteeChair(state: GameState, dept: DepartmentId): void {
   const fresh = state.player.committeeChair !== dept;
   state.player.committeeChair = dept;
   state.player.flags._committeeChair = true;
   state.player.flags._wasCommitteeChair = true;
   if (fresh) {
-    state.history.push({ kind: 'committeeTenure', date: state.day, action: 'start', dept });
+    state.history.push({ kind: 'committeeTenure', date: state.day, action: 'start', dept, arena: state.arena ?? 'uk' });
   }
 }
 
@@ -357,7 +358,7 @@ function clearCommitteeChair(state: GameState, reason: 'tookOffice' | 'lostSeat'
   if (reason === 'tookOffice') {
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${state.player.name} stands down as Chair of the ${COMMITTEE_NAMES[dept]} Select Committee to take office`,
+      headline: `${state.player.name} stands down as ${committeeChairNoun(state.arena)} of the ${committeeNameFor(state.arena, dept)} to take office`,
     });
   }
 }
@@ -4515,17 +4516,28 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     }
     case 'committeeChairContest': {
       const incumbent = ev.payload?.incumbent === true;
-      const dept = (ev.payload?.dept as UkDepartmentId) ?? 'treasury';
-      const name = COMMITTEE_NAMES[dept];
+      const dept = (ev.payload?.dept as DepartmentId) ?? 'treasury';
+      const arena = state.arena ?? 'uk';
+      const committee = committeeNameFor(arena, dept);
+      const chair = committeeChairNoun(arena);
+      const chamber = chamberAt(arena, state.day);
+      // the Commons elects its chairs by a ballot of the whole House; a devolved
+      // chamber shares them out among the parties and the group puts a name forward
+      const commons = arena === 'uk';
+      const body = incumbent
+        ? (commons
+          ? `A new parliament means a fresh ballot for the chair of the ${committee}. Colleagues across the House have valued your scrutiny — but the post is in the gift of MPs, and you must stand again. Put your name forward?`
+          : `A new ${chamber.house.toLowerCase()} means the committee places are shared out again, and the group has to decide whether the ${committee} stays yours. Your scrutiny was valued; so are the ambitions of the people who want the chair. Do you ask to keep it?`)
+        : (commons
+          ? `The chair of the ${committee} is vacant, and it is elected by the whole House. It is a prize for a respected backbencher: a platform to scrutinise the government, summon ministers, and build a reputation independent of the front bench. Do you stand?`
+          : `The ${chair.toLowerCase()}'s seat on the ${committee} has fallen to your party in the share-out, and the group must put a name forward. It is a prize for a respected ${chamber.member}: a platform to scrutinise the ${chamber.government}, summon ministers, and build a reputation independent of the front bench. Do you put yours?`);
       return {
         cardId: `forced_committee_${state.day}`,
         kind: 'committeeChairContest',
-        title: incumbent ? `Re-electing the ${name} Committee Chair` : `The ${name} Committee chairmanship`,
-        body: incumbent
-          ? `A new parliament means a fresh ballot for the chair of the ${name} Select Committee. Colleagues across the House have valued your scrutiny — but the post is in the gift of MPs, and you must stand again. Put your name forward?`
-          : `The chair of the ${name} Select Committee is vacant, and it is elected by the whole House. It is a prize for a respected backbencher: a platform to scrutinise the government, summon ministers, and build a reputation independent of the front bench. Do you stand?`,
+        title: incumbent ? `Re-electing the ${committee} ${chair}` : `The ${committee} ${chair.toLowerCase()}`,
+        body,
         choices: [
-          { label: incumbent ? 'Seek re-election as Chair' : 'Stand for the chairmanship' },
+          { label: incumbent ? `Seek re-election as ${chair}` : `Stand for the ${chair.toLowerCase()}` },
           { label: 'Stay on the benches' },
         ],
         payload: { dept, incumbent, advance: rng.int(7, 14) },
@@ -4633,7 +4645,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         kind: 'devolvedDraft',
         title: 'The members vote',
         body: `The result comes in a conference hall with bad coffee and a bank of television cameras, in front of a party that has spent six weeks deciding whether it wants you.`,
-        choices: [{ label: 'Hear the result' }],
+        choices: [{ label: 'Hear the result' }, { label: 'Wait outside' }],
         payload: { ...ev.payload, step: 3, advance: rng.int(3, 9) },
       };
     }
@@ -7422,8 +7434,10 @@ export function resolveForcedChoice(
 
     case 'committeeChairContest': {
       const incumbent = card.payload?.incumbent === true;
-      const dept = (card.payload?.dept as UkDepartmentId) ?? 'treasury';
-      const name = COMMITTEE_NAMES[dept];
+      const dept = (card.payload?.dept as DepartmentId) ?? 'treasury';
+      const committee = committeeNameFor(state.arena, dept);
+      const chair = committeeChairNoun(state.arena);
+      const house = chamberAt(state.arena, state.day).houseThe;
       // guard: only a pure backbencher can chair — if the player has since taken
       // office or the Chair, an incumbent loses the chair and the contest passes
       if (!canChairCommittee(state)) {
@@ -7435,7 +7449,7 @@ export function resolveForcedChoice(
           clearCommitteeChair(state, 'votedOut');
           state.history.push({
             kind: 'event', date: state.day,
-            headline: `${state.player.name} steps down as Chair of the ${name} Select Committee`,
+            headline: `${state.player.name} steps down as ${chair} of the ${committee}`,
           });
           return { text: `You let the chairmanship go and return to the ordinary business of the backbenches.`, deltas };
         }
@@ -7464,17 +7478,17 @@ export function resolveForcedChoice(
           gain('competence', 2, 'Competence');
           state.history.push({
             kind: 'event', date: state.day,
-            headline: `${state.player.name} re-elected Chair of the ${name} Select Committee`,
+            headline: `${state.player.name} re-elected ${chair} of the ${committee}`,
           });
           return {
             text: decisive
               ? rng.pick([
-                `The corridor keeps you without a fight: no serious rival even troubles the ballot, and you are re-elected to the chair of the ${name} Select Committee for another parliament.`,
-                `A record of fair, forensic scrutiny pays its dividend — you are returned to the chair of the ${name} Select Committee comfortably, with members from every side glad to keep you.`,
+                `The corridor keeps you without a fight: no serious rival even troubles the ballot, and you keep the ${chair.toLowerCase()} of the ${committee} for another term.`,
+                `A record of fair, forensic scrutiny pays its dividend — you are returned to the ${chair.toLowerCase()} of the ${committee} comfortably, with members from every side glad to keep you.`,
               ])
               : rng.pick([
-                `The committee corridor keeps you, if only just: a challenger runs you closer than last time, but you hold the chair of the ${name} Select Committee.`,
-                `It is a contest this time, not a coronation — but when the ballot closes you have the numbers, and the gavel of the ${name} Select Committee stays in your hand.`,
+                `The committee corridor keeps you, if only just: a challenger runs you closer than last time, but you hold the ${chair.toLowerCase()} of the ${committee}.`,
+                `It is a contest this time, not a coronation — but when the ballot closes you have the numbers, and the gavel of the ${committee} stays in your hand.`,
               ]),
             deltas,
           };
@@ -7484,17 +7498,17 @@ export function resolveForcedChoice(
         gain('partyStanding', 2, 'Standing');
         state.history.push({
           kind: 'event', date: state.day,
-          headline: `${state.player.name} elected Chair of the ${name} Select Committee`,
+          headline: `${state.player.name} elected ${chair} of the ${committee}`,
         });
         return {
           text: decisive
             ? rng.pick([
-              `It is barely a contest: your name carries the House on the first ballot. You are the new Chair of the ${name} Select Committee — a backbench platform with real teeth.`,
-              `Members from all sides line up behind you, and the rival fields melt away. You take the chair of the ${name} Select Committee with a mandate to match.`,
+              `It is barely a contest: your name carries ${house} on the first ballot. You are the new ${chair} of the ${committee} — a backbench platform with real teeth.`,
+              `Members from all sides line up behind you, and the rival fields melt away. You take the ${chair.toLowerCase()} of the ${committee} with a mandate to match.`,
             ])
             : rng.pick([
-              `The ballot of the whole House goes your way — narrowly, after a real fight. You are the new Chair of the ${name} Select Committee, a backbench platform with real teeth.`,
-              `You edge it on a knife-edge ballot, a better-connected rival pushed aside by a handful of votes. The chair of the ${name} Select Committee is yours.`,
+              `The ballot goes your way — narrowly, after a real fight. You are the new ${chair} of the ${committee}, a backbench platform with real teeth.`,
+              `You edge it on a knife-edge ballot, a better-connected rival pushed aside by a handful of votes. The ${chair.toLowerCase()} of the ${committee} is yours.`,
             ]),
           deltas,
         };
@@ -7504,7 +7518,7 @@ export function resolveForcedChoice(
         clearCommitteeChair(state, 'votedOut');
         state.history.push({
           kind: 'event', date: state.day,
-          headline: `${state.player.name} loses the chair of the ${name} Select Committee`,
+          headline: `${state.player.name} loses the ${chair.toLowerCase()} of the ${committee}`,
         });
         return {
           text: rng.pick([
@@ -8397,10 +8411,10 @@ function careerVerdict(
     : everSpeaker ? (devolved ? chamberOf(apexArena).speakerTitle : 'Speaker of the House')
     : level === 3 ? 'party leader'
     : everDeputyPM ? (devolved ? 'Deputy First Minister' : 'Deputy Prime Minister')
-    : level === 2 ? (devolved ? 'Cabinet Secretary' : 'cabinet minister')
+    : level === 2 ? (devolved ? ministerialTitlesAt(apexArena, state.day).senior.replace(/\s+for$/, '') : 'cabinet minister')
     : everChiefRole ? chiefNoun
     : realMinister ? 'junior minister'
-    : everCommitteeChair ? 'select committee chair'
+    : everCommitteeChair ? (devolved ? `committee ${committeeChairNoun(apexArena).toLowerCase()}` : 'select committee chair')
     : 'backbencher';
   const adj = adjectives.slice(0, 2).join(', ');
   // article agrees by SOUND with whatever word actually leads the phrase — the
@@ -8616,6 +8630,9 @@ export function buildLegacy(state: GameState): LegacySummary {
   const everDeputyPM = !!state.player.flags._everDeputyPM;
   const deputyArena = (state.player.flags._everDeputyArena as ArenaId | undefined) ?? 'uk';
   const everCommitteeChair = !!state.player.flags._wasCommitteeChair;
+  // the chamber of the last committee chaired, for the title's noun
+  const committeeArena: ArenaId = [...state.history].reverse()
+    .find((h): h is Extract<HistoryEntry, { kind: 'committeeTenure' }> => h.kind === 'committeeTenure')?.arena ?? 'uk';
   // the Speaker's Chair is a distinct top-tier honour; Deputy PM ranks just below
   // a party leader. Both outrank a plain cabinet seat. A select-committee chair is
   // a notable backbench honour — above a plain MP, below any ministerial office.
@@ -8639,7 +8656,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     : everMayor ? mayorLabel
     : everChiefRole ? chiefTitle
     : level === 1 ? `${ministerTitle}${ministerArena === 'uk' ? '' : ` (${chamberOf(ministerArena).place})`}`
-    : everCommitteeChair ? 'Select Committee Chair'
+    : everCommitteeChair ? (committeeArena === 'uk' ? 'Select Committee Chair' : `Committee ${committeeChairNoun(committeeArena)}`)
     : `Backbench ${chamberOf(state.arena).member}`;
   // count only THIS character's own elections — a protégé must not inherit the
   // mentor's wins (state.elections spans the whole dynasty/world)

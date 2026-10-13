@@ -3,7 +3,7 @@ import { DecisionCard } from '../types/content';
 import { departmentInfo, OFFICES } from '../data/offices';
 import { chamberAt, nationOfRegion } from '../data/chambers';
 import { partyNameIn } from '../data/parties';
-import { COMMITTEE_NAMES } from '../data/committees';
+import { committeeNameFor } from '../data/committees';
 import { heldMayoralty } from '../data/mayoralties';
 import { isOutsideLeader } from './outsideLeader';
 
@@ -86,7 +86,7 @@ export function resolveTokens(state: GameState, text: string): string {
     journalist: relationshipName(state, 'journalist'),
     constituency: seat?.name ?? 'your constituency',
     department: dept ? departmentInfo(dept).casual : 'the department',
-    committee: state.player.committeeChair ? COMMITTEE_NAMES[state.player.committeeChair] : 'your committee',
+    committee: state.player.committeeChair ? committeeNameFor(arena, state.player.committeeChair) : 'your committee',
     cmtdept: state.player.committeeChair ? departmentInfo(state.player.committeeChair).casual : 'the department',
     party: partyNameIn(state.player.partyId, arena),
     govparty: partyNameIn(state.government.governingParty, arena),

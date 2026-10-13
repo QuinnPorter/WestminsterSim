@@ -234,9 +234,10 @@ export interface Player {
   officeId: OfficeId | null;
   /** day the player took their current office (null while a backbencher) */
   officeSinceDay: GameDay | null;
-  /** department of the select committee the player chairs (a backbench role held
-   *  alongside being an MP); null/undefined when they chair none */
-  committeeChair?: UkDepartmentId | null;
+  /** department of the committee the player chairs (a backbench role held
+   *  alongside being a member: a Commons select committee, a Holyrood or Senedd
+   *  committee, an Assembly statutory committee); null/undefined when none */
+  committeeChair?: DepartmentId | null;
   /** rebellions in the current parliament */
   rebellionCount: number;
   /** story flags set by cards. String values are used by a few flags that stash a
@@ -499,7 +500,9 @@ export type HistoryEntry =
   /** the Deputy-PM / First-Secretary overlay held ON TOP of a brief — a separate,
    *  concurrent timeline track (paired start→end), so it shows alongside the office */
   | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' | 'dfm'; label?: string }
-  | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: UkDepartmentId }
+  | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: DepartmentId;
+      /** the chamber the committee sits in; absent on older entries, which are all Westminster */
+      arena?: ArenaId }
   /** a spell as a directly elected mayor: its own timeline track. The end entry
    *  carries the mayoral elections won in the spell. */
   | { kind: 'mayoralty'; date: GameDay; action: 'start' | 'end'; mayoralty: string; label: string; electionsWon?: number }

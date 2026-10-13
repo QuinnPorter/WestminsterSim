@@ -1293,8 +1293,9 @@ function nextStepCore(state: GameState, rng: Rng): void {
     return;
   }
 
-  // a select-committee chairmanship comes up for an established backbencher (any
-  // party) — a prestige scrutiny role won by a ballot of the whole House
+  // a committee chairmanship comes up for an established backbencher (any party):
+  // a prestige scrutiny role, won by a ballot of the whole House in the Commons and
+  // from the party's share of the chairs in a devolved chamber
   if (
     canChairCommittee(state) && !state.player.committeeChair &&
     (state.player.stats.profile > 45 || state.player.stats.competence > 50) &&

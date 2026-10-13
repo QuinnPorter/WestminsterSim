@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArenaId, GameState, OfficeId, PartyId, UkDepartmentId } from '../types/game';
+import { ArenaId, DepartmentId, GameState, OfficeId, PartyId } from '../types/game';
 import type { RoleSide } from '../engine/career';
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
@@ -82,12 +82,12 @@ export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
   return pairSpans(history, 'deputyOverlay', (e) => ({ title: e.title ?? 'dpm', label: e.label }));
 }
 
-export interface CommitteeSpan { dept: UkDepartmentId; start: number; end: number | null; }
+export interface CommitteeSpan { dept: DepartmentId; arena?: ArenaId; start: number; end: number | null; }
 
 /** the concurrent select-committee chairmanship spans (a backbench overlay),
  *  paired from the committeeTenure start/end history entries */
 export function buildCommitteeSpans(history: GameState['history']): CommitteeSpan[] {
-  return pairSpans(history, 'committeeTenure', (e) => ({ dept: e.dept }));
+  return pairSpans(history, 'committeeTenure', (e) => ({ dept: e.dept, arena: e.arena }));
 }
 
 export interface TimelineRow { title: string; start: number; end: number | null; }
@@ -107,7 +107,7 @@ export function timelineRowsFromHistory(
     start: d.start, end: close(d.end),
   }));
   const committee: TimelineRow[] = buildCommitteeSpans(history).map((c) => ({
-    title: committeeChairTitle(c.dept), start: c.start, end: close(c.end),
+    title: committeeChairTitle(c.dept, c.arena), start: c.start, end: close(c.end),
   }));
   const mayoral: TimelineRow[] = mayorSpans(history).map((m) => ({
     title: m.label, start: m.start, end: close(m.end),

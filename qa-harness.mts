@@ -154,6 +154,11 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
       const opened = game.pmHistory.filter((t) => t.startDay === game.day).length;
       if (opened > 1) flags.push(`two head-of-government tenures opened on one day at step ${steps}`);
     }
+    // the House is one of the sizes a chamber can be
+    {
+      const house = Object.values(game.seats).reduce((a, b) => a + (b ?? 0), 0);
+      if (![650, 129, 60, 96, 108, 90].includes(house)) flags.push(`House of ${house} seats at step ${steps}`);
+    }
     // stat sanity
     for (const [k, v] of Object.entries(game.player.stats)) {
       if (typeof v !== 'number' || Number.isNaN(v)) flags.push(`bad stat ${k}=${v}`);
