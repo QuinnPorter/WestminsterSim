@@ -3,13 +3,18 @@ import { DecisionCard } from '../types/content';
 import { departmentInfo, OFFICES } from '../data/offices';
 import { chamberAt, nationOfRegion } from '../data/chambers';
 import { partyNameIn } from '../data/parties';
-import { COMMITTEE_NAMES } from '../data/committees';
+import { committeeNameFor } from '../data/committees';
+import { heldMayoralty } from '../data/mayoralties';
+import { isOutsideLeader } from './outsideLeader';
+import { CardToken } from '../content/tokens';
 
 import { getRelationship, relationshipName } from './relationships';
 import {
   playerInGovernmentBloc, playerTier, playerIsLeader, playerLeaderRole, onMinorPartyTrack,
 } from './career';
 import { Rng } from './rng';
+import { stormontStoodOn } from './collapse';
+import { executiveInBeing } from './executive';
 
 // ---------- key moments ----------
 
@@ -28,7 +33,12 @@ export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
     card.kind === 'confidenceVote' ||
     card.kind === 'partyCoup' ||
     card.kind === 'coalitionTalks' ||
-    card.kind === 'coalitionOffer'
+    card.kind === 'coalitionOffer' ||
+    card.kind === 'executiveCrisis' ||
+    card.kind === 'executiveTalks' ||
+    card.kind === 'mayorElection' ||
+    card.kind === 'outsideDraft' ||
+    card.kind === 'standForSeat'
   );
 }
 
@@ -41,6 +51,11 @@ export function keyMomentLabel(card: DrawnCard): string {
   if (card.kind === 'partyCoup') return 'Leadership challenge';
   if (card.kind === 'resignPledge') return 'Pressure to resign';
   if (card.kind === 'coalitionTalks' || card.kind === 'coalitionOffer') return 'Coalition talks';
+  if (card.kind === 'executiveCrisis') return 'The Executive on the brink';
+  if (card.kind === 'executiveTalks') return 'Forming an Executive';
+  if (card.kind === 'mayorElection') return 'Mayoral election';
+  if (card.kind === 'outsideDraft') return 'Leadership contest';
+  if (card.kind === 'standForSeat') return 'General election';
   return 'Key moment';
 }
 
@@ -57,7 +72,10 @@ export function resolveTokens(state: GameState, text: string): string {
   // devolved administration of the player's nation; in a devolved chamber, the UK
   // government. Both are simulated, so they have a real leader and a real party.
   const other = otherGovernment(state);
-  const map: Record<string, string> = {
+  // the mayoralty held or sought, successor office included
+  const mayoralty = heldMayoralty(state.player, state.day);
+  // typed against the token list, so the two cannot drift
+  const map: Record<CardToken, string> = {
     leader: relationshipName(state, 'leader'),
     pm: state.government.pmId === 'player' ? state.player.name
       : state.characters[state.government.pmId]?.name ?? `the ${chamber.head}`,
@@ -70,7 +88,7 @@ export function resolveTokens(state: GameState, text: string): string {
     journalist: relationshipName(state, 'journalist'),
     constituency: seat?.name ?? 'your constituency',
     department: dept ? departmentInfo(dept).casual : 'the department',
-    committee: state.player.committeeChair ? COMMITTEE_NAMES[state.player.committeeChair] : 'your committee',
+    committee: state.player.committeeChair ? committeeNameFor(state.player.committeeChair, arena) : 'your committee',
     cmtdept: state.player.committeeChair ? departmentInfo(state.player.committeeChair).casual : 'the department',
     party: partyNameIn(state.player.partyId, arena),
     govparty: partyNameIn(state.government.governingParty, arena),
@@ -90,8 +108,11 @@ export function resolveTokens(state: GameState, text: string): string {
     otherleader: other.leader,
     otherparty: other.party,
     othergov: other.government,
+    // the mayor's office and place
+    mayoralty: mayoralty?.name ?? 'the mayoralty',
+    city: mayoralty?.city ?? 'the city',
   };
-  return text.replace(/\{(\w+)\}/g, (m, key) => map[key] ?? m);
+  return text.replace(/\{(\w+)\}/g, (m, key: string) => (map as Record<string, string>)[key] ?? m);
 }
 
 /** the leader, party and name of the government the player is NOT part of: the
@@ -103,6 +124,11 @@ function otherGovernment(state: GameState): { leader: string; party: string; gov
     const nation = nationOfRegion(state.player.region);
     const snap = nation ? state.dormant?.[nation] : undefined;
     const chamber = chamberAt(nation ?? 'scotland', state.day);
+    // Stormont without an Executive: the Northern Ireland Office speaks for it
+    const collapsed = snap ? !executiveInBeing(snap) : chamber.jointExecutive && !stormontStoodOn(state.day);
+    if (collapsed) {
+      return { leader: 'the Secretary of State', party: 'the Northern Ireland Office', government: 'the Northern Ireland Office' };
+    }
     if (snap) {
       const fm = snap.characters[snap.government.pmId];
       return {
@@ -131,6 +157,9 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
       state.day - state.cardHistory[card.id] < card.cooldownDays) {
     return false;
   }
+  // a sitting mayor draws only City Hall's deck, and nobody else draws from it;
+  // a leader with no seat likewise draws only the cards written for one
+  if (!!state.player.mayor !== (req?.mayor === true) || isOutsideLeader(state) !== (req?.outsideLeader === true)) return false;
   // an unmarked card belongs to the Commons. The corpus predates the devolved
   // chambers and is written throughout in Westminster language, so a card must
   // opt IN to a legislature rather than leak into one by omission.
@@ -141,6 +170,7 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
   const tier = playerTier(state);
   if (req.minTier !== undefined && tier < req.minTier) return false;
   if (req.maxTier !== undefined && tier > req.maxTier) return false;
+  if (req.minPeakTier !== undefined && Number(state.player.flags._peakTier ?? 0) < req.minPeakTier) return false;
   // a coalition junior partner holds real government office, so counts as
   // "in government" for governing-vs-opposition card gating
   if (req.inGovernment !== undefined && playerInGovernmentBloc(state) !== req.inGovernment) return false;
@@ -149,6 +179,8 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
     if (!role || !req.leaderRole.includes(role)) return false;
   }
   if (req.arrangementIn && !req.arrangementIn.includes(state.government.arrangement)) return false;
+  // a chamber without a joint Executive counts as formed
+  if (req.executiveStatus && !req.executiveStatus.includes(state.government.executive?.status ?? 'formed')) return false;
   if (req.firstParliament !== undefined &&
       (Object.keys(state.elections).length === 0) !== req.firstParliament) return false;
   if (req.minorParty !== undefined && onMinorPartyTrack(state) !== req.minorParty) return false;

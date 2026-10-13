@@ -24,9 +24,6 @@ export interface LegislatureSnapshot {
   shares: Partial<Record<PartyId, number>>;
   /** AMS: the constituency vote (0..1) — what each FPTP seat's shares calibrate to */
   constituencyShares?: Partial<Record<PartyId, number>>;
-  /** entered and tested but not yet on the era picker: the simulation cannot
-   *  yet play what followed (the 2016 Assembly collapsed eight months in) */
-  heldBack?: boolean;
   /** the parties actually on the ballot in THIS parliament */
   parties: PartyId[];
   governing: PartyId;
@@ -204,5 +201,5 @@ export function legislatureAt(arena: DevolvedArenaId, day: GameDay): Legislature
 
 /** the legislatures a career may begin in, in a given chamber */
 export function erasFor(arena: DevolvedArenaId): LegislatureSnapshot[] {
-  return DEVOLVED_LEGISLATURES[arena].filter((s) => !s.heldBack);
+  return DEVOLVED_LEGISLATURES[arena];
 }

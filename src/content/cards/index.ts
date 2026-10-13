@@ -1,4 +1,5 @@
 import { DecisionCard } from '../../types/content';
+import { CARD_TOKEN_KEYS } from '../tokens';
 import { PERSONAL_CARDS } from './personal';
 import { BACKBENCHER_CARDS } from './backbencher';
 import { CONSTITUENCY_CARDS } from './constituency';
@@ -32,6 +33,11 @@ import { DEVOLVED_CARDS } from './devolved';
 import { SCOTLAND_CARDS } from './nations/scotland';
 import { WALES_CARDS } from './nations/wales';
 import { NI_CARDS } from './nations/ni';
+import { NI_COLLAPSE_CARDS } from './nations/niCollapse';
+import { MAYOR_CARDS } from './mayor';
+export { MAYOR_CARDS } from './mayor';
+import { OUTSIDE_LEADER_CARDS } from './outsideLeader';
+export { OUTSIDE_LEADER_CARDS } from './outsideLeader';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling.
  *  Per-chamber, because the last-resort branch of `drawCard` ignores eligibility
@@ -80,27 +86,46 @@ export const ALL_CARDS: DecisionCard[] = [
   ...SCOTLAND_CARDS,
   ...WALES_CARDS,
   ...NI_CARDS,
+  ...NI_COLLAPSE_CARDS,
+  // out of the chamber: eligible only while the player is a sitting mayor, or
+  // leads the party with no seat
+  ...MAYOR_CARDS,
+  ...OUTSIDE_LEADER_CARDS,
 ];
+
+/** every `{token}` a card may use (the resolver in engine/cardEngine.ts is typed against the same list) */
+const CARD_TOKENS = new Set<string>(CARD_TOKEN_KEYS);
 
 export function validateCards(cards: DecisionCard[]): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
+  const checkTokens = (id: string, text: string) => {
+    for (const m of text.matchAll(/\{(\w+)\}/g)) {
+      if (!CARD_TOKENS.has(m[1])) errors.push(`${id}: unknown token {${m[1]}}`);
+    }
+  };
   for (const card of cards) {
     if (seen.has(card.id)) errors.push(`duplicate card id: ${card.id}`);
     seen.add(card.id);
+    checkTokens(card.id, card.title);
+    checkTokens(card.id, card.body);
     if (card.weight <= 0) errors.push(`${card.id}: weight must be > 0`);
     if (card.choices.length < 2 || card.choices.length > 4) {
       errors.push(`${card.id}: must have 2-4 choices`);
     }
     if (card.tags.length === 0) errors.push(`${card.id}: needs at least one tag`);
     for (const choice of card.choices) {
+      checkTokens(card.id, choice.label);
       if (Array.isArray(choice.outcomeText)) {
         if (choice.outcomeText.length === 0) {
           errors.push(`${card.id}: weighted outcome list is empty`);
         }
         for (const o of choice.outcomeText) {
           if (o.weight <= 0) errors.push(`${card.id}: outcome weight must be > 0`);
+          checkTokens(card.id, o.text);
         }
+      } else {
+        checkTokens(card.id, choice.outcomeText);
       }
     }
   }

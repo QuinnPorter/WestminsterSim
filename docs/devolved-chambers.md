@@ -393,10 +393,10 @@ drafted leader).
 
 A UK wrinkle with no Canadian analogue: Douglas Ross led the Scottish Conservatives for a year
 as an MP; Jim Murphy led Scottish Labour for five months with no Holyrood seat. HillSim's draft
-hands the winner the party's safest seat on the spot. The faithful version is "lead from
-Westminster until the next Holyrood election, then stand at the top of a list." Recommend
-shipping HillSim's version first and adding the outside-leader variant as a flag on the draft
-payload later; it touches the leader-rank checks in `career.ts`, which all assume `hasSeat`.
+hands the winner the party's safest seat on the spot, and that is what the devolved draft does.
+The outside-leader variant landed from the other direction: a metro mayor drafted to lead a
+Westminster party with no Commons seat (section 9). The Westminster-to-Holyrood version is still
+not modelled.
 
 ### 3.13 The chamber's voice, for Britain
 
@@ -443,9 +443,10 @@ Scottish results today. Port it first.
 ### 3.16 Northern Ireland
 
 Stormont is STV, mandatory power-sharing with a joint First and deputy First Minister, cross-
-community votes, petitions of concern, and periodic collapse. Nothing in this engine represents
-any of that, and faking it would be worse than leaving it out, which is the same call HillSim made
-for the consensus-government territories. WestminsterSim already excludes NI as a player region.
+community votes, petitions of concern, and periodic collapse. Section 8 describes what of that
+the engine now carries: the Assembly as a chamber, the Executive forming by right and falling,
+the 2017 and 2022 stalemates, and Northern Ireland's parties and seats at Westminster. STV
+transfers and running mates are not modelled; the d'Hondt count per constituency stands in.
 
 ---
 
@@ -579,12 +580,16 @@ Everything in Phases 0 to 3 of the plan above, on branch `claude/devolved-chambe
 
 ### Still open
 
-- The seat counts and vote shares in `data/devolved.ts` were written from memory and are guarded
-  for arithmetic, not for truth. They should be checked against the official returns.
+- The Holyrood and Senedd seat counts and vote shares in `data/devolved.ts` were written from
+  memory and are guarded for arithmetic, not for truth. They should be checked against the
+  official returns, as the Northern Ireland tables in `data/niAssembly.ts` and
+  `data/niWestminster.ts` were.
 - 2026 results for both chambers, once entered, would add a fourth era to each.
-- The independence meter and referendum sequence (3.8), the extraordinary election after a failed
-  nomination (3.3), leading from outside the chamber (3.12), Holyrood and Senedd committees, and
-  the two-chair rewrite of `devolvedScenery.ts` (the `{otherleader}` tokens it needs now exist).
+- The independence meter and referendum sequence (3.8), Holyrood's extraordinary election after a
+  failed nomination (3.3; Stormont's is modelled), leading a devolved party from Westminster
+  (3.12; leading a Westminster party from a mayoralty is modelled), Holyrood, Senedd and Assembly
+  committees, and the two-chair rewrite of `devolvedScenery.ts` (the `{otherleader}` tokens it
+  needs now exist).
 - Relationships do not survive a round trip: only the mentor and the journalist follow a move.
 - A devolved chamber's ballot is fixed at the election the career walked into, so a 2016 start
   keeps UKIP on the Senedd ballot for good while a 2021 start has Reform. Party systems being
@@ -592,3 +597,85 @@ Everything in Phases 0 to 3 of the plan above, on branch `claude/devolved-chambe
 - Lost confidence votes in a fixed-term chamber end the First Minister, not the parliament; the
   successor is nominated from the same party. The opposition forming a government instead, and
   the extraordinary election after 28 days without a nomination, are not modelled.
+
+## 8. Northern Ireland: the Assembly, the Executive and its collapse
+
+Everything in the plan's P1 to P3, on branch `claude/gracious-albattani-sm84aq`. Every election
+figure was verified against two sources (EONI, the Assembly's RaISe papers, the Commons Library,
+ARK, CAIN, legislation.gov.uk) and the data files cite them in their headers.
+
+### 8.1 Northern Ireland at Westminster
+
+The eighteen constituencies carry their real names and winners for 2010, 2015, 2017, 2019 and
+2024 (`data/niWestminster.ts`). Northern Ireland's parties are polled on their own ballot inside
+the Commons' polling (`PollingState.ni`, a `RegionalBallot` with its own PRNG state), so the
+seats swing at elections without touching Great Britain's stream; `commonsRngPin.test.ts` pins
+that. DUP, UUP, SDLP and Alliance careers are playable; Sinn Féin's seats are held and never sat
+in (`outsidePartyPolitics`), and TUV holds North Antrim as a frozen winner outside the ballot.
+
+### 8.2 The Assembly as a chamber
+
+`CHAMBERS.ni` carries what differs as data (`jointExecutive`, `ladder: 'singleTier'`, `deputyHead`,
+`pressureScale`, `calendarKeys`, a `voice` record), so `career.ts` and `scheduler.ts` have no new
+nation literal. Eighteen multi-member constituencies (`data/niAssembly.ts`: 2011, 2016, 2017 and
+2022, each with its 18-row constituency table) are counted by d'Hondt as the first cut of STV
+(`generateListPrSeatMap`, calibrated to reproduce every real row with no random numbers), six
+seats each until the Assembly (Reduction of Numbers) Act's Royal Assent on 22 July 2016 and five
+after. The 108 to 90 shrink fires at the first election after that.
+
+The Executive (`engine/executive.ts`) forms by right: `designateFirstMinisters` applies the
+statutory rule (largest party; largest party of the other designation), `allocateMinistries`
+shares the departments by d'Hondt with Justice by convention to Alliance or an independent, and
+from 2016 the smaller entitled parties may decline and take the opposition benches
+(`hasOfficialOpposition` needs five per cent of the House for a shadow bench). It is carried on
+`governingParty`/`coalitionPartner` plus `government.executive` under `arrangement: 'executive'`.
+The ladder is one rung of Minister per department, the Executive Office's two junior posts, and a
+spokesperson rung for every party, with offers fitted to the share-out (`offerableOffice`).
+
+### 8.3 Collapse
+
+`engine/collapse.ts`: a head party's walkout (or a refusal to nominate after an election) leaves
+the designates on `pmId` and the partner field with `executive.status: 'collapsed'`; nobody holds
+the two offices, the ministers stay as caretakers until the law removes them (until the election
+before the 2022 Act; twenty-four weeks after an election, forty-eight after a vacancy, after it),
+and the Secretary of State's clock runs: extensions, then an extraordinary election forty-five
+days out, with a hard cap of three and a half years. A deal re-forms it through `formExecutive`.
+A player leading a head party decides on the cards (`executiveCrisis`, `executiveTalks`); the NPC
+world rolls (`decideFormation`). Real history is scripted, not simulated: `NI_EXECUTIVE_HISTORY`
+plays the 2017 and 2022 collapses and the 2020 and 2024 restorations to the day for a dormant
+Stormont (`catchUpExecutive`), and `stormontStoodOn` answers for a chamber never built. The 2017
+and 2022 Assemblies open with no Executive, as they did.
+
+## 9. Interludes: the mayoralty and leading from outside
+
+Everything in the plan's P5 and P6.
+
+### 9.1 The metro mayor
+
+`data/mayoralties.ts` holds England's fourteen directly elected metro mayoralties with their
+verified polling days, the four-year cycle, the North of Tyne's succession by the North East, and
+the voting system (the supplementary vote to 2021, first past the post for the 2024 and 2025
+polls, the supplementary vote again from June 2026). A sitting MP in such a region may be asked to
+run (`mayorDraftTarget`, a side-stream roll behind the exported `INTERLUDES` switch so the seeded
+tests can turn it off), is selected, and fights the count on the real polling day
+(`mayoralResult`: regional seat strength, a personal vote, transfers by ideology under SV).
+Winning resigns the seat: `Player.mayor` carries the term, the deck is City Hall's
+(`content/cards/mayor.ts`), re-elections come round, the other parties keep changing leaders
+(`runNpcChurn`), and a general election is watched from City Hall unless the party offers a seat
+(once a parliament, after two years, only when the count precedes the mayoral one). A return
+carries cabinet-rank incoming seniority after a full term; a lost re-election leaves a Commons
+candidacy marked on a seat without flipping it (`pickSeatFor` with `candidateOnly`), so the
+wilderness can end.
+
+### 9.2 Leading from outside the chamber
+
+`engine/outsideLeader.ts`: a mayor with a full term and a national name may, when their own
+opposition or minor party's leadership falls vacant, be asked to lead it from City Hall, at a
+quarter of qualifying vacancies and once per career unless the first attempt fails, with the
+members voting below a Westminster draft's odds. Winning resigns the mayoralty and takes the
+leadership with no seat (`isOutsideLeader` is derived: leader, no seat, no mayoralty): a deputy
+takes Prime Minister's Questions (`pmqsProxy`), the leader has a deck of their own, and the next
+general election decides it, with a seat chosen before the campaign (`standForSeat`) and the count
+either seating the leader or ending the leadership. A Leader of the Opposition who loses their
+seat while the party wins is no longer written in as Prime Minister for a day.
+

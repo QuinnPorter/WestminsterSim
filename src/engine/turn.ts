@@ -77,9 +77,10 @@ export function continueCore(game: GameState, rng: Rng): void {
 
   let advance = (card.payload?.advance as number) ?? rng.int(21, 42);
   // a fixed polling day is a fixed polling day: while the campaign that leads to
-  // it is running, the clock does not run past it, so the count falls on the day
-  const night = game.forcedQueue.find((e) => e.kind === 'electionNight');
-  const pollingDay = night?.payload?.pollingDay as number | undefined;
+  // it is running, the clock does not run past it, so the count falls on the day.
+  // A mayoral candidate's poll is fixed too, campaign or no campaign.
+  const night = game.forcedQueue.find((e) => e.kind === 'electionNight' || e.kind === 'mayorElection');
+  const pollingDay = (night?.payload?.pollingDay as number | undefined) ?? game.player.mayorCandidacy?.pollingDay;
   if (pollingDay !== undefined) advance = Math.max(1, Math.min(advance, pollingDay - game.day));
   const before = game.day;
   game.day += advance;

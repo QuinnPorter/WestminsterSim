@@ -176,7 +176,10 @@ function tidy(text: string): string {
  *  "Westminster is asking" is the whole point of a recruitment card; running it
  *  through the Holyrood voice turns it into "Holyrood is asking", which is both
  *  wrong and confusing. These build their own chamber nouns explicitly. */
-const SPEAKS_FOR_ITSELF = new Set(['ukRecruit', 'devolvedDraft']);
+const SPEAKS_FOR_ITSELF = new Set([
+  'ukRecruit', 'devolvedDraft', 'mayorDraft', 'mayorElection', 'mayorReturnOffer', 'lostMayoralty', 'mayorBystander',
+  'outsideDraft', 'standForSeat',
+]);
 
 export function exemptFromChamberVoice(kind: string | undefined): boolean {
   return !!kind && SPEAKS_FOR_ITSELF.has(kind);

@@ -238,11 +238,14 @@ describe('the Executive and the player', () => {
     expect(g.player.flags._isDeputyPM).toBe(true);
     expect(playerOfficeTitle(g)).toBe('deputy First Minister');
     expect(playerLeaderRole(g)).toBe('minorLeader');
-    // walking out is not yet modelled: a no-op that leaves the Executive standing
+    // walking out brings the Executive down: the offices are joint
     withdrawFromCoalitionCore(g, new Rng(12));
-    expect(g.government.executive?.status).toBe('formed');
+    expect(g.government.executive?.status).toBe('collapsed');
+    expect(g.government.executive?.cause).toBe('dfmWalkout');
+    expect(g.government.executive?.blocker).toBe('sf');
     expect(g.government.coalitionPartner).toBe('sf');
-    expect(g.government.deputyPmId).toBe('player');
+    expect(g.government.deputyPmId).toBeUndefined();
+    expect(g.player.flags._isDeputyPM).toBeUndefined();
   });
   it('a drafted leader of the First Minister’s party is First Minister', () => {
     const g = game({ seed: 13, arena: 'ni', partyId: 'dup' });
@@ -262,7 +265,9 @@ describe('the Executive and the player', () => {
       const { result, playerWonSeat } = runElection(g, rng);
       applyElectionAftermath(g, rng, result, playerWonSeat);
       const gv = g.government;
-      expect(gv.executive?.formedDay).toBe(g.day);
+      // the heads are nominated, or (rarely, after an ordinary election) they are not
+      if (result.formation === 'formed') expect(gv.executive?.formedDay).toBe(g.day);
+      else expect(gv.executive?.status).toBe('collapsed');
       expect(gv.arrangement).toBe('executive');
       expect(g.forcedQueue.some((e) => e.kind === 'coalitionTalks' || e.kind === 'coalitionOffer')).toBe(false);
       const ranked = (Object.entries(result.seats) as [PartyId, number][]).sort((a, b) => b[1] - a[1]);
@@ -270,8 +275,12 @@ describe('the Executive and the player', () => {
       expect(gv.coalitionPartner).toBeDefined();
       expect(gv.coalitionPartner).not.toBe(gv.governingParty);
       const held = holders(g);
-      expect(Object.keys(held).sort()).toEqual([...cabinetOfficesFor('ni')].sort());
-      for (const p of Object.values(held)) expect(gv.executive!.parties).toContain(p);
+      if (result.formation === 'formed') {
+        expect(Object.keys(held).sort()).toEqual([...cabinetOfficesFor('ni')].sort());
+        for (const p of Object.values(held)) expect(gv.executive!.parties).toContain(p);
+      } else {
+        expect(gv.cabinet).toEqual([]);
+      }
       if (playerWonSeat) {
         if (g.player.officeId) {
           expect(held[g.player.officeId]).toBe('dup');
@@ -358,7 +367,10 @@ describe('smoke: Stormont careers', () => {
         if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
         continueCore(g, rng);
         for (const v of Object.values(g.player.stats)) expect(Number.isNaN(v)).toBe(false);
-        expect(g.government.executive?.status).toBe('formed');
+        // formed or collapsed, never a standing Executive with nobody in it
+        expect(['formed', 'collapsed']).toContain(g.government.executive?.status);
+        if (g.government.executive?.status === 'formed') expect(g.government.cabinet.length).toBeGreaterThan(0);
+        if (g.government.executive?.status === 'collapsed') expect(g.government.executive.collapsedDay).toBeDefined();
       }
       expect(shown).toBeGreaterThan(100);
     });

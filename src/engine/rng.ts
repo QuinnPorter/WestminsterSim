@@ -69,3 +69,11 @@ export class Rng {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+
+/** A side stream for a roll that must not touch the main one: seeded from the
+ *  main stream's current state, the day and a salt, so it is reproducible from
+ *  a save and consumes no main draw. It cannot hide an event that fires (the
+ *  card drawn that tick changes); it only keeps the quiet ticks identical. */
+export function sideRng(rng: Rng, day: number, salt: number): Rng {
+  return new Rng((rng.state ^ Math.imul(day, 0x9e3779b1) ^ salt) >>> 0);
+}

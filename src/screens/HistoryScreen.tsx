@@ -52,7 +52,7 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
         >
           🗳️ {(result.arena ?? 'uk') === 'uk' ? 'General election' : `${chamberOf(result.arena).seat} election`} — {PARTIES[result.governingParty].shortName}{' '}
           {result.outcome === 'majority' ? 'majority' : 'minority'} ·{' '}
-          {entry.heldSeat ? 'seat held' : 'seat lost'} {open ? '▾' : '▸'}
+          {entry.bystander ? 'did not stand' : entry.heldSeat ? 'seat held' : 'seat lost'} {open ? '▾' : '▸'}
         </button>
         {open && (
           <div style={{ marginTop: 10 }}>
@@ -101,8 +101,8 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
     text = entry.won ? 'Won the party leadership' : 'Lost a leadership contest';
   }
 
-  // overlay-only entries (committeeTenure, deputyOverlay) carry no feed line of
-  // their own — they surface as their paired event headline / timeline span
+  // overlay-only entries (committeeTenure, deputyOverlay, mayoralty) carry no feed
+  // line of their own — they surface as their paired event headline / timeline span
   if (!text) return null;
 
   return (

@@ -212,7 +212,7 @@ export function partyNameIn(id: PartyId, arena: ArenaId | undefined): string {
 
 /** names that take no article mid-sentence: "Scottish Labour", "Plaid Cymru",
  *  "Reform UK" — against "the Labour Party", "the Scottish Conservatives" */
-const NO_ARTICLE = /(^|\s)Labour$|^Plaid Cymru$|^Reform UK$/;
+const NO_ARTICLE = /(^|\s)Labour$|^Plaid Cymru$|^Reform UK$|^Sinn Féin$|^People Before Profit$|^Aontú$/;
 
 /** a party name with the article it actually takes: "the Labour Party",
  *  "Scottish Labour", "the Scottish Greens", "Plaid Cymru" */

@@ -1,7 +1,8 @@
 import {
-  ArenaId, CabinetPost, DepartmentId, Designation, GameState, OfficeId, PartyId,
+  ArenaId, CabinetPost, DepartmentId, Designation, ExecutiveCollapseCause, GameState, OfficeId, PartyId,
 } from '../types/game';
 import type { ExecutiveSnapshot } from '../data/niAssembly';
+import { formationLaw } from '../data/niAssembly';
 import { PARTIES, partyNameIn } from '../data/parties';
 import { chamberOf, isDevolved } from '../data/chambers';
 import {
@@ -77,6 +78,23 @@ export function inGovernmentBloc(state: GameState, party: PartyId): boolean {
   return executiveParties(state).includes(party);
 }
 
+/** false only while a collapsed Executive leaves the chamber without heads; a
+ *  chamber without a joint Executive always has its government */
+export function executiveInBeing(state: Pick<GameState, 'government'>): boolean {
+  return !state.government.executive || state.government.executive.status === 'formed';
+}
+
+/** the sitting head of government, or null while the Executive is collapsed
+ *  (`pmId` then still names the First Minister-designate: the largest party's leader) */
+export function headOfGovernmentId(state: GameState): string | null {
+  return executiveInBeing(state) ? state.government.pmId : null;
+}
+
+/** the party refusing to nominate, while the Executive is collapsed */
+export function blockingParty(state: Pick<GameState, 'government'>): PartyId | undefined {
+  return executiveInBeing(state) ? undefined : state.government.executive?.blocker;
+}
+
 export function oppositionMinSeats(house: number): number {
   return Math.ceil(house * OPPOSITION_SHARE);
 }
@@ -125,9 +143,9 @@ export function partyDepartments(state: GameState, party: PartyId): DepartmentId
 }
 
 /** the Executive Office junior post that goes with a party's head of government
- *  post, or null for a party holding neither */
+ *  post, or null for a party holding neither (or while there is no Executive Office) */
 export function teoJuniorFor(state: GameState, party: PartyId): OfficeId | null {
-  if (!state.government.executive) return null;
+  if (!state.government.executive || !executiveInBeing(state)) return null;
   if (party === state.government.governingParty) return TEO_JUNIOR_FM;
   if (party === state.government.coalitionPartner) return TEO_JUNIOR_DFM;
   return null;
@@ -227,8 +245,9 @@ export function entitledParties(
 
 /** Share the departments by d'Hondt among the entrant parties, each pick taking
  *  the best brief left. Justice, when it has a party of its own, is held back
- *  from the count. The First and deputy First Ministers' own posts are not
- *  departments and consume no pick. */
+ *  from the count, and the independent who may hold it is a person, not a party
+ *  in it. The First and deputy First Ministers' own posts are not departments
+ *  and consume no pick. */
 export function allocateMinistries(
   seats: Partial<Record<PartyId, number>>, entrants: PartyId[], departments: DepartmentId[],
   justice?: PartyId
@@ -237,7 +256,7 @@ export function allocateMinistries(
   const pool = departments.filter((d) => !(justice && d === 'justice'));
   if (justice && departments.includes('justice')) allocation.justice = justice;
   const votes: Partial<Record<PartyId, number>> = {};
-  for (const p of entrants) if ((seats[p] ?? 0) > 0) votes[p] = seats[p];
+  for (const p of entrants) if (p !== 'ind' && (seats[p] ?? 0) > 0) votes[p] = seats[p];
   const order = dHondt(votes, pool.length);
   const left = [...pool].sort((a, b) =>
     DEPARTMENT_PREFERENCE.indexOf(a) - DEPARTMENT_PREFERENCE.indexOf(b));
@@ -275,11 +294,9 @@ export function planExecutive(
     ...plan, opposition: largestPartyOutside(seats, plan.parties, arena, shares),
   });
   if (snapshot) {
-    // the independent at Justice is a person, not a party in the d'Hondt count
-    const entrants = snapshot.parties.filter((p) => p !== 'ind');
     return finish({
       fm: snapshot.fm, dfm: snapshot.dfm, parties: [...snapshot.parties], justice: snapshot.justice,
-      allocation: allocateMinistries(seats, entrants, departments, snapshot.justice),
+      allocation: allocateMinistries(seats, snapshot.parties, departments, snapshot.justice),
       declined: [...snapshot.declined],
     });
   }
@@ -301,6 +318,58 @@ export function planExecutive(
   return finish({ ...heads, parties, justice, allocation, declined });
 }
 
+/** after an ordinary election the heads are nominated; after an extraordinary one
+ *  (fought during a collapse) the stalemate usually goes on */
+export const NON_NOMINATION_ORDINARY = 0.08;
+export const NON_NOMINATION_EXTRAORDINARY = 0.6;
+
+/** Whether the heads are nominated after an election: usually after an ordinary
+ *  one, rarely after an extraordinary one fought during a collapse. Returns the
+ *  stalemate to install, or undefined where the Executive forms. The player's
+ *  own party is never rolled against: its leader decides on the card, and one
+ *  who has been holding out stays out until they say otherwise there. */
+export function decideFormation(
+  state: GameState, rng: Rng, heads: { fm: PartyId; dfm: PartyId },
+  opts: { playerLeads?: PartyId } = {}
+): InstallOptions['collapsed'] | undefined {
+  const prior = state.government.executive;
+  const stalemate = !executiveInBeing(state);
+  const isHead = (party: PartyId | undefined) => party === heads.fm || party === heads.dfm;
+  let blocker: PartyId;
+  if (opts.playerLeads && isHead(opts.playerLeads) && blockingParty(state) === opts.playerLeads) {
+    blocker = opts.playerLeads;
+  } else {
+    const p = stalemate ? NON_NOMINATION_EXTRAORDINARY : NON_NOMINATION_ORDINARY;
+    const candidates = [heads.fm, heads.dfm].filter((party) => party !== opts.playerLeads);
+    if (candidates.length === 0 || !rng.chance(p)) return undefined;
+    blocker = stalemate && prior?.blocker && candidates.includes(prior.blocker) ? prior.blocker : rng.pick(candidates);
+  }
+  return { cause: 'noNomination', blocker, collapsedDay: state.day, caretakers: postElectionCaretakers(state) };
+}
+
+/** the ministers who stay in post after an election that produced no heads:
+ *  under the 2022 Act the sitting ones, for twenty-four weeks; before it, none */
+function postElectionCaretakers(state: GameState): NonNullable<InstallOptions['collapsed']>['caretakers'] {
+  const law = formationLaw(state.day);
+  if (law.caretakerAfterElection === 0 || state.government.cabinet.length === 0) return undefined;
+  return {
+    until: state.day + law.caretakerAfterElection,
+    allocation: executiveAllocation(state),
+    parties: executiveParties(state),
+  };
+}
+
+/** the heads are not nominated after an election */
+export function nonNominationHeadline(blocker: PartyId, arena: ArenaId | undefined): string {
+  return `${partyNameIn(blocker, arena)} will not nominate; the Assembly sits without an Executive`;
+}
+
+/** close the open span of a tenure ledger on `day` */
+export function closeOpenTenure(list: { endDay: number | null }[], day: number): void {
+  const open = list.find((t) => t.endDay === null);
+  if (open) open.endDay = day;
+}
+
 // ---------------------------------------------------------------------------
 // installing it
 // ---------------------------------------------------------------------------
@@ -310,6 +379,15 @@ export interface InstallOptions {
    *  their seat, before the aftermath has stripped them) */
   playerSeated?: boolean;
   cast?: CastContext;
+  /** install the designates without an Executive: nobody nominated after the
+   *  election (or at a collapsed start). The ministers of `caretakers` stay in
+   *  post until the day given; without it the cabinet is empty. */
+  collapsed?: {
+    cause: ExecutiveCollapseCause;
+    blocker: PartyId;
+    collapsedDay: number;
+    caretakers?: { until: number; allocation: Partial<Record<DepartmentId, PartyId>>; parties: PartyId[] };
+  };
 }
 
 /** the leader a party would put forward: the player where they lead it and sit,
@@ -351,6 +429,44 @@ function fillPost(
   }, cast.idCounter);
   state.characters[c.id] = c;
   post.characterId = c.id;
+}
+
+/** nobody is deputy First Minister: clear the post and, for a player holding it,
+ *  the overlay flags and the timeline span */
+export function clearDeputyFirstMinister(state: GameState): void {
+  state.government.deputyPmId = undefined;
+  if (state.player.flags._isDeputyPM || state.player.flags._govOverlayOpen) {
+    delete state.player.flags._isDeputyPM;
+    delete state.player.flags._govOverlayOpen;
+    state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'end' });
+  }
+}
+
+/** the two offices fall vacant together: the First Minister's tenure closes and
+ *  the deputy's post and overlay clear. The designates stay on `pmId` and the
+ *  partner field. */
+export function vacateHeads(state: GameState): void {
+  closeOpenTenure(state.pmHistory, state.day);
+  clearDeputyFirstMinister(state);
+}
+
+/** the ministers leave office: every post is vacated, and a player minister
+ *  goes back to the benches with the reason given */
+export function emptyCabinet(state: GameState, reason: string): void {
+  for (const post of state.government.cabinet) {
+    if (post.characterId === 'player') continue;
+    const c = state.characters[post.characterId];
+    if (c && c.officeId === post.officeId) c.officeId = null;
+  }
+  const held = state.player.officeId;
+  if (held && state.government.cabinet.some((p) => p.characterId === 'player')) {
+    const title = OFFICES[held]?.title ?? 'office';
+    state.player.officeId = null;
+    state.player.officeSinceDay = null;
+    state.history.push({ kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: null, how: 'leftOffice' });
+    state.history.push({ kind: 'event', date: state.day, headline: `${state.player.name} leaves office as ${title}: ${reason}` });
+  }
+  state.government.cabinet = [];
 }
 
 /** the player takes the deputy First Minister's post: the overlay flags and the
@@ -399,54 +515,72 @@ export function installExecutive(
   const seated = opts.playerSeated ?? state.player.hasSeat;
   const gv = state.government;
 
+  const wasCollapsed = !executiveInBeing(state);
+  const collapsed = opts.collapsed;
   gv.governingParty = plan.fm;
   gv.coalitionPartner = plan.dfm;
   delete gv.confidencePartner;
   gv.arrangement = 'executive';
   gv.executive = {
-    status: 'formed', parties: [...plan.parties],
+    status: collapsed ? 'collapsed' : 'formed', parties: [...plan.parties],
     ...(plan.justice ? { justiceParty: plan.justice } : {}),
-    formedDay: state.day,
+    formedDay: collapsed ? (gv.executive?.formedDay ?? state.day) : state.day,
+    ...(collapsed ? {
+      // a stalemate that outlasts an election keeps its original date: the cap
+      // runs from the day the heads ceased to hold office
+      collapsedDay: wasCollapsed ? (gv.executive?.collapsedDay ?? collapsed.collapsedDay) : collapsed.collapsedDay,
+      cause: collapsed.cause, blocker: collapsed.blocker,
+      deadline: state.day + formationLaw(state.day).afterElection, extensions: 0,
+      ...(collapsed.caretakers ? { caretakerUntil: collapsed.caretakers.until } : {}),
+    } : {}),
   };
   gv.majority = workingMajorityIn(state.seats, plan.fm, arena);
 
-  // the heads
+  // the heads: the designates always; the office, its tenure and the deputy's
+  // overlay only when the Executive stands
   const fmId = leaderIdOf(state, rng, plan.fm, seated, cast);
-  if (gv.pmId !== fmId) {
+  if (gv.pmId !== fmId || wasCollapsed) {
     gv.pmId = fmId;
     gv.pmSinceDay = state.day;
   }
-  recordPmChange(state, fmId);
-
   const dfmId = leaderIdOf(state, rng, plan.dfm, seated, cast);
-  if (dfmId === 'player') {
-    makePlayerDeputyFirstMinister(state);
+  if (collapsed) {
+    // a sitting First Minister whose election ended in stalemate ceases to hold office
+    vacateHeads(state);
   } else {
-    gv.deputyPmId = dfmId;
-    gv.deputyTitle = 'dfm';
-    if (state.player.flags._isDeputyPM) {
-      delete state.player.flags._isDeputyPM;
-      delete state.player.flags._govOverlayOpen;
-      state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'end' });
+    recordPmChange(state, fmId);
+    if (dfmId === 'player') {
+      makePlayerDeputyFirstMinister(state);
+    } else {
+      clearDeputyFirstMinister(state);
+      gv.deputyPmId = dfmId;
     }
   }
+  gv.deputyTitle = 'dfm';
 
   // the ministers: each department to its party, the Chief Whip (party
   // machinery, kept on the roster) to the First Minister's party unless an
-  // Executive party's member already holds it
+  // Executive party's member already holds it. With no Executive the cabinet is
+  // the caretakers' (the previous allocation) or nobody's.
   const roster = cabinetOfficesFor(arena);
-  for (const officeId of roster) {
-    const post = ensurePost(gv.cabinet, officeId);
-    const dept = OFFICES[officeId]?.department as DepartmentId | undefined;
-    if (dept) {
-      fillPost(state, rng, post, plan.allocation[dept] ?? plan.fm, cast, seated);
-    } else {
-      const current = postParty(state, post);
-      if (!current || !plan.parties.includes(current)) fillPost(state, rng, post, plan.fm, cast, seated);
+  const allocation = collapsed ? collapsed.caretakers?.allocation : plan.allocation;
+  const seatedParties = collapsed ? collapsed.caretakers?.parties : plan.parties;
+  if (!allocation || !seatedParties) {
+    emptyCabinet(state, 'there is no Executive to hold it');
+  } else {
+    for (const officeId of roster) {
+      const post = ensurePost(gv.cabinet, officeId);
+      const dept = OFFICES[officeId]?.department as DepartmentId | undefined;
+      if (dept) {
+        fillPost(state, rng, post, allocation[dept] ?? plan.fm, cast, seated);
+      } else {
+        const current = postParty(state, post);
+        if (!current || !seatedParties.includes(current)) fillPost(state, rng, post, plan.fm, cast, seated);
+      }
     }
+    // posts that are not on this chamber's roster do not survive the formation
+    gv.cabinet = gv.cabinet.filter((p) => roster.includes(p.officeId));
   }
-  // posts that are not on this chamber's roster do not survive the formation
-  gv.cabinet = gv.cabinet.filter((p) => roster.includes(p.officeId));
 
   // the opposition: the largest party outside the Executive, with a bench only
   // above the bar
@@ -456,21 +590,35 @@ export function installExecutive(
   syncOppositionBench(state, rng, { ...opts, cast });
 }
 
+export interface FormOptions extends InstallOptions {
+  /** the Executive the real election produced */
+  snapshot?: ExecutiveSnapshot;
+  /** roll whether the heads nominate at all */
+  decideFormation?: boolean;
+  /** the Executive is coming back after a collapse: the headline says so */
+  restored?: boolean;
+}
+
 /** Plan and install an Executive for the live chamber. With a snapshot the
  *  Executive is the one the real election produced. Returns the plan, or null
  *  where the chamber has no joint Executive. */
-export function formExecutive(
-  state: GameState, rng: Rng, opts: InstallOptions & { snapshot?: ExecutiveSnapshot } = {}
-): ExecutivePlan | null {
+export function formExecutive(state: GameState, rng: Rng, opts: FormOptions = {}): ExecutivePlan | null {
   const arena = state.arena ?? 'uk';
   if (!isJointExecutive(arena)) return null;
   const plan = planExecutive(state.seats, state.polling.shares, rng, state.day, arena, opts.snapshot);
   if (!plan) return null;
-  installExecutive(state, rng, plan, opts);
-  const deputyHead = chamberOf(arena).deputyHead;
+  const collapsed = opts.collapsed ?? (opts.decideFormation ? decideFormation(state, rng, plan) : undefined);
+  installExecutive(state, rng, plan, { ...opts, collapsed });
+  if (collapsed) {
+    state.history.push({ kind: 'event', date: state.day, headline: nonNominationHeadline(collapsed.blocker, arena) });
+    return plan;
+  }
+  const heads = `${characterName(state, state.government.pmId)} and ${characterName(state, state.government.deputyPmId ?? '')}`;
   state.history.push({
     kind: 'event', date: state.day,
-    headline: `${characterName(state, state.government.pmId)} and ${characterName(state, state.government.deputyPmId ?? '')} are nominated First Minister and ${deputyHead}; the Executive is formed`,
+    headline: opts.restored
+      ? `A deal is done: ${heads} are nominated and the Executive is back`
+      : `${heads} are nominated First Minister and ${chamberOf(arena).deputyHead}; the Executive is formed`,
   });
   if (plan.declined.length > 0) {
     const s = plan.declined.length === 1 ? 's' : '';

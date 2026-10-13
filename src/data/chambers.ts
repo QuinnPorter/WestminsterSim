@@ -92,6 +92,12 @@ export interface ChamberProfile {
    *  relative to Westminster's: a Stormont First Minister polls under 30% by
    *  design and is not in crisis for it */
   pressureScale: number;
+  /** how the chamber names and fills its scrutiny committees: who presides
+   *  (a Convener at Holyrood, a Chair elsewhere), how the committee is named
+   *  from its brief ("Treasury Select Committee", "Finance Committee",
+   *  "Committee for Finance"), and whether the chairs are elected by a ballot
+   *  of the whole House (the Commons) or shared out among the parties */
+  committee: { chair: string; name: 'Select Committee' | 'Committee' | 'Committee for'; houseBallot: boolean };
   voice: VoiceProfile;
 }
 
@@ -150,6 +156,7 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     calendarKeys: ['pmqsWinter', 'budget', 'locals', 'pmqsSummer', 'recess', 'conference'],
     pressureScale: 1,
     // the Commons needs no voice: generated prose is written in its words
+    committee: { chair: 'Chair', name: 'Select Committee', houseBallot: true },
     voice: {
       civilService: 'Whitehall', treasury: 'the Treasury',
       pps: { singular: 'Parliamentary Private Secretary', plural: 'Parliamentary Private Secretaries', abbr: 'PPS', abbrPlural: 'PPSs' },
@@ -184,6 +191,7 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     hasPps: true,
     calendarKeys: ['pmqsWinter', 'budget', 'locals', 'pmqsSummer', 'recess', 'conference'],
     pressureScale: 1,
+    committee: { chair: 'Convener', name: 'Committee', houseBallot: false },
     voice: {
       civilService: 'St Andrew’s House', treasury: 'the Scottish Government’s finance directorate',
       pps: { singular: 'Parliamentary Liaison Officer', plural: 'Parliamentary Liaison Officers', abbr: 'PLO', abbrPlural: 'PLOs' },
@@ -221,6 +229,7 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     hasPps: false,
     calendarKeys: ['pmqsWinter', 'budget', 'locals', 'pmqsSummer', 'recess', 'conference'],
     pressureScale: 1,
+    committee: { chair: 'Chair', name: 'Committee', houseBallot: false },
     voice: {
       civilService: 'Cathays Park', treasury: 'the Welsh Treasury',
       pps: { singular: 'parliamentary aide', plural: 'parliamentary aides', abbr: 'aide', abbrPlural: 'aides' },
@@ -260,6 +269,7 @@ export const CHAMBERS: Record<ArenaId, ChamberProfile> = {
     calendarKeys: ['budget', 'locals', 'recess', 'conference'],
     // the largest party polls under 30%, where a Westminster government would be in crisis
     pressureScale: 0.7,
+    committee: { chair: 'Chair', name: 'Committee for', houseBallot: false },
     voice: {
       civilService: 'Stormont Castle', treasury: 'the Department of Finance',
       pps: { singular: 'special adviser', plural: 'special advisers', abbr: 'adviser', abbrPlural: 'advisers' },
@@ -343,9 +353,11 @@ export function ministerialTitlesAt(
   return chamberOf(arena).ranks;
 }
 
-/** polling day of the first Assembly election at five members per constituency
- *  (Assembly Members (Reduction of Numbers) Act (Northern Ireland) 2016) */
-export const NI_FIVE_SEAT_DAY: GameDay = isoToDay('2017-03-02');
+/** the Assembly Members (Reduction of Numbers) Act (Northern Ireland) 2016 received
+ *  Royal Assent on 22 July 2016 and applied to the next election: every Assembly
+ *  election from that day returns five members per constituency, not six (the
+ *  first in fact was 2 March 2017) */
+export const NI_FIVE_SEAT_DAY: GameDay = isoToDay('2016-07-22');
 
 // ---------------------------------------------------------------------------
 // seat systems

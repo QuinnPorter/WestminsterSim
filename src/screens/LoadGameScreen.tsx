@@ -1,7 +1,7 @@
 import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { PARTIES } from '../data/parties';
-import { playerOfficeTitle } from '../engine/career';
+import { playerStatusTitle } from '../engine/career';
 import './LoadGameScreen.css';
 
 export function LoadGameScreen({ onBack }: { onBack: () => void }) {
@@ -26,7 +26,7 @@ export function LoadGameScreen({ onBack }: { onBack: () => void }) {
         <button className="card lg-item lg-continue" onClick={continueGame}>
           <div className="lg-item-main">
             <strong>Continue</strong>
-            <span>{game.player.name} — {playerOfficeTitle(game)}</span>
+            <span>{game.player.name} — {playerStatusTitle(game)}</span>
           </div>
           <span className="lg-go">›</span>
         </button>

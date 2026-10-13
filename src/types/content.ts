@@ -14,6 +14,8 @@ export interface Requirement {
   arena?: ArenaId[];
   minTier?: OfficeTier;
   maxTier?: OfficeTier;
+  /** only fire when the player has held at least this rank at some point */
+  minPeakTier?: OfficeTier;
   inGovernment?: boolean;
   department?: DepartmentId[];
   /** only fire when the player holds one of these specific offices (e.g. a
@@ -31,6 +33,9 @@ export interface Requirement {
   minorParty?: boolean;
   /** only fire under these government arrangements (coalition-life cards) */
   arrangementIn?: Arrangement[];
+  /** a joint Executive: only fire while it stands, or only while it is collapsed.
+   *  A chamber without one counts as formed. */
+  executiveStatus?: ('formed' | 'collapsed')[];
   /** true → only before the first general election (the game's ORIGINAL government,
    *  e.g. the 2010 coalition before it ever faces the country) */
   firstParliament?: boolean;
@@ -41,6 +46,12 @@ export interface Requirement {
   hasFavour?: boolean;
   /** only fire when the player's seat is in one of these regions */
   region?: RegionId[];
+  /** true → only while the player is a sitting metro mayor (out of the
+   *  chamber); a card that does not say is for a sitting member */
+  mayor?: boolean;
+  /** true → only while the player leads their party from outside the chamber
+   *  (no seat); a card that does not say is for a sitting member */
+  outsideLeader?: boolean;
   /** only fire when the player is at least this old (years) */
   minAge?: number;
   /** only fire when the player has one of these career backgrounds */
