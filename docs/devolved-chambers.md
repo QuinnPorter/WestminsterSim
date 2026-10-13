@@ -638,8 +638,8 @@ spokesperson rung for every party, with offers fitted to the share-out (`offerab
 the designates on `pmId` and the partner field with `executive.status: 'collapsed'`; nobody holds
 the two offices, the ministers stay as caretakers until the law removes them (until the election
 before the 2022 Act; twenty-four weeks after an election, forty-eight after a vacancy, after it),
-and the Secretary of State's clock runs: extensions, then an extraordinary election forty-five
-days out, with a hard cap of three and a half years. A deal re-forms it through `formExecutive`.
+and the Secretary of State's clock runs: extensions (the first lapse always, up to six), then an
+extraordinary election forty-five days out, with a hard cap of three and a half years. A deal re-forms it through `formExecutive`.
 A player leading a head party decides on the cards (`executiveCrisis`, `executiveTalks`); the NPC
 world rolls (`decideFormation`). Real history is scripted, not simulated: `NI_EXECUTIVE_HISTORY`
 plays the 2017 and 2022 collapses and the 2020 and 2024 restorations to the day for a dormant
@@ -656,8 +656,9 @@ Everything in the plan's P5 and P6.
 verified polling days, the four-year cycle, the North of Tyne's succession by the North East, and
 the voting system (the supplementary vote to 2021, first past the post for the 2024 and 2025
 polls, the supplementary vote again from June 2026). A sitting MP in such a region may be asked to
-run (`mayorDraftTarget`, a side-stream roll behind the exported `INTERLUDES` switch so the seeded
-tests can turn it off), is selected, and fights the count on the real polling day
+run (`mayorDraftTargets`, a side-stream roll behind the exported `INTERLUDES` switch so the seeded
+tests can turn it off; the odds rise with the highest rung held, cabinet rank waives the profile
+bar, and a region with two mayoralties polling in the window offers either evenly), is selected, and fights the count on the real polling day
 (`mayoralResult`: regional seat strength, a personal vote, transfers by ideology under SV).
 Winning resigns the seat: `Player.mayor` carries the term, the deck is City Hall's
 (`content/cards/mayor.ts`), re-elections come round, the other parties keep changing leaders

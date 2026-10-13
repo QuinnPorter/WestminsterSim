@@ -83,6 +83,33 @@ describe('wave 20 — losing your seat as PM closes the career span', () => {
   });
 });
 
+describe('losing your seat as PM while the party is re-elected', () => {
+  it('hands Number 10 to a successor rather than leaving a seatless PM in it', () => {
+    const g = makeGame('lab', '2024', 9);
+    g.government.pmId = 'player';
+    g.player.officeId = 'leader';
+    g.history.push({
+      kind: 'roleChange', date: g.day, officeId: 'leader', how: 'becamePM',
+      roleSide: 'gov', partyId: 'lab',
+    });
+
+    const result: ElectionResult = {
+      id: 'ge', date: g.day + 1000,
+      seats: { lab: 350, con: 230, ld: 30, snp: 20, reform: 15, green: 5 } as GameState['seats'],
+      voteShares: { lab: 0.40, con: 0.32, ld: 0.12, snp: 0.04, reform: 0.09, green: 0.03 },
+      playerResult: null, outcome: 'majority', governingParty: 'lab', playerHeldSeat: false,
+    };
+    g.day += 1000;
+    g.seats = { ...result.seats };
+    applyElectionAftermath(g, new Rng(3), result, false);
+
+    expect(g.government.governingParty).toBe('lab');
+    expect(g.player.hasSeat).toBe(false);
+    expect(g.player.officeId).toBeNull();
+    expect(g.government.pmId).not.toBe('player');
+  });
+});
+
 describe('wave 20 — the Emily Thornberry effect', () => {
   it('occasionally a shadow minister is passed over when their party forms government', () => {
     let snubbed = 0; const runs = 300;

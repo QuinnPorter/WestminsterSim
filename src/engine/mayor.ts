@@ -21,10 +21,14 @@ import { Rng, clamp } from './rng';
 // ---------------------------------------------------------------------------
 
 /** the per-tick chance a party asks an eligible MP to run, at full regional
- *  strength. A London Labour MP elected in 2019 has eight or so eligible ticks
- *  before the May 2021 poll, so this gives roughly a two-in-five chance of
- *  being asked that cycle. */
+ *  strength, by the highest rung the member has held. Roughly half the ticks in
+ *  the window are taken by the calendar and forced events, which leaves five or
+ *  so rolls a cycle: about one cycle in four for a backbencher, two in five for
+ *  a former minister, three in five for a cabinet name (Burnham and Rotheram
+ *  were ex-cabinet and shadow cabinet when they ran). */
 export const MAYOR_DRAFT_CHANCE = 0.06;
+export const MAYOR_DRAFT_CHANCE_JUNIOR = 0.10;
+export const MAYOR_DRAFT_CHANCE_CABINET = 0.18;
 export const MAYOR_DRAFT_MIN_PROFILE = 40;
 /** below the first ministerial rungs, a bigger name is needed */
 export const MAYOR_DRAFT_PROFILE_WITHOUT_RANK = 55;
@@ -43,33 +47,36 @@ export interface MayorDraftTarget {
   pollingDay: GameDay;
 }
 
-/** The mayoralty an MP might be asked to run for: in their own region, with a
- *  poll in the window, for a member with a profile worth running on. Draws
- *  nothing; the caller adds the office bars (Speaker, independent, game over)
- *  and the cooldown. */
-export function mayorDraftTarget(state: GameState): MayorDraftTarget | null {
-  if ((state.arena ?? 'uk') !== 'uk') return null;
+/** The mayoralties an MP might be asked to run for: in their own region, with a
+ *  poll in the window, for a member with a profile worth running on (cabinet
+ *  rank is a name in itself). Where a region has more than one, each is
+ *  returned and the caller picks among them evenly. Draws nothing; the caller
+ *  adds the office bars (Speaker, independent, game over) and the cooldown. */
+export function mayorDraftTargets(state: GameState): MayorDraftTarget[] {
+  if ((state.arena ?? 'uk') !== 'uk') return [];
   const p = state.player;
-  if (!p.hasSeat || p.mayor || p.mayorCandidacy || p.officeId === 'leader' || p.partyId === 'ind') return null;
-  if (p.stats.profile < MAYOR_DRAFT_MIN_PROFILE) return null;
+  if (!p.hasSeat || p.mayor || p.mayorCandidacy || p.officeId === 'leader' || p.partyId === 'ind') return [];
   const peak = Number(p.flags._peakTier ?? 0);
-  if (peak < 2 && p.stats.profile < MAYOR_DRAFT_PROFILE_WITHOUT_RANK) return null;
-  if (state.nextElectionBy - state.day < MAYOR_DRAFT_GE_CLEARANCE) return null;
-  let best: MayorDraftTarget | null = null;
+  if (peak < 4 && p.stats.profile < MAYOR_DRAFT_MIN_PROFILE) return [];
+  if (peak < 2 && p.stats.profile < MAYOR_DRAFT_PROFILE_WITHOUT_RANK) return [];
+  if (state.nextElectionBy - state.day < MAYOR_DRAFT_GE_CLEARANCE) return [];
+  const targets: MayorDraftTarget[] = [];
   for (const m of mayoraltiesIn(p.region, state.day)) {
     const pollingDay = nextMayoralElection(m, state.day);
     const lead = pollingDay - state.day;
     if (lead < MAYOR_DRAFT_WINDOW.min || lead > MAYOR_DRAFT_WINDOW.max) continue;
-    if (!best || pollingDay < best.pollingDay) best = { mayoralty: m, pollingDay };
+    targets.push({ mayoralty: m, pollingDay });
   }
-  return best;
+  return targets;
 }
 
 /** a party on fifteen per cent in the region rarely bothers an MP; one that
- *  expects to win asks */
+ *  expects to win asks, and asks a former cabinet minister soonest */
 export function mayorDraftChance(state: GameState, target: MayorDraftTarget): number {
+  const peak = Number(state.player.flags._peakTier ?? 0);
+  const base = peak >= 4 ? MAYOR_DRAFT_CHANCE_CABINET : peak === 3 ? MAYOR_DRAFT_CHANCE_JUNIOR : MAYOR_DRAFT_CHANCE;
   const strength = regionalStrength(state, state.player.partyId, target.mayoralty.region);
-  return MAYOR_DRAFT_CHANCE * clamp(strength / 0.35, 0.25, 1);
+  return base * clamp(strength / 0.35, 0.25, 1);
 }
 
 /** the odds of winning the selection, from the member's standing with the party
@@ -92,9 +99,9 @@ export const RETURN_OFFER_MIN_DAYS = 365 * 2;
 /** the offer card and the three campaign cards run the clock up to this many
  *  days; the general election must be counted before the mayoral one */
 export const RETURN_OFFER_LEAD = 80;
-/** a full term, as the record counts it (a term cut short by the 2021
- *  postponement still counts) */
-export const FULL_TERM_DAYS = Math.round(3.5 * 365);
+/** a full term, as the record counts it: a term cut short by the 2021
+ *  postponement (May 2021 to May 2024, about 1,092 days) still counts */
+export const FULL_TERM_DAYS = Math.round(2.9 * 365);
 
 /** does the party offer a sitting mayor a seat at the general election being
  *  called today: not in the first two years, and only when the count comes

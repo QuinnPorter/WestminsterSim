@@ -14,7 +14,7 @@ import {
 } from './career';
 import { Rng } from './rng';
 import { stormontStoodOn } from './collapse';
-import { executiveInBeing } from './executive';
+import { executiveInBeing, isJointExecutive } from './executive';
 
 // ---------- key moments ----------
 
@@ -172,8 +172,22 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
   if (req.maxTier !== undefined && tier > req.maxTier) return false;
   if (req.minPeakTier !== undefined && Number(state.player.flags._peakTier ?? 0) < req.minPeakTier) return false;
   // a coalition junior partner holds real government office, so counts as
-  // "in government" for governing-vs-opposition card gating
-  if (req.inGovernment !== undefined && playerInGovernmentBloc(state) !== req.inGovernment) return false;
+  // "in government" for governing-vs-opposition card gating. While a joint
+  // Executive is collapsed its parties are neither: only a caretaker minister
+  // still runs a department, and nobody else in them is opposition either.
+  if (req.inGovernment !== undefined) {
+    const bloc = playerInGovernmentBloc(state);
+    const gv = state.government;
+    const holdsMinistry = gv.cabinet.some((p) => p.characterId === 'player')
+      || (executiveInBeing(state) && (gv.pmId === 'player' || gv.deputyPmId === 'player'));
+    if (bloc && !executiveInBeing(state)) {
+      if (!req.inGovernment || !holdsMinistry) return false;
+    } else if (bloc !== req.inGovernment) return false;
+    // a joint Executive's single ladder puts an Executive party's spokesperson
+    // for a brief it does not hold on the ministerial tier: a minister's card
+    // needs the ministry
+    if (req.inGovernment && (req.minTier ?? 0) >= 3 && isJointExecutive(state.arena) && !holdsMinistry) return false;
+  }
   if (req.leaderRole) {
     const role = playerLeaderRole(state);
     if (!role || !req.leaderRole.includes(role)) return false;

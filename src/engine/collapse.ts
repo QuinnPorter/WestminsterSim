@@ -33,9 +33,11 @@ export const WALKOUT_HAZARD = 0.0025;
 /** the deal hazard per tick while collapsed, plus this much more per year collapsed */
 export const DEAL_HAZARD = 0.02;
 export const DEAL_HAZARD_PER_YEAR = 0.015;
-/** the Secretary of State extends the period this often, at most this many times */
-export const EXTENSION_CHANCE = 0.7;
-export const MAX_EXTENSIONS = 3;
+/** the Secretary of State always extends the first lapse (an election straight
+ *  after an election settles nothing: 2017 and 2022 both went to legislation,
+ *  not the polls), then extends this often, at most this many times */
+export const EXTENSION_CHANCE = 0.85;
+export const MAX_EXTENSIONS = 6;
 export const EXTENSION_DAYS = 120;
 /** an extraordinary election is called for this many days out */
 export const EXTRAORDINARY_ELECTION_LEAD = 45;
@@ -71,7 +73,15 @@ export function collapseExecutive(
     ? state.nextElectionBy
     : state.day + law.caretakerAfterVacancy;
   delete ex.strain;
+  const playerWasFm = state.government.pmId === 'player';
   vacateHeads(state);
+  if (playerWasFm) {
+    // still the party's leader, and its First Minister-designate, but not in office
+    state.history.push({
+      kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: 'leader', how: 'continued',
+      roleSide: 'minor', partyId: state.player.partyId,
+    });
+  }
   const chamber = chamberOf(state.arena);
   const fmName = characterName(state, state.government.pmId);
   const party = partyNameIn(blocker, state.arena);
@@ -117,7 +127,15 @@ export function callExtraordinaryElection(state: GameState): void {
 /** the Executive re-forms around the designates: the rules run again on the
  *  seats, with the blocker's party back inside */
 export function restoreExecutive(state: GameState, rng: Rng, opts: FormOptions = {}): ExecutivePlan | null {
-  return formExecutive(state, rng, { ...opts, restored: true });
+  const plan = formExecutive(state, rng, { ...opts, restored: true });
+  // a designate who takes office opens a First Minister's span on the record
+  if (executiveInBeing(state) && state.government.pmId === 'player') {
+    state.history.push({
+      kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: 'leader', how: 'becamePM',
+      roleSide: 'gov', partyId: state.player.partyId,
+    });
+  }
+  return plan;
 }
 
 /** the caretaker arrangement a collapsed snapshot describes, as an install option */
@@ -240,7 +258,7 @@ export function secretaryOfStateMoves(state: GameState, rng: Rng): void {
     return;
   }
   const used = ex.extensions ?? 0;
-  if (used < MAX_EXTENSIONS && rng.chance(EXTENSION_CHANCE)) {
+  if (used === 0 || (used < MAX_EXTENSIONS && rng.chance(EXTENSION_CHANCE))) {
     ex.extensions = used + 1;
     ex.deadline = state.day + EXTENSION_DAYS;
     state.history.push({
@@ -402,6 +420,6 @@ export function resolveExecutiveCard(
     secretaryOfStateMoves(state, rng);
   }
   return context === 'postElection'
-      ? `You do not nominate. The Assembly meets, fails to elect a Speaker, and adjourns. ${chamber.place} has elected a parliament that cannot sit, and the clock has started again.`
+      ? `You do not nominate. The Assembly meets, fails to elect a Speaker, and adjourns. ${chamber.place} has elected an Assembly that cannot sit, and the clock has started again.`
       : `You hold out. The Secretary of State does what Secretaries of State do, which is extend things and look pained. Your base is delighted. The permanent secretaries order more stationery.`;
 }
