@@ -55,6 +55,12 @@ export function outsideDraftEligible(state: GameState, party: PartyId): boolean 
   return true;
 }
 
+/** the approach is made: it counts against the career's chances and starts the cooldown */
+export function recordOutsideApproach(state: GameState): void {
+  state.player.flags._outsideDraftAttempts = Number(state.player.flags._outsideDraftAttempts ?? 0) + 1;
+  state.player.flags._lastOutsideApproach = state.day;
+}
+
 /** a party polling well asks; one on six per cent has other problems */
 export function outsideApproachChance(state: GameState): number {
   return OUTSIDE_APPROACH_CHANCE * clamp(partyPollingShare(state, state.player.partyId) / 0.30, 0.3, 1);

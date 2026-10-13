@@ -839,6 +839,8 @@ export function pickSeatFor(
     region?: RegionId; byPartyStrength?: boolean; safest?: boolean; candidateOnly?: boolean;
     /** search the whole country rather than the member's own region */
     national?: boolean;
+    /** a seat already spoken for */
+    exclude?: string;
   } = {}
 ): string {
   for (const s of state.seatMap) delete s.isPlayerSeat;
@@ -870,7 +872,7 @@ export function pickSeatFor(
   // player's own nation and only widens the search when the party holds
   // nothing there.
   const home = opts.region ?? state.player.region;
-  const atHome = state.seatMap.filter((x) => (opts.national || x.region === home) && x.winner !== 'spk');
+  const atHome = state.seatMap.filter((x) => (opts.national || x.region === home) && x.winner !== 'spk' && x.id !== opts.exclude);
   const heldHere = atHome.filter((x) => x.winner === party);
   const held = heldHere.length > 0
     ? heldHere

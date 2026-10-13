@@ -11,7 +11,7 @@ export const OUTSIDE_LEADER_CARDS: DecisionCard[] = [
     // always eligible: the weeks when nothing else is due
     id: 'ol_quiet_weeks',
     title: 'Leading from the outside',
-    body: 'A fortnight of the job as it is from here: the shadow cabinet on a video call, a speech in a city that is not Westminster, a deputy who reads out your lines in the chamber and is thanked for them. The party is behind you, by which it means it is watching to see whether this works.',
+    body: 'A fortnight of the job as it is from here: the front-bench team on a video call, a speech in a city that is not Westminster, a deputy who reads out your lines in the chamber and is thanked for them. The party is behind you, by which it means it is watching to see whether this works.',
     tags: ['party'],
     weight: 2, cooldownDays: 0,
     requires: { outsideLeader: true },
@@ -54,7 +54,7 @@ export const OUTSIDE_LEADER_CARDS: DecisionCard[] = [
     body: 'Your deputy has had three good weeks at the despatch box and a profile in a Sunday paper that uses the word “leader” four times, only one of them about you. The whips say it is loyal admiration. The whips said that about the last one too.',
     tags: ['party', 'serious'],
     weight: 11, cooldownDays: 500,
-    requires: { outsideLeader: true },
+    requires: { outsideLeader: true, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Praise them, loudly and often',
@@ -79,7 +79,7 @@ export const OUTSIDE_LEADER_CARDS: DecisionCard[] = [
     body: '{pm} has started answering every question with the same line: that the leader of {party} cannot be bothered to turn up to {house}. It is cheap and it is working, because every clip of it is a clip of an empty space where you should be.',
     tags: ['westminster', 'media'],
     weight: 12, cooldownDays: 365,
-    requires: { outsideLeader: true },
+    requires: { outsideLeader: true, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Challenge the Prime Minister to a debate outside the House',
@@ -124,7 +124,7 @@ export const OUTSIDE_LEADER_CARDS: DecisionCard[] = [
     body: 'Not a plot, they say: a meeting, in {house}, about parliamentary business, which you cannot attend because you cannot enter. It happened twice this month. The whips were there. Your chief of staff was not told.',
     tags: ['party', 'crisis'],
     weight: 10, cooldownDays: 600,
-    requires: { outsideLeader: true },
+    requires: { outsideLeader: true, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Move the shadow cabinet to your office',
@@ -209,7 +209,7 @@ export const OUTSIDE_LEADER_CARDS: DecisionCard[] = [
     body: 'Your big idea needs a bill, and a bill needs a member to move it. Your deputy will do it, of course; your deputy will also be the face on it. The think tank that wrote it would like to know whose name goes on the cover.',
     tags: ['policy'],
     weight: 10, cooldownDays: 500,
-    requires: { outsideLeader: true },
+    requires: { outsideLeader: true, leaderRole: ['lo'] },
     choices: [
       {
         label: 'Your name on the cover, the deputy’s on the bill',

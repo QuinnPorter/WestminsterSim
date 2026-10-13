@@ -143,7 +143,8 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
     if (!game.player.hasSeat && !game.player.mayor && game.day - game.parliamentStart > 6 * 365) {
       flags.push(`seatless for more than six years without a mayoralty at step ${steps}`);
     }
-    if (isOutsideLeader(game) && game.currentCard?.kind === 'electionNight' && !game.player.seatId) {
+    if (isOutsideLeader(game) && !game.player.seatId && game.currentCard?.kind !== 'standForSeat'
+      && game.forcedQueue.some((e) => e.kind === 'electionNight')) {
       flags.push(`outside leader with no seat to fight at step ${steps}`);
     }
     if (game.player.officeId === 'leader' && !game.player.hasSeat && game.player.mayor) {

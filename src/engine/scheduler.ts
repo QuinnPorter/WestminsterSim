@@ -702,6 +702,9 @@ function nextStepCore(state: GameState, rng: Rng): void {
       const due = state.calendarDone[ev.key];
       if (due !== undefined && state.day >= due) {
         state.calendarDone[ev.key] = nextOccurrence(state.day, ev.month, ev.day);
+        // a leader with no seat has the party's conference and a proxy at the
+        // despatch box; the House's own set-pieces happen without them
+        if (isOutsideLeader(state) && ev.key !== 'conference' && !ev.key.startsWith('pmqs')) continue;
         // enriched, role-specific set-pieces (multi-step forced sequences);
         // everyone else gets the lighter single-card calendar version
         if (ev.key === 'budget' && state.player.officeId === 'sos_treasury' && playerInGovernment(state)) {

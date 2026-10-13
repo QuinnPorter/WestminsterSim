@@ -101,8 +101,9 @@ describe('the approach', () => {
         // the vacancy went to the Commons: an NPC contest is under way
         expect(g.pendingContests?.some((c) => c.party === 'lab')).toBe(true);
       }
-      // approached or not, the one chance is spent until the attempt fails
-      expect(outsideDraftEligible(g, 'lab')).toBe(false);
+      // an approach spends the career's one chance until the attempt fails; a
+      // vacancy the party filled from the Commons without asking spends nothing
+      expect(outsideDraftEligible(g, 'lab')).toBe(!kinds.includes('outsideDraft'));
     }
     // 0.25 at full party strength (Labour polls near 30%): 10 ± 2.7 of 40
     expect(drafted).toBeGreaterThanOrEqual(4);
@@ -123,6 +124,7 @@ describe('the approach', () => {
     let lost = 0;
     for (let seed = 1; seed <= 24; seed++) {
       const { g, rng } = seasonedMayor(seed);
+      g.player.flags._outsideDraftAttempts = 1; // as the approach itself records
       g.forcedQueue.push({ kind: 'outsideDraft', payload: { party: 'lab', step: 1, winChance: seed % 2 === 0 ? 0.9 : 0.05 } });
       const kinds = play(g, rng, 3, () => 0, (s) => !s.forcedQueue.some((e) => e.kind === 'outsideDraft') && !s.currentCard?.kind.startsWith('outsideDraft'));
       expect(kinds[0]).toBe('outsideDraft');

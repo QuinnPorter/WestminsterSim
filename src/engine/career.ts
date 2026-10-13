@@ -36,7 +36,7 @@ import {
 } from './mayor';
 import {
   buildOutsideDraftCard, buildStandForSeatCard, isOutsideLeader, neverHeldProse, outsideApproachChance,
-  outsideDraftEligible, outsideDraftOdds,
+  outsideDraftEligible, outsideDraftOdds, recordOutsideApproach,
 } from './outsideLeader';
 import { INTERLUDES } from './interludes';
 import { BACKGROUNDS } from '../data/backgrounds';
@@ -292,7 +292,7 @@ export function playerOfficeTitle(state: GameState): string {
 /** the player leads a party that is neither the government's nor the official
  *  opposition, seat or no seat (the minor-party track itself needs a seat) */
 export function playerLeadsMinorParty(state: GameState): boolean {
-  return playerLeaderRole(state) === 'minorLeader';
+  return playerLeaderRole(state) === 'minorLeader' && !playerInGovernmentBloc(state);
 }
 
 /** the title pill: the office held, City Hall, a leadership held from outside
@@ -2291,13 +2291,11 @@ export function openLeadershipVacancy(
   // City Hall: rarely, once, and only an opposition or minor party. Everything
   // here is behind the mayoralty, so a career that never left the House draws
   // nothing from it.
-  if (isPlayerParty && INTERLUDES.outsideDraft && outsideDraftEligible(state, party)) {
-    state.player.flags._outsideDraftAttempts = Number(state.player.flags._outsideDraftAttempts ?? 0) + 1;
-    state.player.flags._lastOutsideApproach = state.day;
-    if (rng.chance(outsideApproachChance(state))) {
-      state.forcedQueue.push({ kind: 'outsideDraft', payload: { party, step: 1, winChance: outsideDraftOdds(state) } });
-      return;
-    }
+  if (isPlayerParty && INTERLUDES.outsideDraft && outsideDraftEligible(state, party)
+    && rng.chance(outsideApproachChance(state))) {
+    recordOutsideApproach(state);
+    state.forcedQueue.push({ kind: 'outsideDraft', payload: { party, step: 1, winChance: outsideDraftOdds(state) } });
+    return;
   }
   const playerContest = isPlayerParty
     && playerCanStandForLeader(state) && playerCredibleForLeadership(state, rng);
@@ -2856,9 +2854,12 @@ export function applyElectionAftermath(
     // the new PM is the leader of the party that actually WON (newGov) — not
     // necessarily the old Leader of the Opposition (a third/runner-up party can
     // leap to government). The defeated PM usually becomes LO.
-    const newPmId = (playerWonSeat && playerIsLeader(state) && state.player.partyId === newGov)
+    let newPmId = (playerWonSeat && playerIsLeader(state) && state.player.partyId === newGov)
       ? 'player'
       : partyLeaderId(state, rng, newGov);
+    // a leader who did not win a seat (the opposition's, read off loId) does not
+    // walk into Number 10: the party's bench supplies the head of government
+    if (newPmId === 'player' && !playerWonSeat) newPmId = npcSuccessorLeader(state, rng, newGov);
     state.government.pmId = newPmId;
     state.government.loId = oldPmId;
     state.government.pmSinceDay = state.day;
@@ -4650,8 +4651,8 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     case 'standForSeat': {
       // the two seats on offer, previewed (neither pick draws, and the chosen one
       // is marked again on the answer)
-      const regional = pickSeatFor(state, rng, state.player.partyId, null, { region: state.player.region, safest: true, candidateOnly: true });
-      const national = pickSeatFor(state, rng, state.player.partyId, null, { national: true, safest: true, candidateOnly: true });
+      const regional = pickSeatFor(state, rng, state.player.partyId, null, { region: state.player.region, byPartyStrength: true, candidateOnly: true });
+      const national = pickSeatFor(state, rng, state.player.partyId, null, { national: true, safest: true, candidateOnly: true, exclude: regional });
       for (const x of state.seatMap) delete x.isPlayerSeat;
       const nameOf = (id: string) => state.seatMap.find((x) => x.id === id)?.name ?? null;
       const card = buildStandForSeatCard(state, rng, { regional: nameOf(regional), national: nameOf(national) });
@@ -5068,10 +5069,12 @@ export function resolveForcedChoice(
         } else if (choiceIndex === 1) {
           winChance += 0.05;
           gain('constituencyApproval', 3, 'Approval');
-        } else {
+        } else if (state.player.favours.length > 0) {
           winChance += 0.15;
           gain('integrity', -3, 'Integrity');
           state.player.favours = [];
+        } else {
+          winChance += 0.03; // nothing in the account: a few calls, a little goodwill
         }
         winChance = clamp(winChance, 0.05, 0.92);
         state.forcedQueue.unshift({ kind: 'mayorDraft', payload: { ...p, step: 3, winChance } });
@@ -5223,10 +5226,12 @@ export function resolveForcedChoice(
         winChance += 0.05;
         gain('partyStanding', -2, 'Standing');
         gain('integrity', 1, 'Integrity');
-      } else {
+      } else if (state.player.favours.length > 0) {
         winChance += 0.15;
         gain('integrity', -3, 'Integrity');
         state.player.favours = [];
+      } else {
+        winChance += 0.03; // nothing in the account: a few calls, a little goodwill
       }
       winChance = clamp(winChance, 0.03, 0.75);
       if (!rng.chance(winChance)) {
@@ -7731,9 +7736,7 @@ export function sackMinisterCore(state: GameState, rng: Rng, officeId: OfficeId,
 
 function partyLeaderId(state: GameState, rng: Rng, party: PartyId): string {
   if (party === state.government.governingParty) return state.government.pmId;
-  // a player leading the opposition without a seat (or having just lost it) is
-  // not the person who walks into Number 10: fall through to the party's bench
-  if (party === state.government.oppositionParty && state.government.loId !== 'player') return state.government.loId;
+  if (party === state.government.oppositionParty) return state.government.loId;
   const existing = Object.values(state.characters).find(
     (c) => c.active && c.partyId === party && c.officeId === 'leader'
   );
