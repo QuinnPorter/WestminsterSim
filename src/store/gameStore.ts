@@ -185,6 +185,8 @@ export function migrateGameState(game: GameState): GameState {
   // v12 — the Northern Ireland Assembly as a chamber. No pre-v12 save can hold a
   // Stormont career, so there is nothing to backfill: the bump marks the
   // `government.executive` shape as part of the format.
+  // v13 — the Executive can collapse. Every new field is optional and only
+  // written by the collapse itself; a v12 Stormont save is a formed Executive.
   // clear any "ghost" ministers carrying a cabinet title they no longer hold
   // (e.g. an NPC the player displaced in an older save). Idempotent.
   reconcileCharacterOffices(game);

@@ -696,7 +696,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The intergovernmental council — the forum where {othergov} and the devolved governments are meant to meet as equals — convenes next week, and {otherleader} has sent a junior minister with apologies. You are expected to turn up, smile, and be seen to be snubbed.',
     tags: ['policy', 'media'],
     weight: 11, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'], executiveStatus: ['formed'] },
     choices: [
       {
         label: 'Go and say so loudly',
@@ -721,7 +721,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: '{party}\'s conference in {nation} is yours to close. The hall wants red meat about {othergov}; the pollsters want "delivery"; your speechwriter has produced a draft with both and a joke about {otherleader} that the lawyers have flagged.',
     tags: ['party', 'media'],
     weight: 11, cooldownDays: 360,
-    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'], executiveStatus: ['formed'] },
     choices: [
       {
         label: 'Red meat',
@@ -746,7 +746,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: '{otherleader} rings. {othergov} is about to legislate in a devolved area and would like {government}\'s consent, or failing that, its silence. The Prime Minister is charming, brief and plainly reading from a note.',
     tags: ['policy', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'], executiveStatus: ['formed'] },
     choices: [
       {
         label: 'Withhold consent, publicly',

@@ -9,7 +9,8 @@ import { seatsForMajorityIn, totalSeats, votingSeatsIn } from '../engine/seats';
 import { useUiStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { playerIsPM, playerIsLeader } from '../engine/career';
-import { hasOfficialOpposition } from '../engine/executive';
+import { executiveInBeing, hasOfficialOpposition } from '../engine/executive';
+import { formatMonthYear } from '../engine/clock';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
@@ -44,8 +45,9 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const isJuniorPartner = game.player.partyId === gov.coalitionPartner;
   // only a party leader (the PM of the senior party, or the junior partner's
   // leader) can pull their party out of the coalition
-  // (the Executive is its own arrangement, not a coalition a leader can walk out of)
-  const inCoalition = gov.arrangement === 'coalition'
+  // a head party's leader at Stormont can walk out too: the offices are joint, so
+  // the Executive falls with them
+  const inCoalition = (gov.arrangement === 'coalition' || (gov.arrangement === 'executive' && executiveInBeing(game)))
     && playerIsLeader(game)
     && (isJuniorPartner || game.player.partyId === gov.governingParty);
 
@@ -64,7 +66,17 @@ export function ParliamentScreen({ game }: { game: GameState }) {
     <div className="screen">
       <h2 style={{ marginBottom: 4 }}>{houseHeading(arena, game.day)}</h2>
       <p style={{ color: 'var(--muted)', fontSize: 'var(--fs-sm)', marginBottom: 12 }}>
-        {gov.executive ? (
+        {gov.executive && !executiveInBeing(game) ? (
+          // no Executive: the designates, who is refusing, and the clock
+          <>
+            No Executive since {formatMonthYear(gov.executive.collapsedDay ?? game.day)} · First Minister-designate{' '}
+            {PARTIES[gov.governingParty].shortName}, deputy {PARTIES[gov.coalitionPartner ?? gov.governingParty].shortName}
+            {gov.executive.blocker ? ` · ${PARTIES[gov.executive.blocker].shortName} will not nominate` : ''}
+            {gov.executive.deadline !== undefined ? ` · deadline ${formatMonthYear(gov.executive.deadline)}` : ''}
+            {(gov.executive.extensions ?? 0) > 0 ? ` (extended ${gov.executive.extensions} ${gov.executive.extensions === 1 ? 'time' : 'times'})` : ''}
+            {gov.executive.caretakerUntil !== undefined ? ' · caretaker ministers in post' : ' · the departments run by their officials'}
+          </>
+        ) : gov.executive ? (
           // the Executive is shared out by party, not won: name the share-out
           <>
             {gov.executive.parties.map((p) => PARTIES[p].shortName).join('–')} Executive · First Minister{' '}
@@ -133,10 +145,12 @@ export function ParliamentScreen({ game }: { game: GameState }) {
         {inCoalition && (
           <button
             onClick={() => requestConfirm({
-              title: 'Withdraw from the coalition?',
-              message: isJuniorPartner
-                ? `Your party leaves government and you give up your ministerial role (you remain party leader). The ${PARTIES[gov.governingParty].name} government drops to a minority — and becomes far easier to bring down.`
-                : 'The junior partner leaves the government. You stay as Prime Minister, but your government drops to a minority — and becomes far easier to bring down.',
+              title: gov.arrangement === 'executive' ? 'Bring the Executive down?' : 'Withdraw from the coalition?',
+              message: gov.arrangement === 'executive'
+                ? 'The offices of First and deputy First Minister are joint: if you go, both go. The departments pass to their officials until a deal re-forms the Executive, and the Secretary of State may call an election.'
+                : isJuniorPartner
+                  ? `Your party leaves government and you give up your ministerial role (you remain party leader). The ${PARTIES[gov.governingParty].name} government drops to a minority — and becomes far easier to bring down.`
+                  : 'The junior partner leaves the government. You stay as Prime Minister, but your government drops to a minority — and becomes far easier to bring down.',
               confirmLabel: 'Withdraw',
               danger: true,
               onConfirm: withdrawFromCoalition,
@@ -146,7 +160,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
               color: 'var(--danger)', fontWeight: 700, fontSize: 'var(--fs-xs)', cursor: 'pointer',
             }}
           >
-            Withdraw from coalition ›
+            {gov.arrangement === 'executive' ? 'Walk out of the Executive ›' : 'Withdraw from coalition ›'}
           </button>
         )}
       </div>

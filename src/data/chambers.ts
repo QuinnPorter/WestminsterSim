@@ -343,9 +343,11 @@ export function ministerialTitlesAt(
   return chamberOf(arena).ranks;
 }
 
-/** polling day of the first Assembly election at five members per constituency
- *  (Assembly Members (Reduction of Numbers) Act (Northern Ireland) 2016) */
-export const NI_FIVE_SEAT_DAY: GameDay = isoToDay('2017-03-02');
+/** the Assembly Members (Reduction of Numbers) Act (Northern Ireland) 2016 received
+ *  Royal Assent on 22 July 2016 and applied to the next election: every Assembly
+ *  election from that day returns five members per constituency, not six (the
+ *  first in fact was 2 March 2017) */
+export const NI_FIVE_SEAT_DAY: GameDay = isoToDay('2016-07-22');
 
 // ---------------------------------------------------------------------------
 // seat systems

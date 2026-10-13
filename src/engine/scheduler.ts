@@ -20,7 +20,8 @@ import {
   resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
   noteReshuffle, reshuffleOnCooldown,
 } from './career';
-import { offerableOffice } from './executive';
+import { executiveInBeing, isJointExecutive, offerableOffice } from './executive';
+import { collapseTick } from './collapse';
 import { OFFICES } from '../data/offices';
 import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
 import { runElection } from './election';
@@ -71,7 +72,7 @@ function calRole(state: GameState): CalRole {
   if (playerIsPM(state)) return 'pm';
   const inGov = playerInGovernmentBloc(state);
   if (onMinorPartyTrack(state)) return 'minor';
-  if (playerIsLeader(state)) return inGov ? 'pm' : 'oppLeader';
+  if (playerIsLeader(state)) return inGov && executiveInBeing(state) ? 'pm' : 'oppLeader';
   const onFront = onFrontbenchTrack(state) && playerTier(state) >= 1;
   if (inGov) return onFront ? 'govMinister' : 'govBack';
   if (state.player.partyId === state.government.oppositionParty) {
@@ -119,12 +120,19 @@ function buildCalendarCard(state: GameState, rng: Rng, key: string): DrawnCard {
         "Budget day. The government's Chancellor performs for an hour while everyone hunts for the trap in the fine print. Your inbox will want a verdict by teatime.",
         "Budget day. The Chancellor waves the red box for the cameras, then spends an hour burying the bad news in the costings. Someone has to dig it out by teatime.",
       ];
-      const bodies = govBloc ? govBodies : oppBodies;
+      const collapsedBodies = [
+        'Budget day, of a sort. With no Executive to set one, the Secretary of State has published {nation}’s budget from London: departmental allocations by letter, no debate, no minister to answer for them. Your inbox would like you to answer for them anyway.',
+        'The budget for {nation} arrives as a written statement from the Northern Ireland Office, because there is nobody at Stormont Castle to make it. The departments get their numbers; the Assembly gets nothing to vote on. You get the phone calls.',
+      ];
+      const collapsed = state.government.executive?.status === 'collapsed';
+      const bodies = collapsed ? collapsedBodies : govBloc ? govBodies : oppBodies;
       return {
         ...base,
         title: 'Budget day',
         body: resolveTokens(state, bodies[calVariant(state, bodies.length)]),
-        choices: govBloc
+        choices: collapsed
+          ? [{ label: 'Blame London' }, { label: 'Blame the stalemate' }]
+          : govBloc
           ? [{ label: 'Champion it loudly' }, { label: 'Pick at the fine print' }]
           : [{ label: 'Attack it on the airwaves' }, { label: 'Pick at the fine print' }],
       };
@@ -693,6 +701,13 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // contest window closes; emits interim news beats). Shows no card, so just fall through.
   resolvePendingContests(state, rng);
 
+  // a joint Executive's own clock: walkouts, the statutory deadline, deals. Only a
+  // chamber with one ever reaches it, so the Commons draws nothing here.
+  if (isJointExecutive(state.arena) && collapseTick(state, rng)) {
+    nextStep(state, rng);
+    return;
+  }
+
   // ---- recruited by the other chamber ----
   //
   // Two rare approaches, both gated on having a record worth recruiting. They
@@ -775,7 +790,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
       };
       return;
     }
-  } else if (!playerIsPM(state)) {
+  } else if (!playerIsPM(state) && executiveInBeing(state)) {
     const pmName = state.characters[state.government.pmId]?.name ?? `The ${chamberOf(state.arena).head}`;
     // NPC PM goes early: usually late-term, rarely on an exceptional lead
     const lateTerm = !fixedTerm && yearsIn > 4 && rng.chance(PM_LATE_TERM_ELECTION);
@@ -1036,7 +1051,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // the same pressures bear on a Leader of the Opposition or a minor-party
   // leader: a polling mire, rebellions, longevity, or simply failing to improve
   // on the position they inherited can trigger a heave (partyCoup) — or a deal
-  if (playerIsLeader(state) && !playerInGovernment(state) && state.day >= coupCool) {
+  if (playerIsLeader(state) && !playerIsPM(state) && state.day >= coupCool) {
     const polls = partyPolling(state, state.player.partyId);
     const tenureYears = (state.day - (state.player.officeSinceDay ?? state.day)) / 365;
     const tookOver = (state.player.flags._leaderTookOverPolls as number) ?? polls;
@@ -1066,7 +1081,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // still move against the PM any time via the Profile action).
   if (
     playerInGovernment(state) && !playerIsLeader(state) && canHoldOffice(state) &&
-    state.government.pmId !== 'player' && state.player.hasSeat &&
+    state.government.pmId !== 'player' && state.player.hasSeat && executiveInBeing(state) &&
     state.day >= ((state.player.flags._pmHeaveCooldownUntil as number) ?? 0)
   ) {
     const polls = calibratedPolling(state, state.government.governingParty);
@@ -1339,7 +1354,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     const collapse = pmGrace && slid && rng.chance(LEADER_COLLAPSE_HAZARD);
     if (scandalFall || collapse) {
       const leaderName = state.characters[leaderId]?.name ?? 'The leader';
-      const role = isGov ? 'Prime Minister' : `${PARTIES[party].shortName} leader`;
+      const role = isGov && executiveInBeing(state) ? chamberOf(state.arena).head : `${PARTIES[party].shortName} leader`;
       state.history.push({
         kind: 'event', date: state.day,
         headline: scandalFall

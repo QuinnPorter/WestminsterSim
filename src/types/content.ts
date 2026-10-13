@@ -31,6 +31,9 @@ export interface Requirement {
   minorParty?: boolean;
   /** only fire under these government arrangements (coalition-life cards) */
   arrangementIn?: Arrangement[];
+  /** a joint Executive: only fire while it stands, or only while it is collapsed.
+   *  A chamber without one counts as formed. */
+  executiveStatus?: ('formed' | 'collapsed')[];
   /** true → only before the first general election (the game's ORIGINAL government,
    *  e.g. the 2010 coalition before it ever faces the country) */
   firstParliament?: boolean;

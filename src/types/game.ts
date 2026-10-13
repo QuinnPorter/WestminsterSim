@@ -336,13 +336,31 @@ export interface GovernmentState {
 }
 
 /** the Northern Ireland Executive as it stands */
+export type ExecutiveCollapseCause = 'dfmWalkout' | 'fmWalkout' | 'noNomination' | 'scandal';
+
 export interface ExecutiveState {
   status: 'formed' | 'collapsed';
-  /** every party holding a ministry, the First and deputy First Ministers' first */
+  /** every party holding a ministry, the First and deputy First Ministers' first;
+   *  kept through a collapse as the membership the designates would re-form */
   parties: PartyId[];
   /** who holds Justice, elected by cross-community vote rather than d'Hondt */
   justiceParty?: PartyId;
+  /** the last formation */
   formedDay: GameDay;
+  /** set while collapsed: the day the heads ceased to hold office */
+  collapsedDay?: GameDay;
+  cause?: ExecutiveCollapseCause;
+  /** the party refusing to nominate its head */
+  blocker?: PartyId;
+  /** the end of the current statutory period for filling the offices */
+  deadline?: GameDay;
+  /** extensions the Secretary of State has granted past the statutory period */
+  extensions?: number;
+  /** the other ministers stay in post as caretakers until this day; absent means
+   *  the cabinet is already empty */
+  caretakerUntil?: GameDay;
+  /** 0..100: how close the Executive is to a walkout; decays while formed */
+  strain?: number;
 }
 
 // ---- elections & history ----
@@ -393,6 +411,8 @@ export interface ElectionResult {
   outcome: ElectionOutcome;
   governingParty: PartyId;
   playerHeldSeat: boolean;
+  /** a joint Executive: whether the heads were nominated after this election */
+  formation?: 'formed' | 'none';
 }
 
 /** one person's continuous spell as Prime Minister */
@@ -539,6 +559,9 @@ export type ForcedKind =
   /** recruited by the other chamber: Westminster asking a devolved member to stand,
    *  or a devolved party asking a Westminster figure to come and lead it */
   | 'ukRecruit' | 'devolvedDraft'
+  /** a joint Executive: a head party's leader deciding whether to walk out, and
+   *  the blocker's leader deciding whether to re-form it */
+  | 'executiveCrisis' | 'executiveTalks'
   | 'calendar';
 
 export interface DrawnCard {

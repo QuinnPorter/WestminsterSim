@@ -10,7 +10,8 @@ import {
 } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import { tap } from '../native/haptics';
-import { hasOfficialOpposition } from '../engine/executive';
+import { executiveInBeing, hasOfficialOpposition } from '../engine/executive';
+import { formatMonthYear } from '../engine/clock';
 import './CabinetScreen.css';
 
 export function CabinetScreen({ game }: { game: GameState }) {
@@ -55,7 +56,9 @@ export function CabinetScreen({ game }: { game: GameState }) {
         game={game}
         characterId={leaderId}
         title={isGov
-          ? (arena === 'uk' ? 'Prime Minister' : `First Minister of ${chamber.place}`)
+          ? (arena === 'uk' ? 'Prime Minister'
+            : !executiveInBeing(game) ? `First Minister-designate (no Executive since ${formatMonthYear(game.government.executive?.collapsedDay ?? game.day)})`
+              : `First Minister of ${chamber.place}`)
           : (game.government.executive && !hasOfficialOpposition(game)
             ? `${partyNameIn(game.government.oppositionParty, arena)} leader`
             : 'Leader of the Opposition')}
@@ -132,6 +135,11 @@ export function CabinetScreen({ game }: { game: GameState }) {
           );
         })}
       </div>
+      {isGov && game.government.executive && !executiveInBeing(game) && game.government.cabinet.length === 0 && (
+        <p style={{ marginTop: 12, fontSize: 'var(--fs-sm)', color: 'var(--muted)', textAlign: 'center' }}>
+          No ministers: the departments are run by their permanent secretaries until an Executive is formed.
+        </p>
+      )}
       {!isGov && game.government.executive && !hasOfficialOpposition(game) && (
         <p style={{ marginTop: 12, fontSize: 'var(--fs-sm)', color: 'var(--muted)', textAlign: 'center' }}>
           No official opposition: the largest party outside the Executive is too small for a bench.

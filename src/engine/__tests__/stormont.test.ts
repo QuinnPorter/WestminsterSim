@@ -36,9 +36,10 @@ describe('the Assembly as a chamber', () => {
     expect(calendarFor('scotland').map((e) => e.key)).toContain('pmqsWinter');
   });
 
-  it('is elected in the eighteen constituencies, six seats each until March 2017 and five from it', () => {
-    const before = seatSystemAt('ni', isoToDay('2011-05-05'));
+  it('is elected in the eighteen constituencies, six seats each until the 2016 Act and five from it', () => {
+    const before = seatSystemAt('ni', isoToDay('2016-05-05'));
     const after = seatSystemAt('ni', NI_FIVE_SEAT_DAY);
+    expect(seatSystemAt('ni', isoToDay('2017-03-02')).kind === 'listPr' && (seatSystemAt('ni', isoToDay('2017-03-02')) as { seatsPer: number }).seatsPer).toBe(5);
     expect(before.kind).toBe('listPr');
     expect(after.kind).toBe('listPr');
     if (before.kind === 'listPr' && after.kind === 'listPr') {
@@ -50,9 +51,10 @@ describe('the Assembly as a chamber', () => {
     }
   });
 
-  it('offers 2011 and holds 2016 back; a jump still lands in the latest Assembly', () => {
-    expect(erasFor('ni').map((s) => s.election)).toEqual(['2011-05-05']);
-    expect(legislatureAt('ni', isoToDay('2019-12-12')).election).toBe('2016-05-05');
+  it('offers 2011, 2016, 2017 and 2022; a jump lands in the latest Assembly', () => {
+    expect(erasFor('ni').map((s) => s.election)).toEqual(['2011-05-05', '2016-05-05', '2017-03-02', '2022-05-05']);
+    expect(legislatureAt('ni', isoToDay('2019-12-12')).election).toBe('2017-03-02');
+    expect(legislatureAt('ni', isoToDay('2024-07-04')).election).toBe('2022-05-05');
   });
 
   it('the NI parties are their own in both chambers; nobody else stands at Stormont', () => {
@@ -97,7 +99,7 @@ describe('a multi-member map from a real result', () => {
       const system = seatSystemAt('ni', isoToDay(snap.election));
       if (system.kind !== 'listPr') throw new Error('expected listPr');
       const { seatMap, playerSeatId } = generateListPrSeatMap('ni', snap, system.districts, system.seatsPer, 'dup', 2);
-      expect(seatMap).toHaveLength(108);
+      expect(seatMap).toHaveLength(system.seatsPer * 18);
       for (const d of system.districts) {
         const won: Partial<Record<PartyId, number>> = {};
         for (const s of listSeatsOf(seatMap, d.id)) won[s.winner] = (won[s.winner] ?? 0) + 1;

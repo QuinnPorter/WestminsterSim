@@ -648,7 +648,7 @@ describe('save migration', () => {
     expect(migrated.polledParties).toBeDefined();
     expect(migrated.anchorShares).toBeDefined();
     expect(migrated.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(12);
+    expect(SAVE_VERSION).toBe(13);
   });
 });
 

@@ -546,7 +546,7 @@ export const NI_CARDS: DecisionCard[] = [
     body: 'A statement from the Executive Office is needed by six o’clock and the deputy First Minister’s office has returned your draft with a line through the second paragraph. The office is joint: nothing goes out in one name. Your party would like the paragraph. Their party would like it gone. The broadcasters would like something, anything, by six.',
     tags: ['party', 'crisis', 'serious'],
     weight: 12, cooldownDays: 240,
-    requires: { arena: ['ni'], leaderRole: ['pm'] },
+    requires: { arena: ['ni'], leaderRole: ['pm'], executiveStatus: ['formed'] },
     choices: [
       {
         label: 'Drop the paragraph',
@@ -571,7 +571,7 @@ export const NI_CARDS: DecisionCard[] = [
     body: 'The Secretary of State has asked the First and deputy First Ministers to Hillsborough Castle to discuss the budget {government} has failed to agree, and has let it be known that if it is not agreed by the end of the month London will set one. You and the deputy First Minister are to arrive together, in the same car if possible. The car is going to be quiet.',
     tags: ['crisis', 'policy', 'serious'],
     weight: 10, cooldownDays: 365,
-    requires: { arena: ['ni'], leaderRole: ['pm'] },
+    requires: { arena: ['ni'], leaderRole: ['pm'], executiveStatus: ['formed'] },
     choices: [
       {
         label: 'Agree a budget in the car',

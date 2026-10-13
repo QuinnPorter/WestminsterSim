@@ -131,7 +131,7 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
   const gov = game.government;
   // a player-led hung result hasn't been resolved yet (coalition talks are queued)
   const pending = game.forcedQueue.some(
-    (e) => e.kind === 'coalitionTalks' || e.kind === 'coalitionOffer'
+    (e) => e.kind === 'coalitionTalks' || e.kind === 'coalitionOffer' || e.kind === 'executiveTalks'
   );
   const partner = gov.coalitionPartner ?? gov.confidencePartner;
   // a Northern Ireland MP's own ballot, which the GB vote-share table leaves out
@@ -140,7 +140,9 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
     ? (Object.entries(niShares) as [PartyId, number][]).sort((a, b) => b[1] - a[1])
     : null;
   let verdict: string;
-  if (gov.executive && gov.coalitionPartner) {
+  if (gov.executive && gov.coalitionPartner && result.formation === 'none') {
+    verdict = `is the largest party; ${PARTIES[gov.executive.blocker ?? gov.coalitionPartner].shortName} will not nominate, and no Executive is formed`;
+  } else if (gov.executive && gov.coalitionPartner) {
     verdict = `nominates the First Minister; ${PARTIES[gov.coalitionPartner].shortName} the ${chamberOf(result.arena ?? 'uk').deputyHead}. A ${gov.executive.parties.length}-party Executive is formed`;
   } else if (result.outcome === 'majority') {
     verdict = 'wins a majority';

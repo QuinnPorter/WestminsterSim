@@ -22,6 +22,7 @@ import { isoToDay } from './clock';
 import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
 import { initCalendar } from './calendar';
 import { formExecutive, isJointExecutive, makePlayerDeputyFirstMinister } from './executive';
+import { caretakersFrom, catchUpExecutive, decideFormation } from './collapse';
 import { castContext } from './cast';
 import { resignationPressure, runElection } from './election';
 import { totalSeats, workingMajorityIn } from './seats';
@@ -184,13 +185,23 @@ export function buildDevolvedArena(
   const polling = { shares: { ...shares }, lastUpdated: since };
 
   if (isJointExecutive(arena)) {
-    // the Executive the real election produced, installed on the chamber as it
-    // will be thawed: the same government, cast and tenure records
+    // the Executive the real election produced (or the stalemate that followed
+    // it), installed on the chamber as it will be thawed: the same government,
+    // cast and tenure records. Then the real chronology runs to the start day.
     const forming: GameState = {
       ...state, arena, day: since, seats, seatMap, government, characters, pmHistory, loHistory,
-      history: [], polling,
+      history: [], polling, nextElectionBy,
     };
-    formExecutive(forming, rng, { snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false });
+    const collapsed = snap.executive ? caretakersFrom(snap.executive, since) : undefined;
+    if (collapsed) {
+      // no sitting First Minister: the tenure opened above never was
+      pmHistory.length = 0;
+    }
+    formExecutive(forming, rng, {
+      snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false, ...(collapsed ? { collapsed } : {}),
+    });
+    if (startDay > since) catchUpExecutive(forming, rng, startDay);
+    forming.day = since;
   }
 
   return {
@@ -330,8 +341,14 @@ function installNpcGovernment(
   }
 
   if (isJointExecutive(arena)) {
-    // the Executive forms by right around the result; the player is not here
-    formExecutive(state, rng, { playerSeated: false, cast: { usedNames, idCounter } });
+    // the Executive forms by right around the result (or the heads refuse to
+    // nominate, and the stalemate goes on); the player is not here
+    const heads = { fm: governing, dfm: gv.coalitionPartner ?? governing };
+    const formation = decideFormation(state, rng, heads);
+    formExecutive(state, rng, {
+      playerSeated: false, cast: { usedNames, idCounter },
+      ...(formation.formed ? {} : { collapsed: { cause: 'noNomination', blocker: formation.blocker, collapsedDay: state.day } }),
+    });
     gv.termsInPower = gv.governingParty === prevGoverning ? (gv.termsInPower ?? 1) + 1 : 1;
     gv.loInheritedPolls = partyPollingShare(state, gv.oppositionParty) * 100;
     return;
@@ -478,6 +495,10 @@ export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
 
   try {
     let guard = 0;
+    // a joint Executive's clock runs through the spans between elections; it may
+    // call an extraordinary election, which the loop then fights
+    const joint = isJointExecutive(arena);
+    if (joint) catchUpExecutive(state, rng, Math.min(toDay, state.nextElectionBy));
     while (state.nextElectionBy <= toDay && guard++ < 40) {
       const pollDay = state.nextElectionBy;
       state.day = pollDay;
@@ -495,6 +516,7 @@ export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
         ? nextFixedElectionDay(pollDay)
         : pollDay + chamber.termDays;
       state.pollHistory = [pollSnapshot(state, pollDay)];
+      if (joint) catchUpExecutive(state, rng, Math.min(toDay, state.nextElectionBy));
       state.history.push({
         kind: 'event', date: pollDay,
         headline: isJointExecutive(arena)

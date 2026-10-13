@@ -10,6 +10,7 @@ import {
   playerInGovernmentBloc, playerTier, playerIsLeader, playerLeaderRole, onMinorPartyTrack,
 } from './career';
 import { Rng } from './rng';
+import { stormontStoodOn } from './collapse';
 
 // ---------- key moments ----------
 
@@ -28,7 +29,9 @@ export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
     card.kind === 'confidenceVote' ||
     card.kind === 'partyCoup' ||
     card.kind === 'coalitionTalks' ||
-    card.kind === 'coalitionOffer'
+    card.kind === 'coalitionOffer' ||
+    card.kind === 'executiveCrisis' ||
+    card.kind === 'executiveTalks'
   );
 }
 
@@ -41,6 +44,8 @@ export function keyMomentLabel(card: DrawnCard): string {
   if (card.kind === 'partyCoup') return 'Leadership challenge';
   if (card.kind === 'resignPledge') return 'Pressure to resign';
   if (card.kind === 'coalitionTalks' || card.kind === 'coalitionOffer') return 'Coalition talks';
+  if (card.kind === 'executiveCrisis') return 'The Executive on the brink';
+  if (card.kind === 'executiveTalks') return 'Forming an Executive';
   return 'Key moment';
 }
 
@@ -103,6 +108,13 @@ function otherGovernment(state: GameState): { leader: string; party: string; gov
     const nation = nationOfRegion(state.player.region);
     const snap = nation ? state.dormant?.[nation] : undefined;
     const chamber = chamberAt(nation ?? 'scotland', state.day);
+    // Stormont without an Executive: the Northern Ireland Office speaks for it
+    const collapsed = snap
+      ? snap.government.executive?.status === 'collapsed'
+      : chamber.jointExecutive && !stormontStoodOn(state.day);
+    if (collapsed) {
+      return { leader: 'the Secretary of State', party: 'the Northern Ireland Office', government: 'the Northern Ireland Office' };
+    }
     if (snap) {
       const fm = snap.characters[snap.government.pmId];
       return {
@@ -149,6 +161,8 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
     if (!role || !req.leaderRole.includes(role)) return false;
   }
   if (req.arrangementIn && !req.arrangementIn.includes(state.government.arrangement)) return false;
+  // a chamber without a joint Executive counts as formed
+  if (req.executiveStatus && !req.executiveStatus.includes(state.government.executive?.status ?? 'formed')) return false;
   if (req.firstParliament !== undefined &&
       (Object.keys(state.elections).length === 0) !== req.firstParliament) return false;
   if (req.minorParty !== undefined && onMinorPartyTrack(state) !== req.minorParty) return false;

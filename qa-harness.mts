@@ -3,7 +3,7 @@
  * Usage:  npx tsx qa-harness.mts <strategy> <startSeed> <count>
  *   strategy: backbench | frontbench | free | ni | stormont
  *   ni: a Northern Ireland MP (DUP, UUP, SDLP or Alliance) sitting for a Northern Ireland seat
- *   stormont: an MLA in the 2011 Assembly (DUP, SF, UUP, SDLP or Alliance)
+ *   stormont: an MLA in the 2011, 2016, 2017 or 2022 Assembly (DUP, SF, UUP, SDLP or Alliance)
  * Prints one block per game to stdout. */
 import { createNewGame, CreationInput } from './src/engine/newGame';
 import { resolveChoiceCore, continueCore, acknowledgeElectionCore } from './src/engine/turn';
@@ -25,6 +25,10 @@ const PARTIES_BY_STRATEGY: Record<string, string[]> = {
 const REGIONS = ['london', 'southEast', 'northWest', 'yorkshire', 'scotland', 'wales', 'westMidlands', 'eastMidlands'];
 const BGS = ['lawyer', 'teacher', 'business', 'journalist', 'doctor', 'councillor', 'advisor', 'tradeUnionist'];
 const ERAS = ['2010', '2015', '2017', '2019', '2024'];
+const STORMONT_STARTS = [
+  { era: '2010', election: '2011-05-05' }, { era: '2015', election: '2016-05-05' },
+  { era: '2015', election: '2017-03-02' }, { era: '2019', election: '2022-05-05' },
+];
 const NAMES = ['Alex Mercer', 'Sam Okonkwo', 'Priya Nair', 'Tom Fielding', 'Grace Bellamy', 'Jon Hale', 'Mara Voss', 'Dev Rana', 'Cora Whitman', 'Eli Brandt'];
 
 function withRng(game: GameState, fn: (rng: Rng) => void): void {
@@ -58,8 +62,8 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
     age: 32 + (seed % 30), region: (strategy === 'ni' || strategy === 'stormont' ? 'ni' : REGIONS[seed % REGIONS.length]) as any,
     background: BGS[seed % BGS.length] as any, partyId: party as any,
     avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
-    era: (strategy === 'stormont' ? '2010' : ERAS[seed % ERAS.length]) as any, seed,
-    ...(strategy === 'stormont' ? { arena: 'ni' as const, devolvedElection: '2011-05-05' } : {}),
+    era: (strategy === 'stormont' ? STORMONT_STARTS[seed % STORMONT_STARTS.length].era : ERAS[seed % ERAS.length]) as any, seed,
+    ...(strategy === 'stormont' ? { arena: 'ni' as const, devolvedElection: STORMONT_STARTS[seed % STORMONT_STARTS.length].election } : {}),
   };
 
   let game: GameState;
@@ -104,6 +108,11 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
       flags.push(`EXCEPTION step ${steps} (${game.currentCard?.kind} "${detok(game.currentCard?.title)}"): ${e?.message || e}`);
       break;
     }
+    // a joint Executive is either standing with ministers or collapsed with its clock set
+    const ex = game.government.executive;
+    if (ex?.status === 'formed' && game.government.cabinet.length === 0) flags.push(`formed Executive with an empty cabinet at step ${steps}`);
+    if (ex?.status === 'collapsed' && (ex.collapsedDay === undefined || ex.deadline === undefined)) flags.push(`collapsed Executive without its clock at step ${steps}`);
+    if (ex?.status === 'collapsed' && game.day - ex.collapsedDay! > 4 * 365) flags.push(`collapsed for more than four years at step ${steps}`);
     // stat sanity
     for (const [k, v] of Object.entries(game.player.stats)) {
       if (typeof v !== 'number' || Number.isNaN(v)) flags.push(`bad stat ${k}=${v}`);
