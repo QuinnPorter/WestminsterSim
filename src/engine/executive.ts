@@ -314,6 +314,35 @@ export function planExecutive(
   return finish({ ...heads, parties, justice, allocation, declined });
 }
 
+/** after an ordinary election the heads are nominated; after an extraordinary one
+ *  (fought during a collapse) the stalemate usually goes on */
+export const NON_NOMINATION_ORDINARY = 0.08;
+export const NON_NOMINATION_EXTRAORDINARY = 0.6;
+
+/** whether the heads are nominated after an election: usually after an ordinary
+ *  one, rarely after an extraordinary one fought during a collapse. The player's
+ *  own party is never rolled against: its leader decides on the card. */
+export function decideFormation(
+  state: GameState, rng: Rng, heads: { fm: PartyId; dfm: PartyId },
+  opts: { playerLeads?: PartyId } = {}
+): { formed: true } | { formed: false; blocker: PartyId } {
+  const prior = state.government.executive;
+  const stalemate = prior?.status === 'collapsed';
+  const p = stalemate ? NON_NOMINATION_EXTRAORDINARY : NON_NOMINATION_ORDINARY;
+  const candidates = [heads.fm, heads.dfm].filter((party) => party !== opts.playerLeads);
+  if (candidates.length === 0 || !rng.chance(p)) return { formed: true };
+  const blocker = stalemate && prior?.blocker && candidates.includes(prior.blocker)
+    ? prior.blocker
+    : rng.pick(candidates);
+  return { formed: false, blocker };
+}
+
+/** close the open span of a tenure ledger on `day` */
+export function closeOpenTenure(list: { endDay: number | null }[], day: number): void {
+  const open = list.find((t) => t.endDay === null);
+  if (open) open.endDay = day;
+}
+
 // ---------------------------------------------------------------------------
 // installing it
 // ---------------------------------------------------------------------------
@@ -481,6 +510,8 @@ export function installExecutive(
   }
   const dfmId = leaderIdOf(state, rng, plan.dfm, seated, cast);
   if (collapsed) {
+    // a sitting First Minister whose election ended in stalemate ceases to hold office
+    closeOpenTenure(state.pmHistory, state.day);
     clearDeputyFirstMinister(state);
     gv.deputyTitle = 'dfm';
   } else {
@@ -534,18 +565,24 @@ export function installExecutive(
  *  Executive is the one the real election produced. Returns the plan, or null
  *  where the chamber has no joint Executive. */
 export function formExecutive(
-  state: GameState, rng: Rng, opts: InstallOptions & { snapshot?: ExecutiveSnapshot } = {}
+  state: GameState, rng: Rng,
+  opts: InstallOptions & { snapshot?: ExecutiveSnapshot; /** roll whether the heads nominate at all */ decideFormation?: boolean } = {}
 ): ExecutivePlan | null {
   const arena = state.arena ?? 'uk';
   if (!isJointExecutive(arena)) return null;
   const plan = planExecutive(state.seats, state.polling.shares, rng, state.day, arena, opts.snapshot);
   if (!plan) return null;
-  installExecutive(state, rng, plan, opts);
+  let collapsed = opts.collapsed;
+  if (!collapsed && opts.decideFormation) {
+    const formation = decideFormation(state, rng, plan);
+    if (!formation.formed) collapsed = { cause: 'noNomination', blocker: formation.blocker, collapsedDay: state.day };
+  }
+  installExecutive(state, rng, plan, { ...opts, collapsed });
   const deputyHead = chamberOf(arena).deputyHead;
-  if (opts.collapsed) {
+  if (collapsed) {
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${partyNameIn(opts.collapsed.blocker, arena)} will not nominate; the Assembly sits without an Executive`,
+      headline: `${partyNameIn(collapsed.blocker, arena)} will not nominate; the Assembly sits without an Executive`,
     });
     return plan;
   }

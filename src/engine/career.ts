@@ -15,10 +15,10 @@ import { leaderOfTitle, outsidePartyPolitics, partyNameIn, partyNameWithArticle 
 import { partyPollingShare, pollSnapshot } from './polling';
 import { largestPartyOutside, seatsForMajorityIn, workingMajorityIn } from './seats';
 import {
-  ExecutivePlan, benchParties, executiveInBeing, executiveParties, hasOfficialOpposition, inGovernmentBloc,
-  installExecutive, isJointExecutive, offerableOffice, planExecutive, postParty, teoJuniorParty,
+  ExecutivePlan, benchParties, decideFormation, executiveInBeing, executiveParties, hasOfficialOpposition,
+  inGovernmentBloc, installExecutive, isJointExecutive, offerableOffice, planExecutive, postParty, teoJuniorParty,
 } from './executive';
-import { buildExecutiveCard, collapseExecutive, decideFormation, resolveExecutiveCard } from './collapse';
+import { buildExecutiveCard, collapseExecutive, resolveExecutiveCard } from './collapse';
 import { castContext } from './cast';
 import { calibratedPolling } from './polling';
 export { offerableOffice } from './executive';
@@ -893,7 +893,7 @@ export function reconcilePlayerDeputy(state: GameState): void {
  *  did not hold the DPM (e.g. they took a department brief instead). */
 export function reassignJuniorPartnerDeputy(state: GameState, party: PartyId, newLeaderId: string): void {
   const partnered = state.government.arrangement === 'coalition' || state.government.arrangement === 'executive';
-  if (!partnered || party !== state.government.coalitionPartner) return;
+  if (!partnered || party !== state.government.coalitionPartner || !executiveInBeing(state)) return;
   const dpm = state.government.deputyPmId;
   const dpmWasJuniorLeader = !!dpm && (dpm === 'player'
     ? state.player.partyId === party
@@ -2719,7 +2719,12 @@ export function applyElectionAftermath(
   // ...and whether the heads are nominated at all. A player who leads a head
   // party is never rolled against: they decide on the card that follows.
   const playerLeads = playerWonSeat && playerIsLeader(state) ? state.player.partyId : undefined;
-  const formation = plan ? decideFormation(state, rng, plan, { playerLeads }) : { formed: true as const };
+  // a player who has been holding out stays out until they say otherwise, on the card
+  const playerBlocks = !!plan && !!playerLeads && state.government.executive?.status === 'collapsed'
+    && state.government.executive.blocker === playerLeads && (playerLeads === plan.fm || playerLeads === plan.dfm);
+  const formation: { formed: true } | { formed: false; blocker: PartyId } = !plan
+    ? { formed: true }
+    : playerBlocks ? { formed: false, blocker: playerLeads! } : decideFormation(state, rng, plan, { playerLeads });
   if (plan) {
     newGov = plan.fm;
     result.governingParty = newGov;
@@ -2792,10 +2797,8 @@ export function applyElectionAftermath(
         kind: 'event', date: state.day,
         headline: `${partyNameIn(formation.blocker, state.arena)} will not nominate; the Assembly meets with no Executive`,
       });
-    } else if (playerLeads && (playerLeads === plan.fm || playerLeads === plan.dfm) && !state.forcedQueue.some((e) => e.kind === 'executiveTalks')) {
-      // a player head who has been holding out is asked whether to nominate now;
-      // one who was in the Executive simply returns to it
-      if (state.government.executive?.status === 'collapsed') {
+      // the player blocker is asked whether to nominate now
+      if (playerBlocks && !state.forcedQueue.some((e) => e.kind === 'executiveTalks')) {
         state.forcedQueue.push({ kind: 'executiveTalks', payload: { context: 'postElection' } });
       }
     }
@@ -4933,7 +4936,11 @@ export function resolveForcedChoice(
       }
       jumpToArena(state, rng, target, party, { asDraftedLeader: true });
       installPlayerAsLeader(state, rng);
-      const nowFirstMinister = state.player.partyId === state.government.governingParty;
+      // arriving to lead the party that is keeping the Executive down: the question follows
+      if (state.government.executive?.status === 'collapsed' && state.government.executive.blocker === party) {
+        state.forcedQueue.push({ kind: 'executiveTalks', payload: { context: 'arrival' } });
+      }
+      const nowFirstMinister = state.player.partyId === state.government.governingParty && executiveInBeing(state);
       const seat = state.seatMap.find((x) => x.id === state.player.seatId);
       const how = seat?.kind === 'list'
         ? `a place at the top of the ${seat.name.replace(' (regional list)', '')} list`
@@ -7425,11 +7432,14 @@ function partyWhipId(state: GameState, rng: Rng, party: PartyId): string {
     : party === state.government.oppositionParty ? state.government.shadowCabinet : null;
   const whip = benchWhip?.find((p) => p.officeId === 'chiefWhip');
   if (whip && (!state.government.executive || postParty(state, whip) === party)) return whip.characterId;
-  // a whip minted for a party off the benches is kept, not minted again each call
-  const sitting = Object.values(state.characters).find(
-    (c) => c.active && c.partyId === party && c.officeId === 'chiefWhip' && c.id !== 'player'
-  );
-  if (sitting) return sitting.id;
+  // in a joint Executive a whip minted for a party off the benches is kept, not
+  // minted again each call (the Commons path is left exactly as it was)
+  if (state.government.executive) {
+    const sitting = Object.values(state.characters).find(
+      (c) => c.active && c.partyId === party && c.officeId === 'chiefWhip' && c.id !== 'player'
+    );
+    if (sitting) return sitting.id;
+  }
   const fresh = generateCharacter(rng, usedNamesOf(state), {
     partyId: party, officeId: 'chiefWhip', competenceMean: 55,
     traitBias: ['fixer', 'ruthless'],

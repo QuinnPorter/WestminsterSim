@@ -21,8 +21,8 @@ import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
 import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
 import { initCalendar } from './calendar';
-import { formExecutive, isJointExecutive, makePlayerDeputyFirstMinister } from './executive';
-import { caretakersFrom, catchUpExecutive, decideFormation } from './collapse';
+import { executiveInBeing, formExecutive, isJointExecutive, makePlayerDeputyFirstMinister } from './executive';
+import { caretakersFrom, catchUpExecutive } from './collapse';
 import { castContext } from './cast';
 import { resignationPressure, runElection } from './election';
 import { totalSeats, workingMajorityIn } from './seats';
@@ -171,7 +171,7 @@ export function buildDevolvedArena(
 
   // a fixed-term chamber's next polling day follows from the last one, even when
   // that lands in the past: catchUpArena then fights the elections in the gap
-  const nextElectionBy = electionDay <= startDay
+  let nextElectionBy = electionDay <= startDay
     ? nextFixedElectionDay(electionDay)
     : nextFixedElectionDay(startDay);
 
@@ -200,8 +200,11 @@ export function buildDevolvedArena(
     formExecutive(forming, rng, {
       snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false, ...(collapsed ? { collapsed } : {}),
     });
-    if (startDay > since) catchUpExecutive(forming, rng, startDay);
+    // ...up to the start, or to the first election the caller will fight
+    const execTo = Math.min(startDay, nextElectionBy);
+    if (execTo > since) catchUpExecutive(forming, rng, execTo);
     forming.day = since;
+    nextElectionBy = forming.nextElectionBy;
   }
 
   return {
@@ -343,12 +346,7 @@ function installNpcGovernment(
   if (isJointExecutive(arena)) {
     // the Executive forms by right around the result (or the heads refuse to
     // nominate, and the stalemate goes on); the player is not here
-    const heads = { fm: governing, dfm: gv.coalitionPartner ?? governing };
-    const formation = decideFormation(state, rng, heads);
-    formExecutive(state, rng, {
-      playerSeated: false, cast: { usedNames, idCounter },
-      ...(formation.formed ? {} : { collapsed: { cause: 'noNomination', blocker: formation.blocker, collapsedDay: state.day } }),
-    });
+    formExecutive(state, rng, { playerSeated: false, cast: { usedNames, idCounter }, decideFormation: true });
     gv.termsInPower = gv.governingParty === prevGoverning ? (gv.termsInPower ?? 1) + 1 : 1;
     gv.loInheritedPolls = partyPollingShare(state, gv.oppositionParty) * 100;
     return;
@@ -462,12 +460,15 @@ function ghostPlayer(state: GameState): GameState['player'] {
  *  general election on every fixed date that falls in the gap. Headlines are
  *  dated to when they happened, so the History screen reads correctly even
  *  though the work was deferred to the moment the player looked. */
-export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
+export function catchUpArena(state: GameState, rng: Rng, toDay: number, from?: number): void {
   const arena = state.arena ?? 'uk';
   const chamber = chamberOf(arena);
   const realPlayer = state.player;
   const realDay = state.day;
   state.player = ghostPlayer(state);
+  // a joint Executive's clock runs from the day the chamber was last seen
+  const joint = isJointExecutive(arena);
+  if (joint) state.day = from ?? state.polling.lastUpdated;
 
   // Any leadership contest that was in flight when the player walked out has
   // long since concluded. Settle it now rather than leaving it frozen in the
@@ -497,7 +498,6 @@ export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
     let guard = 0;
     // a joint Executive's clock runs through the spans between elections; it may
     // call an extraordinary election, which the loop then fights
-    const joint = isJointExecutive(arena);
     if (joint) catchUpExecutive(state, rng, Math.min(toDay, state.nextElectionBy));
     while (state.nextElectionBy <= toDay && guard++ < 40) {
       const pollDay = state.nextElectionBy;
@@ -693,7 +693,7 @@ export function jumpToArena(
     thawArena(state, existing);
     initCalendar(state);
     delete state.dormant[target];
-    catchUpArena(state, rng, state.day);
+    catchUpArena(state, rng, state.day, existing.frozenDay);
     seatId = pickSeatFor(state, rng, party, existing.playerSeatId, {
       region: opts.seatRegion,
       byPartyStrength: opts.byPartyStrength,
@@ -706,7 +706,8 @@ export function jumpToArena(
     delete state.dormant[target];
     if (state.nextElectionBy <= state.day) {
       // the real result on record is more than a term old: fight the elections since
-      catchUpArena(state, rng, state.day);
+      // (the Executive's clock has already run to the first of them)
+      catchUpArena(state, rng, state.day, state.nextElectionBy);
       seatId = pickSeatFor(state, rng, party, null, { safest: opts.asDraftedLeader });
     } else {
       seatId = opts.asDraftedLeader
@@ -1057,8 +1058,13 @@ export function installPlayerAsLeader(state: GameState, rng: Rng): void {
   const peak = Number(state.player.flags._peakTier ?? 0);
   if (peak < 5) state.player.flags._peakTier = 5;
 
-  const inGovernment = party === state.government.governingParty;
+  const inGovernment = party === state.government.governingParty && executiveInBeing(state);
   const isOpposition = party === state.government.oppositionParty;
+  if (party === state.government.governingParty && !inGovernment) {
+    // the largest party's leader with no Executive to head: the designate
+    state.government.pmId = 'player';
+    state.government.pmSinceDay = state.day;
+  }
   if (inGovernment) {
     const open = state.pmHistory.find((t) => t.endDay === null);
     if (open) open.endDay = state.day;
@@ -1078,7 +1084,7 @@ export function installPlayerAsLeader(state: GameState, rng: Rng): void {
     }];
   }
   // the deputy First Minister's party has just changed leader: the post follows
-  if (state.government.executive && state.government.coalitionPartner === party) {
+  if (state.government.executive && state.government.coalitionPartner === party && executiveInBeing(state)) {
     makePlayerDeputyFirstMinister(state);
   }
   state.history.push({

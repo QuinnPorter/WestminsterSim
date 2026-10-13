@@ -361,6 +361,8 @@ export interface ExecutiveState {
   caretakerUntil?: GameDay;
   /** 0..100: how close the Executive is to a walkout; decays while formed */
   strain?: number;
+  /** the player blocker has already been given the last word at the cap */
+  capAsked?: boolean;
 }
 
 // ---- elections & history ----

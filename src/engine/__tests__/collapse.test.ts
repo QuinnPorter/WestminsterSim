@@ -297,6 +297,23 @@ describe('the dormant Assembly through real history', () => {
     expect(resolveTokens(g, '{othergov}')).toBe('the Executive');
   });
 
+  it('a 2016 Stormont career that leaves for Westminster and comes back finds the Executive history left behind', () => {
+    const g = game({ seed: 34, arena: 'ni', election: '2016-05-05', partyId: 'dup', era: '2015' });
+    g.player.stats.profile = 80;
+    g.day = isoToDay('2016-12-01');
+    const rng = new Rng(34);
+    jumpToArena(g, rng, 'uk', 'con');
+    expect(g.arena).toBe('uk');
+    g.day = isoToDay('2019-06-01');
+    jumpToArena(g, rng, 'ni', 'dup');
+    expect(g.arena).toBe('ni');
+    expect(g.government.executive?.status).toBe('collapsed');
+    expect(g.government.executive?.collapsedDay).toBe(isoToDay('2017-01-09'));
+    expect(sum(g.seats)).toBe(90);
+    expect(g.pmHistory.filter((t) => t.endDay === null)).toHaveLength(0);
+    expect(playerIsPM(g)).toBe(false);
+  });
+
   it('the catch-up plays the chronology: a 2016 Assembly left dormant collapses in January 2017 and re-forms in January 2020', () => {
     const g = game({ seed: 33, arena: 'ni', election: '2016-05-05', partyId: 'dup', era: '2015' });
     const rng = new Rng(33);

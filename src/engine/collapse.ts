@@ -7,9 +7,10 @@ import { partyNameIn, partyNameWithArticle } from '../data/parties';
 import { executiveDepartments } from '../data/offices';
 import { legislatureAt } from '../data/devolved';
 import {
-  ExecutivePlan, InstallOptions, allocateMinistries, clearDeputyFirstMinister, emptyCabinet,
+  ExecutivePlan, InstallOptions, allocateMinistries, clearDeputyFirstMinister, closeOpenTenure, emptyCabinet,
   installExecutive, isJointExecutive, planExecutive,
 } from './executive';
+export { NON_NOMINATION_EXTRAORDINARY, NON_NOMINATION_ORDINARY, decideFormation } from './executive';
 import { partyPollingShare } from './polling';
 import { isoToDay } from './clock';
 import { characterName } from './relationships';
@@ -43,10 +44,6 @@ export const EXTENSION_DAYS = 120;
 export const EXTRAORDINARY_ELECTION_LEAD = 45;
 /** no collapse outlasts this */
 export const COLLAPSE_CAP_DAYS = Math.round(3.5 * 365);
-/** after an ordinary election the heads are nominated; after an extraordinary one
- *  (fought during a collapse) the stalemate usually goes on */
-export const NON_NOMINATION_ORDINARY = 0.08;
-export const NON_NOMINATION_EXTRAORDINARY = 0.6;
 /** the dormant catch-up steps the clock in strides of this many days */
 const CATCH_UP_STRIDE = 28;
 
@@ -55,11 +52,6 @@ const HISTORY_END = isoToDay(NI_EXECUTIVE_HISTORY_END);
 // ---------------------------------------------------------------------------
 // falling
 // ---------------------------------------------------------------------------
-
-function closeOpenTenure(list: { endDay: number | null }[], day: number): void {
-  const open = list.find((t) => t.endDay === null);
-  if (open) open.endDay = day;
-}
 
 /** The heads cease to hold office. The ministers stay as caretakers until the
  *  law removes them (pre-2022: until the election; the 2022 Act: forty-eight
@@ -141,24 +133,6 @@ export function restoreExecutive(
   return plan;
 }
 
-/** whether the heads are nominated after an election: usually after an ordinary
- *  one, rarely after an extraordinary one fought during a collapse */
-export function decideFormation(
-  state: GameState, rng: Rng, heads: { fm: PartyId; dfm: PartyId },
-  opts: { playerLeads?: PartyId } = {}
-): { formed: true } | { formed: false; blocker: PartyId } {
-  const prior = state.government.executive;
-  const stalemate = prior?.status === 'collapsed';
-  const p = stalemate ? NON_NOMINATION_EXTRAORDINARY : NON_NOMINATION_ORDINARY;
-  // the player's own party is never rolled against: its leader decides on the card
-  const candidates = [heads.fm, heads.dfm].filter((party) => party !== opts.playerLeads);
-  if (candidates.length === 0 || !rng.chance(p)) return { formed: true };
-  const blocker = stalemate && prior?.blocker && candidates.includes(prior.blocker)
-    ? prior.blocker
-    : rng.pick(candidates);
-  return { formed: false, blocker };
-}
-
 /** the caretaker arrangement a collapsed snapshot describes, as an install option */
 export function caretakersFrom(
   snapshot: ExecutiveSnapshot, startDay: number
@@ -221,7 +195,9 @@ export function collapseTick(state: GameState, rng: Rng): boolean {
     // the deputy's party walks far more often than the First Minister's
     const walker: PartyId = rng.chance(0.7) ? (dfm ?? gv.governingParty) : gv.governingParty;
     if (walker === playerHead) {
-      state.forcedQueue.push({ kind: 'executiveCrisis' });
+      if (!state.forcedQueue.some((e) => e.kind === 'executiveCrisis')) {
+        state.forcedQueue.push({ kind: 'executiveCrisis' });
+      }
       return true;
     }
     collapseExecutive(state, walker === gv.governingParty ? 'fmWalkout' : 'dfmWalkout', walker);
@@ -238,9 +214,13 @@ export function collapseTick(state: GameState, rng: Rng): boolean {
     return true;
   };
 
-  // the cap: a deal is forced, and a player blocker is given the last word
+  // the cap: a deal is forced, and a player blocker is given the last word once;
+  // a leader who held out and survived the party is overruled the next time
   if (ex.collapsedDay !== undefined && state.day - ex.collapsedDay >= COLLAPSE_CAP_DAYS) {
-    if (blockerIsPlayer) return talks('cap');
+    if (blockerIsPlayer && !ex.capAsked) {
+      ex.capAsked = true;
+      return talks('cap');
+    }
     restoreExecutive(state, rng);
     return false;
   }
@@ -283,8 +263,8 @@ export function secretaryOfStateMoves(state: GameState, rng: Rng): void {
     });
     return;
   }
-  ex.deadline = state.nextElectionBy + formationLaw(state.day).afterElection;
   callExtraordinaryElection(state);
+  ex.deadline = state.nextElectionBy + formationLaw(state.day).afterElection;
 }
 
 // ---------------------------------------------------------------------------
