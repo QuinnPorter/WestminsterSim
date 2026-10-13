@@ -4,6 +4,7 @@ import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES } from '../data/parties';
+import { PLAYER_REGIONS } from '../data/regions';
 import { CAUSES_BY_ID } from '../data/causes';
 import { timelineRows } from './ProfileScreen';
 import { formatMonthYear } from '../engine/clock';
@@ -37,9 +38,17 @@ export function GameOverScreen({ game }: { game: GameState }) {
   };
 
   // carry the world on as a protégé: hand off to character creation, locked to the
-  // mentor's party and era (the world, date and cast are preserved)
-  const continueAsProtege = () =>
-    setProtege({ partyId: game.player.partyId, era: game.startEra });
+  // mentor's party and era (the world, date and cast are preserved). In the Commons
+  // the by-election can be fought in any region where the party holds a seat.
+  const continueAsProtege = () => {
+    const arena = game.arena ?? 'uk';
+    const party = game.player.partyId;
+    const homeRegion = game.seatMap.find((s) => s.id === game.player.seatId)?.region ?? game.player.region;
+    const regions = arena === 'uk'
+      ? PLAYER_REGIONS.filter((r) => game.seatMap.some((s) => s.region === r && s.winner === party))
+      : [];
+    setProtege({ partyId: party, era: game.startEra, arena, homeRegion, regions });
+  };
   const canContinue = game.gameOver!.reason === 'retired';
 
   const causes = (legacy.causes ?? []).map((c) => CAUSES_BY_ID[c]?.label).filter(Boolean);

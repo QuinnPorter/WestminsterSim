@@ -96,8 +96,12 @@ export function NewCareerScreen() {
   const [gender, setGender] = useState<Gender>('f');
   const [age, setAge] = useState(38);
   const [partyId, setPartyId] = useState<PartyId>(protege?.partyId ?? 'lab');
+  // a protégé starts in the mentor's seat's region; a mentor with no seat to hand
+  // on (a mayor, say) starts them in the first region the party holds
   const [region, setRegion] = useState<RegionId>(
-    protege ? (PARTIES[protege.partyId].contestsRegions[0] as RegionId) : 'yorkshire'
+    !protege ? 'yorkshire'
+      : protege.regions.length === 0 || protege.regions.includes(protege.homeRegion) ? protege.homeRegion
+        : protege.regions[0]
   );
   const [background, setBackground] = useState<BackgroundId>('teacher');
   const [causes, setCauses] = useState<CauseId[]>([]);
@@ -155,6 +159,8 @@ export function NewCareerScreen() {
     const input = {
       name: name.trim(), gender, age, region, background, partyId, avatar, era, causes,
       ...(arena === 'uk' ? {} : { arena, devolvedElection }),
+      // a protégé who chose to stand somewhere other than the mentor's seat
+      ...(protege && region !== protege.homeRegion ? { byElectionRegion: region } : {}),
     };
     if (protege) {
       continueAsProtege(input);
@@ -297,6 +303,27 @@ export function NewCareerScreen() {
             onChange={(e) => setAge(Number(e.target.value))}
             className="nc-range"
           />
+          {protege && protege.arena === 'uk' && protege.regions.length > 1 && (
+            <>
+              <label className="nc-label">Your by-election</label>
+              <select
+                className="nc-input"
+                value={region}
+                onChange={(e) => setRegion(e.target.value as RegionId)}
+              >
+                {protege.regions.map((r) => (
+                  <option key={r} value={r}>
+                    {REGIONS[r].name}{r === protege.homeRegion ? ' (your mentor’s seat)' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="nc-hint">
+                {region === protege.homeRegion
+                  ? 'You stand in your mentor’s old seat.'
+                  : `You stand in the party’s safest seat in ${REGIONS[region].name}.`}
+              </p>
+            </>
+          )}
         </div>
       )}
 

@@ -1,5 +1,16 @@
 import { create } from 'zustand';
-import { PartyId, Era } from '../types/game';
+import { ArenaId, PartyId, Era, RegionId } from '../types/game';
+
+/** what the end screen hands the new-career screen for a protégé: the locked
+ *  party and era, and where the by-election can be fought (the mentor's seat's
+ *  region, or any other region the party holds a seat in; Commons only) */
+export interface ProtegeSetup {
+  partyId: PartyId;
+  era: Era;
+  arena: ArenaId;
+  homeRegion: RegionId;
+  regions: RegionId[];
+}
 
 export type TabId = 'play' | 'history' | 'cabinet' | 'parliament' | 'profile';
 
@@ -39,8 +50,8 @@ interface UiState {
   setMentorHistoryOpen: (v: boolean) => void;
   /** when set, the new-career screen runs in "continue as protégé" mode: same
    *  world, locked to the mentor's party and era */
-  protege: { partyId: PartyId; era: Era } | null;
-  setProtege: (v: { partyId: PartyId; era: Era } | null) => void;
+  protege: ProtegeSetup | null;
+  setProtege: (v: ProtegeSetup | null) => void;
   /** whether the in-game agenda editor modal is open */
   agendaEditorOpen: boolean;
   setAgendaEditorOpen: (v: boolean) => void;

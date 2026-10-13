@@ -28,6 +28,9 @@ export interface CreationInput {
   /** broad causes chosen at the agenda step (0–3) */
   causes?: CauseId[];
   seed?: number;
+  /** a protégé only: fight the by-election in a seat the party holds in this
+   *  region rather than the mentor's own (the Commons only) */
+  byElectionRegion?: RegionId;
   /** the chamber the career begins in; omitted = the Commons */
   arena?: ArenaId;
   /** for a devolved start, the ISO polling day of the legislature chosen. `era`

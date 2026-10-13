@@ -7900,8 +7900,21 @@ function installProtege(state: GameState, rng: Rng, input: CreationInput, oldSea
     const held = state.seatMap.filter((s) => s.winner === party);
     seatId = (held[0] ?? state.seatMap[0]).id;
   }
-  // the protégé inherits the mentor's seat, so their home nation must follow that
-  // seat — NOT the region picker's default (the protégé flow skips the Party step,
+  // a Commons protégé may fight it elsewhere: the party's safest seat in the
+  // region they chose, where it holds one
+  const moveTo = input.byElectionRegion;
+  if (moveTo && (state.arena ?? 'uk') === 'uk') {
+    const there = state.seatMap
+      .filter((s) => s.region === moveTo && s.winner === party)
+      .sort((a, b) => (b.shares[party] ?? 0) - (a.shares[party] ?? 0));
+    if (there.length > 0) {
+      seatId = there[0].id;
+      for (const s of state.seatMap) delete s.isPlayerSeat;
+      there[0].isPlayerSeat = true;
+    }
+  }
+  // the protégé's home nation follows the seat they fight (the mentor's, or the
+  // one chosen above) — NOT the region picker's default (the protégé flow skips the Party step,
   // leaving region at contestsRegions[0] = 'scotland' for GB-wide parties, which
   // would wrongly make a non-Scottish-seat protégé eligible for Scotland Secretary)
   const seatRegion = state.seatMap.find((s) => s.id === seatId)?.region ?? input.region;
