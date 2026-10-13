@@ -73,7 +73,15 @@ export function collapseExecutive(
     ? state.nextElectionBy
     : state.day + law.caretakerAfterVacancy;
   delete ex.strain;
+  const playerWasFm = state.government.pmId === 'player';
   vacateHeads(state);
+  if (playerWasFm) {
+    // still the party's leader, and its First Minister-designate, but not in office
+    state.history.push({
+      kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: 'leader', how: 'continued',
+      roleSide: 'minor', partyId: state.player.partyId,
+    });
+  }
   const chamber = chamberOf(state.arena);
   const fmName = characterName(state, state.government.pmId);
   const party = partyNameIn(blocker, state.arena);
@@ -119,7 +127,15 @@ export function callExtraordinaryElection(state: GameState): void {
 /** the Executive re-forms around the designates: the rules run again on the
  *  seats, with the blocker's party back inside */
 export function restoreExecutive(state: GameState, rng: Rng, opts: FormOptions = {}): ExecutivePlan | null {
-  return formExecutive(state, rng, { ...opts, restored: true });
+  const plan = formExecutive(state, rng, { ...opts, restored: true });
+  // a designate who takes office opens a First Minister's span on the record
+  if (executiveInBeing(state) && state.government.pmId === 'player') {
+    state.history.push({
+      kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: 'leader', how: 'becamePM',
+      roleSide: 'gov', partyId: state.player.partyId,
+    });
+  }
+  return plan;
 }
 
 /** the caretaker arrangement a collapsed snapshot describes, as an install option */
@@ -404,6 +420,6 @@ export function resolveExecutiveCard(
     secretaryOfStateMoves(state, rng);
   }
   return context === 'postElection'
-      ? `You do not nominate. The Assembly meets, fails to elect a Speaker, and adjourns. ${chamber.place} has elected a parliament that cannot sit, and the clock has started again.`
+      ? `You do not nominate. The Assembly meets, fails to elect a Speaker, and adjourns. ${chamber.place} has elected an Assembly that cannot sit, and the clock has started again.`
       : `You hold out. The Secretary of State does what Secretaries of State do, which is extend things and look pained. Your base is delighted. The permanent secretaries order more stationery.`;
 }

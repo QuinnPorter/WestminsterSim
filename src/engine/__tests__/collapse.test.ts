@@ -8,7 +8,7 @@ import {
   secretaryOfStateMoves, stormontStoodOn,
 } from '../collapse';
 import {
-  applyElectionAftermath, giveOffice, playerIsPM, playerLeaderRole, playerOfficeTitle,
+  applyElectionAftermath, buildLegacy, giveOffice, playerIsPM, playerLeaderRole, playerOfficeTitle,
 } from '../career';
 import { installPlayerAsLeader, jumpToArena } from '../arena';
 import { runElection } from '../election';
@@ -18,6 +18,7 @@ import { nextStep } from '../scheduler';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
 import { cardEligible, resolveTokens } from '../cardEngine';
 import { ALL_CARDS } from '../../content/cards';
+import { buildOfficeSpans } from '../../screens/ProfileScreen';
 import { isoToDay } from '../clock';
 import { Rng } from '../rng';
 
@@ -261,6 +262,36 @@ describe('the player as a head', () => {
     resolveChoiceCore(g, rng, 0);
     expect(g.government.executive?.status).toBe('formed');
     expect(g.government.deputyPmId).toBe('player');
+  });
+
+  it('a First Minister’s span closes at a collapse and reopens, on the record, at the restoration', () => {
+    const g = game({ seed: 10, arena: 'ni', partyId: 'dup' });
+    const rng = new Rng(10);
+    installPlayerAsLeader(g, rng);
+    expect(playerIsPM(g)).toBe(true);
+    collapseExecutive(g, 'dfmWalkout', 'sf');
+    expect(buildOfficeSpans(g.history)[0]).toMatchObject({ officeId: 'leader', roleSide: 'minor', end: null });
+    g.day += 400;
+    restoreExecutive(g, rng);
+    expect(playerIsPM(g)).toBe(true);
+    const spans = buildOfficeSpans(g.history);
+    expect(spans[0]).toMatchObject({ officeId: 'leader', becamePM: true, roleSide: 'gov', end: null });
+    expect(spans[1]).toMatchObject({ roleSide: 'minor', end: g.day });
+    g.day += 2 * 365;
+    expect(buildLegacy(g).becamePM).toBe(true);
+  });
+
+  it('the talks are written for Stormont and keep their own words: London’s Secretary of State stays one', () => {
+    const g = game({ seed: 10, arena: 'ni', partyId: 'dup' });
+    const rng = new Rng(10);
+    installPlayerAsLeader(g, rng);
+    collapseExecutive(g, 'fmWalkout', 'dup');
+    g.currentCard = null as GameState['currentCard'];
+    g.forcedQueue.push({ kind: 'executiveTalks', payload: { context: 'deadline' } });
+    nextStep(g, rng);
+    expect(g.currentCard?.body).toContain('The Secretary of State has been on the phone');
+    resolveChoiceCore(g, rng, 1);
+    expect(g.currentCard?.outcome?.text).toContain('The Secretary of State does what Secretaries of State do');
   });
 
   it('a player First Minister holding out at the cap faces the party', () => {

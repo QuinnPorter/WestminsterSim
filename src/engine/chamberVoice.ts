@@ -179,6 +179,8 @@ function tidy(text: string): string {
 const SPEAKS_FOR_ITSELF = new Set([
   'ukRecruit', 'devolvedDraft', 'mayorDraft', 'mayorElection', 'mayorReturnOffer', 'lostMayoralty', 'mayorBystander',
   'outsideDraft', 'standForSeat',
+  // Stormont's own crisis, written for it: its Secretary of State is London's
+  'executiveCrisis', 'executiveTalks',
 ]);
 
 export function exemptFromChamberVoice(kind: string | undefined): boolean {
@@ -202,8 +204,8 @@ export function speakAsChamber(state: GameState, card: DrawnCard): DrawnCard {
 }
 
 /** apply it to a forced/calendar outcome before it is shown */
-export function outcomeAsChamber<T extends { text: string }>(state: GameState, outcome: T): T {
+export function outcomeAsChamber<T extends { text: string }>(state: GameState, outcome: T, kind?: string): T {
   const arena = state.arena ?? 'uk';
-  if (arena === 'uk') return outcome;
+  if (arena === 'uk' || exemptFromChamberVoice(kind)) return outcome;
   return { ...outcome, text: chamberVoice(arena, outcome.text, state.day) };
 }

@@ -55,7 +55,7 @@ export function resolveChoiceCore(game: GameState, rng: Rng, choiceIndex: number
       : resolveCalendarChoice(game, rng, card, choiceIndex);
     card.outcome = { text: resolveTokens(game, outcome.text), deltas: outcome.deltas };
   } else {
-    const outcome = outcomeAsChamber(game, resolveForcedChoice(game, rng, card, choiceIndex));
+    const outcome = outcomeAsChamber(game, resolveForcedChoice(game, rng, card, choiceIndex), card.kind);
     // A resolution that changes chambers (accepting a Westminster nomination,
     // winning a devolved leadership) resets the transient play state, and that
     // includes currentCard — so the outcome would be written onto a card the
