@@ -3354,11 +3354,13 @@ export function seatPlayerJuniorPartner(state: GameState, rng: Rng, forceBrief =
   const govRole = deputy
     ? deputyPrefix('dpm', state.arena ?? 'uk')
     : (post ? titleInLiveChamber(state, post.officeId, true) : playerOfficeTitle(state));
-  state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', label: govRole });
+  // a Deputy PM who also runs a department holds both, and the timeline shows both
+  const brief = deputy && post ? titleInLiveChamber(state, post.officeId, true) : undefined;
+  state.history.push({ kind: 'deputyOverlay', date: state.day, action: 'start', label: govRole, ...(brief ? { brief } : {}) });
   if (!deputy) state.player.flags._govOverlayOpen = true; // the DPM case uses _isDeputyPM
   state.history.push({
     kind: 'event', date: state.day,
-    headline: `${state.player.name} becomes ${govRole} in coalition`,
+    headline: `${state.player.name} becomes ${govRole}${brief ? ` and ${brief}` : ''} in coalition`,
   });
 }
 

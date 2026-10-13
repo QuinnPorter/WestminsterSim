@@ -499,7 +499,9 @@ export type HistoryEntry =
   | { kind: 'event'; date: GameDay; headline: string }
   /** the Deputy-PM / First-Secretary overlay held ON TOP of a brief — a separate,
    *  concurrent timeline track (paired start→end), so it shows alongside the office */
-  | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' | 'dfm'; label?: string }
+  | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' | 'dfm'; label?: string;
+      /** a Deputy PM who also runs a department: the brief, shown as its own row */
+      brief?: string }
   | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: DepartmentId;
       /** the chamber the committee sits in; absent on older entries, which are all Westminster */
       arena?: ArenaId }

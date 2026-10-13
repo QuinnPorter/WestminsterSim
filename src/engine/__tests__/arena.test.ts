@@ -335,6 +335,31 @@ describe('a junior coalition partner’s leader at Holyrood', () => {
   });
 });
 
+describe('a junior coalition partner’s leader at Westminster', () => {
+  it('a Deputy PM who also runs a department has both on the timeline, over the same dates', () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = game({ partyId: 'ld', era: '2010', region: 'southWest', seed });
+      g.player.officeId = 'leader';
+      g.seats.ld = 57;
+      g.government.arrangement = 'coalition';
+      g.government.coalitionPartner = 'ld';
+      seatPlayerJuniorPartner(g, new Rng(seed));
+      const post = g.government.cabinet.find((p) => p.characterId === 'player');
+      if (!post) continue; // a Clegg-style deputy with no department this time
+      checked++;
+      const rows = timelineRows(g);
+      const dpm = rows.find((r) => r.title === 'Deputy Prime Minister');
+      const brief = rows.find((r) => r.title !== 'Deputy Prime Minister' && r.start === dpm?.start && !/Leader/.test(r.title));
+      expect(dpm).toBeTruthy();
+      expect(brief?.title).toBeTruthy();
+      expect(brief!.end).toBe(dpm!.end);
+      expect(g.history.some((h) => h.kind === 'event' && h.headline.includes(`Deputy Prime Minister and ${brief!.title}`))).toBe(true);
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});
+
 describe("the chamber's voice", () => {
   it('rewrites Commons nouns and leaves the Scottish National Party alone', () => {
     const out = chamberVoice('scotland', 'The Prime Minister tells MPs in the Commons that the Scottish National Party has a nationwide problem. PMQs was brutal.');

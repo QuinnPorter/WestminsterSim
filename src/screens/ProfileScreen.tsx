@@ -73,13 +73,13 @@ export function buildOfficeSpans(history: GameState['history']): OfficeSpan[] {
   return spans.reverse(); // newest first
 }
 
-export interface DeputySpan { title: 'dpm' | 'firstSec' | 'dfm'; label?: string; start: number; end: number | null; }
+export interface DeputySpan { title: 'dpm' | 'firstSec' | 'dfm'; label?: string; brief?: string; start: number; end: number | null; }
 
 /** the concurrent government-overlay spans (Deputy PM / First Secretary, or a junior
  *  coalition leader's department brief), paired from the deputyOverlay start/end history
  *  entries (an open span runs to "now") */
 export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
-  return pairSpans(history, 'deputyOverlay', (e) => ({ title: e.title ?? 'dpm', label: e.label }));
+  return pairSpans(history, 'deputyOverlay', (e) => ({ title: e.title ?? 'dpm', label: e.label, brief: e.brief }));
 }
 
 export interface CommitteeSpan { dept: DepartmentId; arena?: ArenaId; start: number; end: number | null; }
@@ -102,10 +102,14 @@ export function timelineRowsFromHistory(
   const office: TimelineRow[] = buildOfficeSpans(history).map((s) => ({
     title: spanTitle(game, s), start: s.start, end: close(s.end),
   }));
-  const deputy: TimelineRow[] = buildDeputySpans(history).map((d) => ({
-    title: d.label ?? (d.title === 'firstSec' ? 'First Secretary of State' : ((game.arena ?? 'uk') === 'uk' ? 'Deputy Prime Minister' : 'Deputy First Minister')),
-    start: d.start, end: close(d.end),
-  }));
+  const deputy: TimelineRow[] = buildDeputySpans(history).flatMap((d) => [
+    {
+      title: d.label ?? (d.title === 'firstSec' ? 'First Secretary of State' : ((game.arena ?? 'uk') === 'uk' ? 'Deputy Prime Minister' : 'Deputy First Minister')),
+      start: d.start, end: close(d.end),
+    },
+    // the department a coalition Deputy PM runs alongside, over the same dates
+    ...(d.brief ? [{ title: d.brief, start: d.start, end: close(d.end) }] : []),
+  ]);
   const committee: TimelineRow[] = buildCommitteeSpans(history).map((c) => ({
     title: committeeChairTitle(c.dept, c.arena), start: c.start, end: close(c.end),
   }));
