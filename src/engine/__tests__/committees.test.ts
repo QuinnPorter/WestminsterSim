@@ -8,10 +8,10 @@ import { Rng } from '../rng';
 
 describe('committee chairs in every chamber', () => {
   it('are named as each chamber names them', () => {
-    expect(committeeNameFor('uk', 'treasury')).toBe('Treasury Select Committee');
+    expect(committeeNameFor('treasury', 'uk')).toBe('Treasury Select Committee');
     expect(committeeChairTitle('treasury')).toBe('Chair, Treasury Select Committee');
-    expect(committeeNameFor('ni', 'finance')).toBe('Committee for Finance');
-    expect(committeeNameFor('ni', 'economy')).toBe('Committee for the Economy');
+    expect(committeeNameFor('finance', 'ni')).toBe('Committee for Finance');
+    expect(committeeNameFor('economy', 'ni')).toBe('Committee for the Economy');
     expect(committeeChairTitle('finance', 'scotland')).toBe('Convener, Finance Committee');
     expect(committeeChairTitle('health', 'wales')).toBe('Chair, Health Committee');
   });

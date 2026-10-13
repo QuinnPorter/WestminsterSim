@@ -88,7 +88,7 @@ export function resolveTokens(state: GameState, text: string): string {
     journalist: relationshipName(state, 'journalist'),
     constituency: seat?.name ?? 'your constituency',
     department: dept ? departmentInfo(dept).casual : 'the department',
-    committee: state.player.committeeChair ? committeeNameFor(arena, state.player.committeeChair) : 'your committee',
+    committee: state.player.committeeChair ? committeeNameFor(state.player.committeeChair, arena) : 'your committee',
     cmtdept: state.player.committeeChair ? departmentInfo(state.player.committeeChair).casual : 'the department',
     party: partyNameIn(state.player.partyId, arena),
     govparty: partyNameIn(state.government.governingParty, arena),

@@ -15,6 +15,7 @@ import { becomeMayor, buildLegacy } from './src/engine/career';
 import { isOutsideLeader } from './src/engine/outsideLeader';
 import { mayoraltiesIn } from './src/data/mayoralties';
 import { PARLIAMENTS } from './src/data/parliaments';
+import { houseSizeOf, seatSystemAt } from './src/data/chambers';
 import { Rng } from './src/engine/rng';
 import { PLAYABLE_NI } from './src/data/parties';
 import { GameState } from './src/types/game';
@@ -154,10 +155,11 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
       const opened = game.pmHistory.filter((t) => t.startDay === game.day).length;
       if (opened > 1) flags.push(`two head-of-government tenures opened on one day at step ${steps}`);
     }
-    // the House is one of the sizes a chamber can be
+    // the House is the size its seat system elected at the start of this parliament
     {
       const house = Object.values(game.seats).reduce((a, b) => a + (b ?? 0), 0);
-      if (![650, 129, 60, 96, 108, 90].includes(house)) flags.push(`House of ${house} seats at step ${steps}`);
+      const expected = houseSizeOf(seatSystemAt(game.arena, game.parliamentStart), 650);
+      if (house !== expected) flags.push(`House of ${house} seats, expected ${expected}, at step ${steps}`);
     }
     // stat sanity
     for (const [k, v] of Object.entries(game.player.stats)) {

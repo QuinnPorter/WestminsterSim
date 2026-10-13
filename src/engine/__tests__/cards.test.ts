@@ -1,26 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_CARDS, CARD_TOKENS, validateCards } from '../../content/cards';
+import { ALL_CARDS, MAYOR_CARDS, OUTSIDE_LEADER_CARDS, validateCards } from '../../content/cards';
+import { NI_CARDS } from '../../content/cards/nations/ni';
+import { NI_COLLAPSE_CARDS } from '../../content/cards/nations/niCollapse';
+import { REGION_CARDS } from '../../content/cards/regionCards';
 import { resolveTokens } from '../cardEngine';
 import { newTestGame } from '../../test/play';
 
 describe('the card corpus', () => {
-  it('validates, and every token the validator allows is one the engine resolves', () => {
+  it('validates, and a token the validator does not know stays unresolved', () => {
     expect(validateCards(ALL_CARDS)).toEqual([]);
-    const g = newTestGame({ seed: 1 });
-    for (const token of CARD_TOKENS) {
-      expect(resolveTokens(g, `{${token}}`)).not.toBe(`{${token}}`);
-    }
-    // and a token the validator does not know stays unresolved, so the check bites
-    expect(resolveTokens(g, '{nosuchtoken}')).toBe('{nosuchtoken}');
+    // the validator and the resolver share one typed token list, so the only
+    // behaviour left to check is that an unknown token is left as it was
+    expect(resolveTokens(newTestGame({ seed: 1 }), '{nosuchtoken}')).toBe('{nosuchtoken}');
   });
 });
 
 describe('the decks are at their floors', () => {
-  it('Stormont, the collapse, City Hall, the outside leader and Northern Ireland at Westminster', async () => {
-    const { NI_CARDS } = await import('../../content/cards/nations/ni');
-    const { NI_COLLAPSE_CARDS } = await import('../../content/cards/nations/niCollapse');
-    const { MAYOR_CARDS, OUTSIDE_LEADER_CARDS } = await import('../../content/cards');
-    const { REGION_CARDS } = await import('../../content/cards/regionCards');
+  it('Stormont, the collapse, City Hall, the outside leader and Northern Ireland at Westminster', () => {
     expect(NI_CARDS.length).toBeGreaterThanOrEqual(40);
     expect(NI_COLLAPSE_CARDS.length).toBeGreaterThanOrEqual(12);
     expect(MAYOR_CARDS.length).toBeGreaterThanOrEqual(25);

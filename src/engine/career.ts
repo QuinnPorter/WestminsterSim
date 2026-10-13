@@ -2,13 +2,13 @@ import {
   ArenaId, CabinetPost, CauseId, Character, ContestState, DepartmentId, DevolvedArenaId, DrawnCard,
   ElectionResult, ForcedEvent, GameState, HistoryEntry, LegacySummary, Mentor, NpcContest, OfficeId,
   PartyId, Player, PlayerStats, PmTenure, RegionId, Relationship, RelationshipKind, StatDelta,
-  UkDepartmentId,
 } from '../types/game';
 import type { CreationInput } from './newGame';
-import { COMMITTEE_NAMES, committeeChairNoun, committeeChairTitle, committeeNameFor } from '../data/committees';
+import { committeeChairNoun, committeeChairTitle, committeeDepartments, committeeNameFor } from '../data/committees';
+import { pairSpans } from './historySpans';
 import {
   DEPARTMENTS, GREAT_OFFICES, OFFICES, cabinetOfficesFor, departmentInfo,
-  isGreatOffice, officeArena, officeTitle, officeTitleFor, officeTitleIn, translateOffice, isSpokespersonOffice, executiveDepartments,
+  isGreatOffice, officeArena, officeTitle, officeTitleFor, officeTitleIn, translateOffice, isSpokespersonOffice,
 } from '../data/offices';
 import { chamberAt, chamberOf, ministerialTitlesAt, nextFixedElectionDay } from '../data/chambers';
 import { leaderOfTitle, outsidePartyPolitics, partyNameIn, partyNameWithArticle } from '../data/parties';
@@ -320,12 +320,7 @@ export function canChairCommittee(state: GameState): boolean {
 /** pick a committee for a contest, biased toward the player's causes/background
  *  (their expertise), else any department */
 export function pickCommittee(state: GameState, rng: Rng): DepartmentId {
-  // the Commons' departmental select committees, or the devolved chamber's
-  // committee for each of its government's departments
-  const arena = state.arena ?? 'uk';
-  const depts: DepartmentId[] = arena === 'uk'
-    ? (Object.keys(COMMITTEE_NAMES) as UkDepartmentId[])
-    : executiveDepartments(arena);
+  const depts = committeeDepartments(state.arena);
   const affinity = new Set<DepartmentId>([
     ...causeDepartments(state.player.causes ?? []),
     ...(BACKGROUNDS[state.player.background]?.deptAffinity ?? []),
@@ -358,7 +353,7 @@ function clearCommitteeChair(state: GameState, reason: 'tookOffice' | 'lostSeat'
   if (reason === 'tookOffice') {
     state.history.push({
       kind: 'event', date: state.day,
-      headline: `${state.player.name} stands down as ${committeeChairNoun(state.arena)} of the ${committeeNameFor(state.arena, dept)} to take office`,
+      headline: `${state.player.name} stands down as ${committeeChairNoun(state.arena)} of the ${committeeNameFor(dept, state.arena)} to take office`,
     });
   }
 }
@@ -4516,18 +4511,18 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     }
     case 'committeeChairContest': {
       const incumbent = ev.payload?.incumbent === true;
-      const dept = (ev.payload?.dept as DepartmentId) ?? 'treasury';
+      const dept = ev.payload?.dept as DepartmentId;
       const arena = state.arena ?? 'uk';
-      const committee = committeeNameFor(arena, dept);
+      const committee = committeeNameFor(dept, arena);
       const chair = committeeChairNoun(arena);
       const chamber = chamberAt(arena, state.day);
       // the Commons elects its chairs by a ballot of the whole House; a devolved
       // chamber shares them out among the parties and the group puts a name forward
-      const commons = arena === 'uk';
+      const commons = chamber.committee.houseBallot;
       const body = incumbent
         ? (commons
           ? `A new parliament means a fresh ballot for the chair of the ${committee}. Colleagues across the House have valued your scrutiny — but the post is in the gift of MPs, and you must stand again. Put your name forward?`
-          : `A new ${chamber.house.replace(/^the /, '')} means the committee places are shared out again, and the group has to decide whether the ${committee} stays yours. Your scrutiny was valued; so are the ambitions of the people who want the chair. Do you ask to keep it?`)
+          : `A new ${chamber.voice.termNoun} means the committee places are shared out again, and the group has to decide whether the ${committee} stays yours. Your scrutiny was valued; so are the ambitions of the people who want the chair. Do you ask to keep it?`)
         : (commons
           ? `The chair of the ${committee} is vacant, and it is elected by the whole House. It is a prize for a respected backbencher: a platform to scrutinise the government, summon ministers, and build a reputation independent of the front bench. Do you stand?`
           : `The ${chair.toLowerCase()}'s seat on the ${committee} has fallen to your party in the share-out, and the group must put a name forward. It is a prize for a respected ${chamber.member}: a platform to scrutinise the ${chamber.government}, summon ministers, and build a reputation independent of the front bench. Do you put yours?`);
@@ -7434,12 +7429,13 @@ export function resolveForcedChoice(
 
     case 'committeeChairContest': {
       const incumbent = card.payload?.incumbent === true;
-      const dept = (card.payload?.dept as DepartmentId) ?? 'treasury';
-      const committee = committeeNameFor(state.arena, dept);
+      const dept = card.payload?.dept as DepartmentId;
+      const committee = committeeNameFor(dept, state.arena);
       const chair = committeeChairNoun(state.arena);
-      const house = chamberAt(state.arena, state.day).houseThe;
+      const chamber = chamberAt(state.arena, state.day);
+      const house = chamber.houseThe;
       // the Commons votes as a House; a devolved group decides in a room upstairs
-      const commons = (state.arena ?? 'uk') === 'uk';
+      const commons = chamber.committee.houseBallot;
       // guard: only a pure backbencher can chair — if the player has since taken
       // office or the Chair, an incumbent loses the chair and the contest passes
       if (!canChairCommittee(state)) {
@@ -8644,9 +8640,10 @@ export function buildLegacy(state: GameState): LegacySummary {
   const everDeputyPM = !!state.player.flags._everDeputyPM;
   const deputyArena = (state.player.flags._everDeputyArena as ArenaId | undefined) ?? 'uk';
   const everCommitteeChair = !!state.player.flags._wasCommitteeChair;
-  // the chamber of the last committee chaired, for the title's noun
-  const committeeArena: ArenaId = [...state.history].reverse()
-    .find((h): h is Extract<HistoryEntry, { kind: 'committeeTenure' }> => h.kind === 'committeeTenure')?.arena ?? 'uk';
+  // the chamber of the last committee chaired, for the title's noun (only the
+  // span's start entry carries the arena)
+  const committeeSpans = pairSpans(state.history, 'committeeTenure', (e) => ({ arena: e.arena ?? 'uk' }));
+  const committeeArena: ArenaId = committeeSpans[committeeSpans.length - 1]?.arena ?? 'uk';
   // the Speaker's Chair is a distinct top-tier honour; Deputy PM ranks just below
   // a party leader. Both outrank a plain cabinet seat. A select-committee chair is
   // a notable backbench honour — above a plain MP, below any ministerial office.
@@ -8658,6 +8655,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     : level === 3 ? leaderArena
     : level === 2 ? cabinetArena
     : level === 1 ? ministerArena
+    : everCommitteeChair ? committeeArena
     : (state.arena ?? 'uk');
   const bestTitle =
     level === 4 ? (headArena === 'uk'
@@ -8670,7 +8668,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     : everMayor ? mayorLabel
     : everChiefRole ? chiefTitle
     : level === 1 ? `${ministerTitle}${ministerArena === 'uk' ? '' : ` (${chamberOf(ministerArena).place})`}`
-    : everCommitteeChair ? (committeeArena === 'uk' ? 'Select Committee Chair' : `Committee ${committeeChairNoun(committeeArena)}`)
+    : everCommitteeChair ? (apexArena === 'uk' ? 'Select Committee Chair' : `Committee ${committeeChairNoun(apexArena)}`)
     : `Backbench ${chamberOf(state.arena).member}`;
   // count only THIS character's own elections — a protégé must not inherit the
   // mentor's wins (state.elections spans the whole dynasty/world)

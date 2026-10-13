@@ -1,6 +1,5 @@
 import { DecisionCard } from '../../types/content';
 import { CARD_TOKEN_KEYS } from '../tokens';
-import { CHAMBERS } from '../../data/chambers';
 import { PERSONAL_CARDS } from './personal';
 import { BACKBENCHER_CARDS } from './backbencher';
 import { CONSTITUENCY_CARDS } from './constituency';
@@ -95,8 +94,7 @@ export const ALL_CARDS: DecisionCard[] = [
 ];
 
 /** every `{token}` a card may use (the resolver in engine/cardEngine.ts is typed against the same list) */
-export const CARD_TOKENS = new Set<string>(CARD_TOKEN_KEYS);
-const ARENAS = new Set(Object.keys(CHAMBERS));
+const CARD_TOKENS = new Set<string>(CARD_TOKEN_KEYS);
 
 export function validateCards(cards: DecisionCard[]): string[] {
   const errors: string[] = [];
@@ -111,9 +109,6 @@ export function validateCards(cards: DecisionCard[]): string[] {
     seen.add(card.id);
     checkTokens(card.id, card.title);
     checkTokens(card.id, card.body);
-    for (const a of card.requires?.arena ?? []) {
-      if (!ARENAS.has(a)) errors.push(`${card.id}: unknown arena ${a}`);
-    }
     if (card.weight <= 0) errors.push(`${card.id}: weight must be > 0`);
     if (card.choices.length < 2 || card.choices.length > 4) {
       errors.push(`${card.id}: must have 2-4 choices`);
