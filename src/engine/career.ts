@@ -7999,6 +7999,16 @@ export function changeParty(state: GameState, rng: Rng, newParty: PartyId): void
   if (state.player.officeId) {
     stripOffice(state, rng, 'leftOffice');
   }
+  // the old party's mayoral candidate is the old party's: the selection goes with them
+  if (state.player.mayorCandidacy) {
+    const name = mayoraltyName(playerMayoralty(state));
+    delete state.player.mayorCandidacy;
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${state.player.name} stands down as ${partyNameWithArticle(oldParty, 'uk')}’s candidate for ${name}`,
+    });
+  }
+  state.forcedQueue = state.forcedQueue.filter((e) => e.kind !== 'mayorDraft' && e.kind !== 'mayorElection');
   state.player.partyId = newParty;
   state.player.rebellionCount = 0;
 
@@ -8374,7 +8384,10 @@ function careerVerdict(
   stats: PlayerStats, rebellions: number, years: number, everCommitteeChair = false,
   yearsAsPM = 0,
   /** the chamber the career's highest rung was reached in */
-  apexArena: ArenaId = 'uk'
+  apexArena: ArenaId = 'uk',
+  /** the mayoralty held longest, where there was one: its own rung, below a
+   *  cabinet seat and above the chief roles, as on the end-screen title */
+  mayorName = ''
 ): { rating: string; verdict: string } {
   const devolved = apexArena !== 'uk';
   const place = chamberOf(apexArena).place;
@@ -8392,6 +8405,8 @@ function careerVerdict(
     rating = 'Contender';
   } else if (everDeputyPM || level === 2) {
     rating = 'Heavyweight';
+  } else if (mayorName) {
+    rating = 'Mayor';
   } else if (everChiefRole) {
     // Chief Whip / Chief Secretary: senior, but below the full cabinet
     rating = 'Senior Minister';
@@ -8414,7 +8429,7 @@ function careerVerdict(
   if (stats.profile <= 30) adjectives.push('low-profile');
   // a "household name" only for those who reached a top office: a great office of
   // state, a party leader (PM / LO / minor-party), the Deputy PM, or the Speaker
-  const topOffice = everGreatOffice || level >= 3 || everDeputyPM || everSpeaker;
+  const topOffice = everGreatOffice || level >= 3 || everDeputyPM || everSpeaker || !!mayorName;
   if (stats.profile >= 75 && topOffice) nouns.push('a household name');
   if (stats.competence >= 75) nouns.push('a safe pair of hands');
 
@@ -8424,6 +8439,7 @@ function careerVerdict(
     : level === 3 ? 'party leader'
     : everDeputyPM ? (devolved ? 'Deputy First Minister' : 'Deputy Prime Minister')
     : level === 2 ? (devolved ? ministerialTitlesAt(apexArena, state.day).senior.replace(/\s+for$/, '') : 'cabinet minister')
+    : mayorName ? mayorName
     : everChiefRole ? chiefNoun
     : realMinister ? 'junior minister'
     : everCommitteeChair ? (devolved ? `committee ${committeeChairNoun(apexArena).toLowerCase()}` : 'select committee chair')
@@ -8695,7 +8711,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     state,
     level, everSpeaker, everDeputyPM, everGreatOffice, everMinister, everChiefRole, chiefNoun,
     state.player.stats, state.player.rebellionCount, yearsServed, everCommitteeChair, yearsAsPM,
-    apexArena
+    apexArena, mayorLabel
   );
   return {
     yearsServed,

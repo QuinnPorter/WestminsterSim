@@ -99,9 +99,9 @@ export const RETURN_OFFER_MIN_DAYS = 365 * 2;
 /** the offer card and the three campaign cards run the clock up to this many
  *  days; the general election must be counted before the mayoral one */
 export const RETURN_OFFER_LEAD = 80;
-/** a full term, as the record counts it (a term cut short by the 2021
- *  postponement still counts) */
-export const FULL_TERM_DAYS = Math.round(3.5 * 365);
+/** a full term, as the record counts it: a term cut short by the 2021
+ *  postponement (May 2021 to May 2024, about 1,092 days) still counts */
+export const FULL_TERM_DAYS = Math.round(2.9 * 365);
 
 /** does the party offer a sitting mayor a seat at the general election being
  *  called today: not in the first two years, and only when the count comes

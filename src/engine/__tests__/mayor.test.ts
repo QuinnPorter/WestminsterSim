@@ -8,9 +8,9 @@ import { INTERLUDES } from '../scheduler';
 import { cardEligible, resolveTokens } from '../cardEngine';
 import { newTestGame as game, play } from '../../test/play';
 import { pickSeatFor } from '../arena';
-import { RETURN_OFFER_MIN_DAYS, mayorDraftTargets, mayoralResult, regionalStrength } from '../mayor';
+import { RETURN_OFFER_MIN_DAYS, mayorDraftTargets, mayoralResult, regionalStrength, servedFullTerm } from '../mayor';
 import {
-  becomeMayor, buildLegacy, materializeForced, playerStatusTitle,
+  becomeMayor, buildLegacy, changeParty, materializeForced, playerStatusTitle,
 } from '../career';
 import { isoToDay } from '../clock';
 import { Rng } from '../rng';
@@ -332,6 +332,21 @@ describe('City Hall', () => {
     for (const card of MAYOR_CARDS) expect(cardEligible(mp, card)).toBe(false);
   });
 
+  it('a 2021 mayor’s shortened term counts as a full one', () => {
+    const { g } = asMayor(8, 'greaterManchester');
+    g.player.mayor!.since = isoToDay('2021-05-06');
+    g.day = isoToDay('2024-04-01');
+    expect(servedFullTerm(g)).toBe(true);
+  });
+
+  it('a candidate who crosses the floor stands down as the old party’s candidate', () => {
+    const g = game({ seed: 9, profile: 60 });
+    g.player.mayorCandidacy = { mayoralty: 'london', pollingDay: isoToDay('2021-05-06') };
+    changeParty(g, new Rng(9), 'green');
+    expect(g.player.mayorCandidacy).toBeUndefined();
+    expect(g.history.some((h) => h.kind === 'event' && /stands down as .*candidate for Mayor of London/.test(h.headline))).toBe(true);
+  });
+
   it('the chosen exit speaks of City Hall, and the legacy records the office', () => {
     const { g, rng } = asMayor(6);
     const card = materializeForced(g, rng, { kind: 'exitOffer', payload: { role: 'peerage' } });
@@ -343,6 +358,10 @@ describe('City Hall', () => {
     expect(legacy.wasMayor).toBe(true);
     expect(legacy.yearsAsMayor).toBe(5);
     expect(legacy.mayoralElectionsWon).toBe(1);
+    // the verdict names the office too, not the backbenches the career left
+    expect(legacy.rating).toBe('Mayor');
+    expect(legacy.verdict).toMatch(/Mayor of London/);
+    expect(legacy.verdict).not.toMatch(/Backbencher/);
   });
 
   it('a long mayoralty reads cleanly: no stray tokens, no undefined, the world still turns', () => {
