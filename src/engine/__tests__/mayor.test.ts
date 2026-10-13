@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { GameState, PartyId, RegionId } from '../../types/game';
+import { GameState } from '../../types/game';
 import {
   MAYORALTIES, mayoraltyById, mayoralVotingSystemAt, nextMayoralElection,
 } from '../../data/mayoralties';
 import { ALL_CARDS, MAYOR_CARDS } from '../../content/cards';
-import { createNewGame } from '../newGame';
-import { INTERLUDES, nextStep } from '../scheduler';
-import { initCalendar } from '../calendar';
-import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
+import { INTERLUDES } from '../scheduler';
 import { cardEligible, resolveTokens } from '../cardEngine';
+import { newTestGame as game, play } from '../../test/play';
 import { pickSeatFor } from '../arena';
 import { RETURN_OFFER_MIN_DAYS, mayorDraftTarget, mayoralResult, regionalStrength } from '../mayor';
 import {
@@ -20,40 +18,6 @@ import { Rng } from '../rng';
 // the setup file turns the interludes off for every seeded test; this file is
 // about them
 INTERLUDES.mayorDraft = true;
-
-function game(opts: { seed: number; region?: RegionId; partyId?: PartyId; era?: '2010' | '2015' | '2017' | '2019' | '2024'; profile?: number }): GameState {
-  const g = createNewGame({
-    name: 'Test Subject', gender: 'f', age: 40, region: opts.region ?? 'london', background: 'lawyer',
-    partyId: opts.partyId ?? 'lab',
-    avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
-    era: opts.era ?? '2019', seed: opts.seed,
-  });
-  initCalendar(g);
-  if (opts.profile !== undefined) g.player.stats.profile = opts.profile;
-  return g;
-}
-
-/** play turns, answering every card with its first choice unless told otherwise */
-function play(
-  g: GameState, rng: Rng, turns: number,
-  onCard: (g: GameState, kind: string) => number = () => 0,
-  until?: (g: GameState) => boolean
-): string[] {
-  const kinds: string[] = [];
-  for (let turn = 0; turn < turns && !g.gameOver; turn++) {
-    if (until?.(g)) break;
-    if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
-    if (!g.currentCard) nextStep(g, rng);
-    if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
-    const card = g.currentCard;
-    if (!card) break;
-    kinds.push(card.kind);
-    resolveChoiceCore(g, rng, onCard(g, card.kind));
-    if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
-    continueCore(g, rng);
-  }
-  return kinds;
-}
 
 function asMayor(seed: number, mayoralty = 'london'): { g: GameState; rng: Rng } {
   const g = game({ seed });

@@ -2,6 +2,7 @@ import {
   DepartmentId, DevolvedArenaId, DrawnCard, GameState, PartyId, StatDelta, MayorState,
 } from '../types/game';
 import { ALL_CARDS, fallbackPoolFor } from '../content/cards';
+import { DecisionCard } from '../types/content';
 import { outcomeAsChamber, speakAsChamber } from './chamberVoice';
 import { chamberOf, nationOfRegion } from '../data/chambers';
 import { calendarFor, nextOccurrence } from './calendar';
@@ -19,7 +20,7 @@ import {
   canHoldOffice, reconcilePlayerDeputy, reconcilePlayerOffice, canChairCommittee, pickCommittee,
   resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
   noteReshuffle, reshuffleOnCooldown, frontbenchParty, withdrawMayorCandidacy, markSeatCandidacy,
-  playerLeadsMinorParty,
+  onMinorPartySide,
 } from './career';
 import {
   CANDIDATE_COUNT_LEAD, INCUMBENT_COUNT_LEAD, MAYOR_DRAFT_COOLDOWN, mayorDraftChance, mayorDraftTarget,
@@ -28,6 +29,7 @@ import {
 import type { ExitRole } from './mayor';
 export type { ExitRole } from './mayor';
 import { buildPmqsProxyCard, isOutsideLeader, pmqsProxyOutcome } from './outsideLeader';
+import { draftOdds } from './draftOdds';
 import { INTERLUDES } from './interludes';
 export { INTERLUDES } from './interludes';
 export type { InterludeId } from './interludes';
@@ -40,7 +42,7 @@ import { runElection } from './election';
 import { applyPollingShock, gainStat } from './effects';
 import { calibratedPolling, partyPolling, pollingLead, lastElectionShares, updatePolling } from './polling';
 import { yearOf, monthOf } from './clock';
-import { Rng, clamp, sideRng } from './rng';
+import { Rng, sideRng } from './rng';
 import { seatsForMajorityIn } from './seats';
 
 /** a leader crowned without a real contest (a coronation or a squeezed-out challenger)
@@ -83,7 +85,7 @@ type CalRole = 'pm' | 'govMinister' | 'oppLeader' | 'oppFront' | 'minor' | 'govB
 function calRole(state: GameState): CalRole {
   if (playerIsPM(state)) return 'pm';
   const inGov = playerInGovernmentBloc(state);
-  if (onMinorPartyTrack(state) || playerLeadsMinorParty(state)) return 'minor';
+  if (onMinorPartySide(state)) return 'minor';
   if (playerIsLeader(state)) return inGov && executiveInBeing(state) ? 'pm' : 'oppLeader';
   const onFront = onFrontbenchTrack(state) && playerTier(state) >= 1;
   if (inGov) return onFront ? 'govMinister' : 'govBack';
@@ -171,7 +173,7 @@ function buildCalendarCard(state: GameState, rng: Rng, key: string): DrawnCard {
     }
     case 'pmqsProxy': {
       // a leader with no seat: a deputy takes the despatch box
-      const proxy = buildPmqsProxyCard(deputyAtTheBox(state));
+      const proxy = buildPmqsProxyCard(state);
       return {
         ...base,
         title: proxy.title,
@@ -238,7 +240,7 @@ function resolveCalendarCore(
         stat('partyStanding', 2, 'Standing');
         adjustRelationship(state, 'rival', 3);
       }
-      return { text: pmqsProxyOutcome(choiceIndex, deputyAtTheBox(state)), deltas };
+      return { text: pmqsProxyOutcome(state, choiceIndex), deltas };
     }
     case 'conference':
       if (choiceIndex === 0) {
@@ -509,20 +511,6 @@ function closestOnBallot(
   return ranked.length > 0 && ranked[0].d <= 25 ? ranked[0].p : null;
 }
 
-/** The odds the members hand it to an outsider from Westminster. A party out of
- *  office is markedly readier to look outside; a bigger reputation carries
- *  further. Never a certainty and never hopeless. */
-export function draftOdds(state: GameState, desperate: boolean): number {
-  const s = state.player.stats;
-  const peak = Number(state.player.flags._peakTier ?? 0);
-  const base = 0.20
-    + (peak >= 5 ? 0.16 : peak >= 4 ? 0.10 : 0)
-    + (s.profile - 60) / 250
-    + (s.competence - 55) / 300
-    + (desperate ? 0.12 : 0);
-  return clamp(base, 0.15, 0.75);
-}
-
 // ---------- the brain ----------
 
 /** True when a reshuffle offer has already been presented in the current calendar
@@ -656,8 +644,6 @@ function nextStepCore(state: GameState, rng: Rng): void {
   if (forced) {
     if (forced.kind === 'electionNight') {
       jumpToPollingDay(state, rng, forced.payload?.pollingDay as number | undefined);
-      // a leader with no seat fights one, chosen or not
-      if (isOutsideLeader(state) && !state.player.seatId) markSeatCandidacy(state, rng);
       const { result, playerWonSeat } = runElection(state, rng);
       applyElectionAftermath(state, rng, result, playerWonSeat);
       state.pendingElectionId = result.id;
@@ -1119,7 +1105,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     // a LOW absolute backstop floor (a genuine wipeout still bites), but the
     // dominant driver is how far they've SLID from the polling they inherited — a
     // stable-but-low FPTP standing shouldn't by itself force a heave
-    const floor = (onMinorPartyTrack(state) || playerLeadsMinorParty(state) ? 10 : 16) * chamberOf(state.arena).pressureScale;
+    const floor = (onMinorPartySide(state) ? 10 : 16) * chamberOf(state.arena).pressureScale;
     let pressure = 0;
     if (polls < floor) pressure += (floor - polls) * 0.5;
     pressure += state.player.rebellionCount * 4;
@@ -1384,30 +1370,22 @@ function nextStepCore(state: GameState, rng: Rng): void {
   if (state.player.hasSeat && typeof scandalStage === 'number' && scandalStage > 0) {
     const beats = SCANDAL_ARC_BEATS.filter((c) => cardEligible(state, c));
     if (beats.length > 0) {
-      const beat = rng.pickWeighted(beats, (c) => c.weight);
-      state.lastCardId = beat.id;
-      state.cardHistory[beat.id] = state.day;
-      state.currentCard = makeDrawnCard(state, rng, beat);
+      showCard(state, rng, rng.pickWeighted(beats, (c) => c.weight));
       return;
     }
   }
 
   // 4. a regular card (a leader with no seat has a deck of their own)
-  const outside = isOutsideLeader(state);
-  const card = outside
+  showCard(state, rng, isOutsideLeader(state)
     ? drawCard(state, rng, OUTSIDE_LEADER_CARDS, OUTSIDE_LEADER_CARDS)
-    : drawCard(state, rng, ALL_CARDS, fallbackPoolFor(state.arena ?? 'uk'));
+    : drawCard(state, rng, ALL_CARDS, fallbackPoolFor(state.arena ?? 'uk')));
+}
+
+/** put a drawn card in front of the player and note it in the draw history */
+function showCard(state: GameState, rng: Rng, card: DecisionCard): void {
   state.lastCardId = card.id;
   state.cardHistory[card.id] = state.day;
   state.currentCard = makeDrawnCard(state, rng, card);
-}
-
-/** the shadow-cabinet member who takes the despatch box for a leader with no
- *  seat: the shadow Chancellor, or whoever sits first on the bench */
-function deputyAtTheBox(state: GameState): string {
-  const bench = state.government.shadowCabinet;
-  const post = bench.find((p) => p.officeId === 'sos_treasury') ?? bench[0];
-  return post ? characterName(state, post.characterId) : 'your deputy';
 }
 
 /** the chosen exit: an MP (or mayor) aged 65+ whose record qualifies them for a
@@ -1562,11 +1540,9 @@ function mayorTick(state: GameState, rng: Rng, mayor: MayorState): void {
     return;
   }
   const card = drawCard(state, rng, MAYOR_CARDS, MAYOR_CARDS);
-  state.lastCardId = card.id;
-  state.cardHistory[card.id] = state.day;
-  state.currentCard = makeDrawnCard(state, rng, card);
+  showCard(state, rng, card);
   // a card that declares its own cadence (the quiet quarter) runs the clock that far
-  if (card.advanceDays) state.currentCard.payload = { advance: card.advanceDays[0] };
+  if (card.advanceDays && state.currentCard) state.currentCard.payload = { advance: card.advanceDays[0] };
 }
 
 /** a fixed polling day: if the campaign ran short, the count is on the day */
@@ -1590,9 +1566,10 @@ export function queueGeneralElection(state: GameState): void {
     state.nextElectionBy = state.day + 50;
     return;
   }
-  if (playerIsLeader(state) && (state.player.hasSeat || isOutsideLeader(state))) {
+  const outside = isOutsideLeader(state);
+  if (playerIsLeader(state) && (state.player.hasSeat || outside)) {
     // a leader with no seat chooses one to fight before the campaign begins
-    if (isOutsideLeader(state)) state.forcedQueue.push({ kind: 'standForSeat' });
+    if (outside) state.forcedQueue.push({ kind: 'standForSeat' });
     // the leader's campaign: seven make-or-break stages
     state.forcedQueue.push(
       { kind: 'campaign', payload: { step: 1, leader: true } },

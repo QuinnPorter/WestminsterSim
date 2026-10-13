@@ -36,7 +36,7 @@ import {
 } from './mayor';
 import {
   buildOutsideDraftCard, buildStandForSeatCard, isOutsideLeader, neverHeldProse, outsideApproachChance,
-  outsideDraftEligible, outsideDraftOdds, recordOutsideApproach,
+  outsideDraftEligible, outsideDraftOdds, recordOutsideApproach, recordOutsideDefeat,
 } from './outsideLeader';
 import { INTERLUDES } from './interludes';
 import { BACKGROUNDS } from '../data/backgrounds';
@@ -222,7 +222,7 @@ export function timeInPostYears(state: GameState): number {
  *  government office and take the real ministerial titles */
 function minorPartyNameOf(state: GameState): string | undefined {
   if (playerInGovernmentBloc(state)) return undefined;
-  return onMinorPartyTrack(state) || playerLeadsMinorParty(state) ? partyNameIn(state.player.partyId, state.arena) : undefined;
+  return onMinorPartySide(state) ? partyNameIn(state.player.partyId, state.arena) : undefined;
 }
 
 /** an office's title for the player in the live chamber: the Westminster title
@@ -293,6 +293,11 @@ export function playerOfficeTitle(state: GameState): string {
  *  opposition, seat or no seat (the minor-party track itself needs a seat) */
 export function playerLeadsMinorParty(state: GameState): boolean {
   return playerLeaderRole(state) === 'minorLeader' && !playerInGovernmentBloc(state);
+}
+
+/** the minor-party side of the House: a seated member of one, or its leader with no seat */
+export function onMinorPartySide(state: GameState): boolean {
+  return onMinorPartyTrack(state) || playerLeadsMinorParty(state);
 }
 
 /** the title pill: the office held, City Hall, a leadership held from outside
@@ -2732,6 +2737,9 @@ export function applyElectionAftermath(
   const prevSeats = { ...state.seats };
   // was the player's party on a frontbench track going into the election
   const wasOnTrack = onFrontbenchTrack(state);
+  // did the player go into the count as a party leader with no seat (the
+  // predicate reads hasSeat, which the branches below flip, so it is taken here)
+  const ledFromOutside = isOutsideLeader(state);
 
   // a joint Executive is designated, not won: the First Minister's party is the
   // largest, and the result decides who else sits in it and who leads the
@@ -2756,7 +2764,6 @@ export function applyElectionAftermath(
 
   // seat status for the player
   if (playerWonSeat && !state.player.hasSeat) {
-    const ledFromOutside = isOutsideLeader(state);
     state.player.hasSeat = true;
     if (state.player.mayor) {
       leaveMayoralty(state, rng, 'returned');
@@ -2990,8 +2997,6 @@ export function applyElectionAftermath(
       settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
       return;
     }
-    // a leader who led from outside the House never held the seat they fought
-    const neverHeld = isOutsideLeader(state);
     state.player.hasSeat = false;
     clearCommitteeChair(state, 'lostSeat'); // a chair who loses their seat loses the chair
     if (playerIsLeader(state)) {
@@ -3001,9 +3006,12 @@ export function applyElectionAftermath(
       // close the career-timeline span (PM / LO / minor leader) — without this the
       // Profile keeps showing the old role running "…–now" after they've left
       state.history.push({ kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: null, how: 'leftOffice' });
-      if (state.player.partyId === newGov && state.government.pmId !== 'player') {
+      if (state.player.partyId === newGov) {
         // the party won without its leader: the bench's choice is already in
-        // Number 10, and the player's leader is now that person
+        // Number 10 (installed above), and the player's leader is now that
+        // person. Deliberately narrow: on the opposition side a seated leader
+        // losing their seat is a Commons path whose pre-existing double LO
+        // change is left for a change of its own.
         const rel = getRelationship(state, 'leader');
         if (rel) rel.characterId = state.government.pmId;
       } else {
@@ -3016,7 +3024,8 @@ export function applyElectionAftermath(
     }
     state.forcedQueue.push({
       kind: 'lostSeat',
-      ...(neverHeld ? { payload: { neverHeld: true, partyWon: state.player.partyId === newGov } } : {}),
+      // a leader who led from outside the House never held the seat they fought
+      ...(ledFromOutside ? { payload: { neverHeld: true, partyWon: state.player.partyId === newGov } } : {}),
     });
     // any leadership fallout in other parties resolves quietly
     settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
@@ -4649,15 +4658,13 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     case 'outsideDraft':
       return buildOutsideDraftCard(state, rng, ev.payload);
     case 'standForSeat': {
-      // the two seats on offer, previewed (neither pick draws, and the chosen one
-      // is marked again on the answer)
+      // the two seats on offer, previewed: the home pick may draw a jitter (off the
+      // Commons path), so both ids are carried and the chosen one marked on the answer
       const regional = pickSeatFor(state, rng, state.player.partyId, null, { region: state.player.region, byPartyStrength: true, candidateOnly: true });
       const national = pickSeatFor(state, rng, state.player.partyId, null, { national: true, safest: true, candidateOnly: true, exclude: regional });
       for (const x of state.seatMap) delete x.isPlayerSeat;
-      const nameOf = (id: string) => state.seatMap.find((x) => x.id === id)?.name ?? null;
-      const card = buildStandForSeatCard(state, rng, { regional: nameOf(regional), national: nameOf(national) });
-      card.payload = { ...card.payload, regional, national };
-      return card;
+      const offered = (id: string) => ({ id, name: state.seatMap.find((x) => x.id === id)?.name ?? 'a seat' });
+      return buildStandForSeatCard(state, rng, { regional: offered(regional), national: offered(national) });
     }
 
     case 'calendar':
@@ -5235,7 +5242,7 @@ export function resolveForcedChoice(
       }
       winChance = clamp(winChance, 0.03, 0.75);
       if (!rng.chance(winChance)) {
-        state.player.flags._outsideDraftFailed = true;
+        recordOutsideDefeat(state);
         state.history.push({ kind: 'leadershipContest', date: state.day, won: false, partyId: party });
         openNpcContest(state, rng, party);
         gain('profile', 3, 'Profile');
@@ -5254,18 +5261,15 @@ export function resolveForcedChoice(
     }
 
     case 'standForSeat': {
-      const chosen = (choiceIndex === 0 ? card.payload?.regional : card.payload?.national) as string | undefined;
-      const seat = state.seatMap.find((x) => x.id === chosen);
-      if (seat) {
-        for (const x of state.seatMap) delete x.isPlayerSeat;
-        seat.isPlayerSeat = true;
-        state.player.seatId = seat.id;
-      }
+      const chosen = (choiceIndex === 0 ? card.payload?.regional : card.payload?.national) as string;
+      const seat = state.seatMap.find((x) => x.id === chosen)!;
+      seat.isPlayerSeat = true;
+      state.player.seatId = seat.id;
       if (choiceIndex === 0) gain('constituencyApproval', 3, 'Approval');
       else gain('partyStanding', 2, 'Standing');
       state.history.push({
         kind: 'event', date: state.day,
-        headline: `${state.player.name} will stand for ${seat?.name ?? 'a Commons seat'} at the general election`,
+        headline: `${state.player.name} will stand for ${seat.name} at the general election`,
       });
       return {
         text: choiceIndex === 0
@@ -8506,7 +8510,9 @@ export function withdrawMayorCandidacy(state: GameState): void {
 }
 
 /** adopt the player as a Commons candidate in their region, on a seat the party
- *  holds where it can, without flipping it: the count decides */
+ *  holds where it can, without flipping it: the count decides. The scheduler's
+ *  wilderness gate calls it for a leadership that ended away from the count,
+ *  the one place every seatless, office-less path converges. */
 export function markSeatCandidacy(state: GameState, rng: Rng): void {
   state.player.seatId = pickSeatFor(state, rng, state.player.partyId, null, {
     region: state.player.region, byPartyStrength: true, candidateOnly: true,

@@ -157,8 +157,7 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
   }
   // a sitting mayor draws only City Hall's deck, and nobody else draws from it;
   // a leader with no seat likewise draws only the cards written for one
-  if (state.player.mayor ? !req?.mayor : req?.mayor) return false;
-  if (isOutsideLeader(state) ? !req?.outsideLeader : req?.outsideLeader) return false;
+  if (!!state.player.mayor !== (req?.mayor === true) || isOutsideLeader(state) !== (req?.outsideLeader === true)) return false;
   // an unmarked card belongs to the Commons. The corpus predates the devolved
   // chambers and is written throughout in Westminster language, so a card must
   // opt IN to a legislature rather than leak into one by omission.

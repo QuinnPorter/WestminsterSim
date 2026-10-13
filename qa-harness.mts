@@ -14,6 +14,7 @@ import { initCalendar } from './src/engine/calendar';
 import { becomeMayor, buildLegacy } from './src/engine/career';
 import { isOutsideLeader } from './src/engine/outsideLeader';
 import { mayoraltiesIn } from './src/data/mayoralties';
+import { PARLIAMENTS } from './src/data/parliaments';
 import { Rng } from './src/engine/rng';
 import { PLAYABLE_NI } from './src/data/parties';
 import { GameState } from './src/types/game';
@@ -28,8 +29,6 @@ const PARTIES_BY_STRATEGY: Record<string, string[]> = {
   mayor: ['lab', 'con', 'lab', 'lab', 'con'],
   outside: ['lab'],
 };
-/** the party in opposition at each era's start, for the outside strategy */
-const OPPOSITION_BY_ERA: Record<string, string> = { '2010': 'lab', '2015': 'lab', '2017': 'lab', '2019': 'lab', '2024': 'con' };
 const MAYOR_REGIONS = ['london', 'northWest', 'westMidlands', 'yorkshire', 'northEast'];
 const REGIONS = ['london', 'southEast', 'northWest', 'yorkshire', 'scotland', 'wales', 'westMidlands', 'eastMidlands'];
 const BGS = ['lawyer', 'teacher', 'business', 'journalist', 'doctor', 'councillor', 'advisor', 'tradeUnionist'];
@@ -68,7 +67,7 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
   const lines: string[] = [];
   const choiceRng = new Rng(seed * 7919 + 13);
   const party = strategy === 'outside'
-    ? OPPOSITION_BY_ERA[ERAS[seed % ERAS.length]]
+    ? PARLIAMENTS[ERAS[seed % ERAS.length] as keyof typeof PARLIAMENTS].oppositionParty
     : PARTIES_BY_STRATEGY[strategy][seed % PARTIES_BY_STRATEGY[strategy].length];
   const input: CreationInput = {
     name: NAMES[seed % NAMES.length], gender: (seed % 3 === 0 ? 'm' : seed % 3 === 1 ? 'f' : 'nb') as any,
@@ -91,7 +90,8 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
     if (strategy === 'outside') {
       // four years into a mayoralty already, with the name the draft needs
       game.player.stats.profile = Math.max(game.player.stats.profile, 72);
-      const office = mayoraltiesIn(game.player.region, game.day + 4 * 365)[0];
+      // an office that existed four years ago, or London's, which always did
+      const office = mayoraltiesIn(game.player.region, game.day - 4 * 365)[0] ?? mayoraltiesIn('london', game.day)[0];
       withRng(game, (r) => becomeMayor(game, r, office));
       game.player.mayor!.since = game.day - 4 * 365;
     }

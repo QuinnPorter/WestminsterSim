@@ -3,6 +3,8 @@ import { partyNameIn, partyNameWithArticle } from '../data/parties';
 import { inGovernmentBloc } from './executive';
 import { partyPollingShare } from './polling';
 import { playerMayoralty, servedFullTerm } from './mayor';
+import { draftOdds } from './draftOdds';
+import { characterName } from './relationships';
 import { Rng, clamp } from './rng';
 
 /**
@@ -61,6 +63,11 @@ export function recordOutsideApproach(state: GameState): void {
   state.player.flags._lastOutsideApproach = state.day;
 }
 
+/** the members said no: a failed first attempt leaves one more */
+export function recordOutsideDefeat(state: GameState): void {
+  state.player.flags._outsideDraftFailed = true;
+}
+
 /** a party polling well asks; one on six per cent has other problems */
 export function outsideApproachChance(state: GameState): number {
   return OUTSIDE_APPROACH_CHANCE * clamp(partyPollingShare(state, state.player.partyId) / 0.30, 0.3, 1);
@@ -69,14 +76,17 @@ export function outsideApproachChance(state: GameState): number {
 /** the members' odds: the devolved draft's formula for a party out of office,
  *  less the penalty for asking them to choose somebody who cannot sit */
 export function outsideDraftOdds(state: GameState): number {
-  const s = state.player.stats;
-  const peak = Number(state.player.flags._peakTier ?? 0);
-  const base = 0.20
-    + (peak >= 5 ? 0.16 : peak >= 4 ? 0.10 : 0)
-    + (s.profile - 60) / 250
-    + (s.competence - 55) / 300
-    + 0.12;
-  return clamp(base - OUTSIDE_ODDS_PENALTY, 0.05, 0.6);
+  return clamp(draftOdds(state, true) - OUTSIDE_ODDS_PENALTY, 0.05, 0.6);
+}
+
+/** the shadow-cabinet member who takes the despatch box for a leader with no
+ *  seat: the shadow Chancellor, or whoever sits first on the bench. Only an
+ *  opposition leader is proxied (a governing party is never led from outside),
+ *  so the bench is always the shadow one. */
+export function deputyAtTheBox(state: GameState): string {
+  const bench = state.government.shadowCabinet;
+  const post = bench.find((p) => p.officeId === 'sos_treasury') ?? bench[0];
+  return post ? characterName(state, post.characterId) : 'your deputy';
 }
 
 // ---------------------------------------------------------------------------
@@ -116,9 +126,10 @@ export function buildOutsideDraftCard(state: GameState, rng: Rng, payload: Recor
   };
 }
 
-/** the general election: the seat to stand for, chosen before the campaign */
+/** the general election: the seat to stand for, chosen before the campaign.
+ *  The payload carries both seats' ids for the answer. */
 export function buildStandForSeatCard(
-  state: GameState, rng: Rng, seats: { regional: string | null; national: string | null }
+  state: GameState, rng: Rng, seats: { regional: { id: string; name: string }; national: { id: string; name: string } }
 ): DrawnCard {
   return {
     cardId: `forced_standforseat_${state.day}`,
@@ -126,15 +137,16 @@ export function buildStandForSeatCard(
     title: 'A seat to fight',
     body: `Parliament is dissolved and the leader of ${partyNameWithArticle(state.player.partyId, 'uk')} is not a candidate anywhere. The party has two seats in mind. One is in the region that elected you mayor, where your name is worth something; the other is the safest the party holds, where it is the rosette that wins. Win and you lead from the front bench. Lose and you lead nothing.`,
     choices: [
-      { label: seats.regional ? `Stand at home: ${seats.regional}` : 'Stand at home', sublabel: 'your own voters, a harder seat' },
-      { label: seats.national ? `Take the safe seat: ${seats.national}` : 'Take the safe seat', sublabel: 'a parachute, and everybody will say so' },
+      { label: `Stand at home: ${seats.regional.name}`, sublabel: 'your own voters, a harder seat' },
+      { label: `Take the safe seat: ${seats.national.name}`, sublabel: 'a parachute, and everybody will say so' },
     ],
-    payload: { advance: rng.int(2, 5) },
+    payload: { regional: seats.regional.id, national: seats.national.id, advance: rng.int(2, 5) },
   };
 }
 
 /** Prime Minister's Questions, taken by a deputy */
-export function buildPmqsProxyCard(deputyName: string): { title: string; body: string; choices: { label: string }[] } {
+export function buildPmqsProxyCard(state: GameState): { title: string; body: string; choices: { label: string }[] } {
+  const deputyName = deputyAtTheBox(state);
   return {
     title: 'Questions, by proxy',
     body: `Noon on Wednesday and the one duel that matters is happening without you. ${deputyName} takes the despatch box in your name; you take a chair in a studio across the river and watch the clips arrive. The party is watching too, and it is watching ${deputyName}.`,
@@ -146,7 +158,8 @@ export function buildPmqsProxyCard(deputyName: string): { title: string; body: s
   };
 }
 
-export function pmqsProxyOutcome(choiceIndex: number, deputyName: string): string {
+export function pmqsProxyOutcome(state: GameState, choiceIndex: number): string {
+  const deputyName = deputyAtTheBox(state);
   if (choiceIndex === 0) return `The questions are yours and the answers are the Prime Minister’s, and the clip that travels is of ${deputyName} reading your best line. It lands. The credit splits, which is the price of a proxy.`;
   if (choiceIndex === 1) return `You hold your own press conference at twelve, in the city that elected you, and the lunchtime bulletins have to choose. Half pick you. The whips notice who the other half picked.`;
   return `You let ${deputyName} have the chamber and the day. It is generous, it is noticed, and by the evening two newspapers have decided ${deputyName} looks like a leader. That is what deputies are for, and what they are for is the problem.`;

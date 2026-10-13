@@ -2,12 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { GameState, PartyId } from '../../types/game';
 import { mayoraltiesIn } from '../../data/mayoralties';
 import { ALL_CARDS, OUTSIDE_LEADER_CARDS } from '../../content/cards';
-import { createNewGame } from '../newGame';
 import { INTERLUDES, nextStep } from '../scheduler';
-import { initCalendar } from '../calendar';
-import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
+import { resolveChoiceCore, continueCore } from '../turn';
 import { cardEligible } from '../cardEngine';
-import { isOutsideLeader, outsideDraftEligible } from '../outsideLeader';
+import { isOutsideLeader, outsideDraftEligible, recordOutsideApproach } from '../outsideLeader';
+import { TestEra, newTestGame, play } from '../../test/play';
 import {
   becomeMayor, buildLegacy, makeOutsideLeader, openLeadershipVacancy, playerOfficeTitle, playerStatusTitle,
 } from '../career';
@@ -16,19 +15,8 @@ import { Rng } from '../rng';
 INTERLUDES.mayorDraft = true;
 INTERLUDES.outsideDraft = true;
 
-type Era = '2010' | '2015' | '2017' | '2019' | '2024';
-
-function game(opts: { seed: number; partyId?: PartyId; era?: Era; profile?: number }): GameState {
-  const g = createNewGame({
-    name: 'Test Subject', gender: 'f', age: 44, region: 'london', background: 'lawyer',
-    partyId: opts.partyId ?? 'lab',
-    avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
-    era: opts.era ?? '2019', seed: opts.seed,
-  });
-  initCalendar(g);
-  if (opts.profile !== undefined) g.player.stats.profile = opts.profile;
-  return g;
-}
+type Era = TestEra;
+const game = (opts: { seed: number; partyId?: PartyId; era?: Era; profile?: number }) => newTestGame({ ...opts, age: 44 });
 
 /** a mayor four years into the job, with the name the draft needs */
 function seasonedMayor(seed: number, opts: { partyId?: PartyId; era?: Era; profile?: number } = {}): { g: GameState; rng: Rng } {
@@ -38,27 +26,6 @@ function seasonedMayor(seed: number, opts: { partyId?: PartyId; era?: Era; profi
   g.player.mayor!.since = g.day - 4 * 365;
   g.player.mayor!.nextElection = g.day + 2000;
   return { g, rng };
-}
-
-function play(
-  g: GameState, rng: Rng, turns: number,
-  onCard: (g: GameState, kind: string) => number = () => 0,
-  until?: (g: GameState) => boolean
-): string[] {
-  const kinds: string[] = [];
-  for (let turn = 0; turn < turns && !g.gameOver; turn++) {
-    if (until?.(g)) break;
-    if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
-    if (!g.currentCard) nextStep(g, rng);
-    if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
-    const card = g.currentCard;
-    if (!card) break;
-    kinds.push(card.kind);
-    resolveChoiceCore(g, rng, onCard(g, card.kind));
-    if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
-    continueCore(g, rng);
-  }
-  return kinds;
 }
 
 const SCAN = /\{[a-zA-Z]+\}|undefined|\bNaN\b/;
@@ -124,7 +91,7 @@ describe('the approach', () => {
     let lost = 0;
     for (let seed = 1; seed <= 24; seed++) {
       const { g, rng } = seasonedMayor(seed);
-      g.player.flags._outsideDraftAttempts = 1; // as the approach itself records
+      recordOutsideApproach(g);
       g.forcedQueue.push({ kind: 'outsideDraft', payload: { party: 'lab', step: 1, winChance: seed % 2 === 0 ? 0.9 : 0.05 } });
       const kinds = play(g, rng, 3, () => 0, (s) => !s.forcedQueue.some((e) => e.kind === 'outsideDraft') && !s.currentCard?.kind.startsWith('outsideDraft'));
       expect(kinds[0]).toBe('outsideDraft');
@@ -192,7 +159,7 @@ describe('leading from outside', () => {
       expect(card.body).not.toMatch(SCAN);
       if (kind === 'calendar') keys.push(card.payload?.calKey as string);
       if (kind === 'normal') expect(OUTSIDE_LEADER_CARDS.some((c) => c.id === card.cardId)).toBe(true);
-      return kind === 'partyCoup' || kind === 'resignPledge' ? 0 : 0;
+      return 0;
     }, (s) => !isOutsideLeader(s));
     expect(kinds).not.toContain('pmqs');
     expect(kinds).not.toContain('wilderness');
