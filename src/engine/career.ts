@@ -3002,12 +3002,14 @@ export function applyElectionAftermath(
       // close the career-timeline span (PM / LO / minor leader) — without this the
       // Profile keeps showing the old role running "…–now" after they've left
       state.history.push({ kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: null, how: 'leftOffice' });
-      if (state.player.partyId === newGov) {
+      if (state.player.partyId === newGov && state.government.pmId !== 'player') {
         // the party won without its leader: the bench's choice is already in
-        // Number 10 (installed above), and the player's leader is now that
-        // person. Deliberately narrow: on the opposition side a seated leader
-        // losing their seat is a Commons path whose pre-existing double LO
-        // change is left for a change of its own.
+        // Number 10 (installed above, on a change of government), and the
+        // player's leader is now that person. A sitting PM re-elected without
+        // their own seat is still in Number 10 here, so falls through to the
+        // succession below. Deliberately narrow: on the opposition side a seated
+        // leader losing their seat is a Commons path whose pre-existing double
+        // LO change is left for a change of its own.
         const rel = getRelationship(state, 'leader');
         if (rel) rel.characterId = state.government.pmId;
       } else {
