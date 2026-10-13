@@ -6,6 +6,7 @@ import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES, counterpartParty, partyNameIn, playablePartiesFor } from '../data/parties';
 import { mayoraltyById } from '../data/mayoralties';
+import { mayorSpans } from '../engine/mayor';
 import { REGIONS } from '../data/regions';
 import { CHAMBERS, chamberAt, houseHeading } from '../data/chambers';
 import { canJump, homeNation, jumpPartyOptions, jumpTargets, JUMP_MIN_PROFILE } from '../engine/arena';
@@ -93,27 +94,6 @@ export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
   return spans;
 }
 
-export interface MayorSpan { label: string; start: number; end: number | null; }
-
-/** the spells as a directly elected mayor, paired from the mayoralty start/end entries */
-export function buildMayorSpans(history: GameState['history']): MayorSpan[] {
-  const spans: MayorSpan[] = [];
-  let open: MayorSpan | null = null;
-  for (const entry of history) {
-    if (entry.kind !== 'mayoralty') continue;
-    if (entry.action === 'start') {
-      if (open) spans.push(open);
-      open = { label: entry.label, start: entry.date, end: null };
-    } else if (open) {
-      open.end = entry.date;
-      spans.push(open);
-      open = null;
-    }
-  }
-  if (open) spans.push(open);
-  return spans;
-}
-
 export interface CommitteeSpan { dept: UkDepartmentId; start: number; end: number | null; }
 
 /** the concurrent select-committee chairmanship spans (a backbench overlay),
@@ -155,7 +135,7 @@ export function timelineRowsFromHistory(
   const committee: TimelineRow[] = buildCommitteeSpans(history).map((c) => ({
     title: committeeChairTitle(c.dept), start: c.start, end: close(c.end),
   }));
-  const mayoral: TimelineRow[] = buildMayorSpans(history).map((m) => ({
+  const mayoral: TimelineRow[] = mayorSpans(history).map((m) => ({
     title: m.label, start: m.start, end: close(m.end),
   }));
   return [...office, ...deputy, ...committee, ...mayoral].sort((a, b) => b.start - a.start);

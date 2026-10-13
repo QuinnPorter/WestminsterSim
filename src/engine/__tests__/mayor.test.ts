@@ -262,6 +262,7 @@ describe('City Hall', () => {
         expect(g.player.flags._incomingTier).toBe(4); // a full term served
         expect(g.player.flags._incomingDay).toBe(g.parliamentStart);
         expect(g.player.flags._seatSinceDay).toBe(g.parliamentStart);
+        expect(g.player.flags._lastMayorDraftDay).toBe(g.parliamentStart); // not asked straight back
         expect(g.history.some((h) => h.kind === 'mayoralty' && h.action === 'end')).toBe(true);
       } else {
         stayed++;
@@ -295,6 +296,9 @@ describe('City Hall', () => {
         expect(g.player.seatId).not.toBe('');
         expect(g.seatMap.find((s) => s.id === g.player.seatId)?.isPlayerSeat).toBe(true);
         expect(g.gameOver).toBeNull();
+        // the record comes with them: a minister's seniority for a part term, a fresh seat clock
+        expect(g.player.flags._incomingTier).toBe(3);
+        expect(typeof g.player.flags._seatSinceDay).toBe('number');
         // the wilderness runs to the next general election, and the count can bring them back
         const later = [...kinds, ...play(g, rng, 30)];
         expect(later).toContain('wilderness');

@@ -429,6 +429,9 @@ export const INTERLUDES = { mayorDraft: true };
 const MAYOR_DRAFT_SALT = 0x4d415952;
 /** a mayor is not asked back to the Commons in the first two years of the job */
 export const RETURN_OFFER_MIN_DAYS = 365 * 2;
+/** the offer card and the three campaign cards run the clock up to this many
+ *  days; the general election must be counted before the mayoral one */
+const RETURN_OFFER_LEAD = 80;
 
 /** days since a stamped flag, or a large number if it has never been set */
 function sinceFlag(state: GameState, flag: string): number {
@@ -1547,21 +1550,13 @@ export function queueGeneralElection(state: GameState): void {
     // a sitting mayor watches from City Hall unless the party offers a seat: once
     // a parliament, not in the first two years of the job, and only when the
     // count comes before their own re-election
-    if (!mayor.standingForSeat && mayor.returnOfferParliament !== state.parliamentStart
-      && state.day - mayor.since >= RETURN_OFFER_MIN_DAYS && state.day + 50 < mayor.nextElection) {
+    if (mayor.returnOfferParliament !== state.parliamentStart
+      && state.day - mayor.since >= RETURN_OFFER_MIN_DAYS && state.day + RETURN_OFFER_LEAD < mayor.nextElection) {
       mayor.returnOfferParliament = state.parliamentStart;
       state.forcedQueue.push({ kind: 'mayorReturnOffer' });
     }
-    if (mayor.standingForSeat) {
-      state.forcedQueue.push(
-        { kind: 'campaign', payload: { step: 1 } },
-        { kind: 'campaign', payload: { step: 2 } },
-        { kind: 'campaign', payload: { step: 3 } },
-        night
-      );
-    } else {
-      state.forcedQueue.push({ kind: 'campaign', payload: { step: 1, bystander: true } }, night);
-    }
+    // an accepted offer swaps the bystander's card for the three-step campaign
+    state.forcedQueue.push({ kind: 'campaign', payload: { step: 1, bystander: true } }, night);
     state.nextElectionBy = state.day + 50;
     return;
   }

@@ -4,7 +4,7 @@ import { departmentInfo, OFFICES } from '../data/offices';
 import { chamberAt, nationOfRegion } from '../data/chambers';
 import { partyNameIn } from '../data/parties';
 import { COMMITTEE_NAMES } from '../data/committees';
-import { mayoraltyById, mayoraltyOn } from '../data/mayoralties';
+import { playerMayoralty } from './mayor';
 
 import { getRelationship, relationshipName } from './relationships';
 import {
@@ -67,8 +67,7 @@ export function resolveTokens(state: GameState, text: string): string {
   // government. Both are simulated, so they have a real leader and a real party.
   const other = otherGovernment(state);
   // the mayoralty held or sought, successor office included
-  const mayoraltyId = state.player.mayor?.mayoralty ?? state.player.mayorCandidacy?.mayoralty;
-  const mayoralty = mayoraltyId ? (mayoraltyOn(mayoraltyId, state.day) ?? mayoraltyById(mayoraltyId)) : undefined;
+  const mayoralty = playerMayoralty(state);
   const map: Record<string, string> = {
     leader: relationshipName(state, 'leader'),
     pm: state.government.pmId === 'player' ? state.player.name

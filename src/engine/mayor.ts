@@ -1,4 +1,4 @@
-import { DrawnCard, GameDay, GameState, PartyId, RegionId } from '../types/game';
+import { DrawnCard, GameDay, GameState, HistoryEntry, PartyId, RegionId } from '../types/game';
 import {
   Mayoralty, MayoralVotingSystem, mayoraltiesIn, mayoraltyById, mayoraltyOn, mayoralVotingSystemAt,
   nextMayoralElection,
@@ -187,6 +187,28 @@ export function mayorTitle(state: GameState): string {
   return playerMayoralty(state)?.name ?? 'Mayor';
 }
 
+export interface MayorSpan { mayoralty: string; label: string; start: GameDay; end: GameDay | null; }
+
+/** the spells as a directly elected mayor, paired from the mayoralty start/end
+ *  entries of a history (the live career's, or a saved mentor's) */
+export function mayorSpans(history: HistoryEntry[]): MayorSpan[] {
+  const spans: MayorSpan[] = [];
+  let open: MayorSpan | null = null;
+  for (const entry of history) {
+    if (entry.kind !== 'mayoralty') continue;
+    if (entry.action === 'start') {
+      if (open) spans.push(open);
+      open = { mayoralty: entry.mayoralty, label: entry.label, start: entry.date, end: null };
+    } else if (open) {
+      open.end = entry.date;
+      spans.push(open);
+      open = null;
+    }
+  }
+  if (open) spans.push(open);
+  return spans;
+}
+
 // ---------------------------------------------------------------------------
 // the cards' prose
 // ---------------------------------------------------------------------------
@@ -245,13 +267,17 @@ export function buildMayorElectionCard(state: GameState, rng: Rng, payload: Reco
   const systemLine = system === 'sv'
     ? 'Second preferences will decide it if nobody clears half.'
     : 'First past the post: whoever is ahead on the night takes it.';
+  // a candidate may have lost their Commons seat since the selection
+  const candidateBody = state.player.hasSeat
+    ? `Polling day for ${name}. You have knocked on more doors in ${city} in six weeks than in your whole time as its MP, and tonight the count will tell you whether that was the beginning of something or an expensive way to annoy your whips. ${systemLine}`
+    : `Polling day for ${name}. You lost your seat in the Commons in the middle of this, so the campaign across ${city} is the only one you have left, and tonight’s count is the whole of your political future. ${systemLine}`;
   return {
     cardId: `forced_mayorelection_${state.day}`,
     kind: 'mayorElection',
     title: reElection ? `${name}: the re-election` : `Polling day across ${city}`,
     body: reElection
       ? `Four years of ${city} and now the voters get their say on them. The posters say your name without a party on half of them, which your agent calls a strength and your party calls a problem. ${systemLine}`
-      : `Polling day for ${name}. You have knocked on more doors in ${city} in six weeks than in your whole time as its MP, and tonight the count will tell you whether that was the beginning of something or an expensive way to annoy your whips. ${systemLine}`,
+      : candidateBody,
     choices: [
       { label: 'One last push on the doorsteps', sublabel: 'knock until the polls close' },
       { label: 'Rest, and wait for the count', sublabel: 'it is done; let it be done' },

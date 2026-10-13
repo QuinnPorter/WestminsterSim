@@ -30,8 +30,8 @@ import { initCalendar } from './calendar';
 import { mayoraltyById, mayoraltyOn, nextMayoralElection } from '../data/mayoralties';
 import {
   buildLostMayoraltyCard, buildMayorBystanderCard, buildMayorDraftCard, buildMayorElectionCard,
-  buildMayorReturnOfferCard, countHeadline, mayorExitProse, mayorSelectionOdds, mayorTitle, mayoralResult,
-  playerMayoralty, servedFullTerm,
+  buildMayorReturnOfferCard, countHeadline, mayorExitProse, mayorSelectionOdds, mayorSpans, mayorTitle,
+  mayoralResult, playerMayoralty, servedFullTerm,
 } from './mayor';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { causeDepartments } from '../data/causes';
@@ -3051,8 +3051,8 @@ export function applyElectionAftermath(
   const isSpeaker = !!state.player.flags._isSpeaker;
   const eligibleForChair =
     state.player.hasSeat &&
-    // not on the day they arrive from City Hall
-    state.player.flags._incomingDay !== state.day &&
+    // not on the day they arrive from City Hall, nor on the way to it
+    state.player.flags._incomingDay !== state.day && !state.player.mayorCandidacy &&
     (isSpeaker || state.player.officeId === null) &&
     (isSpeaker || state.player.stats.integrity > 55) &&
     (isSpeaker || !wasEverPmOrLeader(state));
@@ -5047,7 +5047,12 @@ export function resolveForcedChoice(
     case 'mayorElection': {
       const reElection = card.payload?.reElection === true;
       const m = playerMayoralty(state);
-      if (!m) return { text: 'The count comes and goes without you on the ballot.', deltas };
+      if (!m) {
+        // a save naming an office the data no longer has: the candidacy lapses
+        delete state.player.mayorCandidacy;
+        if (state.player.mayor) leaveMayoralty(state, rng, 'lost');
+        return { text: 'The count comes and goes without you on the ballot.', deltas };
+      }
       if (choiceIndex === 0) gain('constituencyApproval', 1, 'Approval');
       const count = mayoralResult(state, rng, m, { incumbent: reElection, bonus: choiceIndex === 0 ? 0.01 : 0 });
       state.history.push({ kind: 'event', date: state.day, headline: countHeadline(state, m, count) });
@@ -5077,12 +5082,15 @@ export function resolveForcedChoice(
           deltas,
         };
       }
+      const sat = state.player.hasSeat;
       if (count.won) {
         becomeMayor(state, rng, m.id);
         gain('profile', 8, 'Profile');
         gain('competence', 2, 'Competence');
         return {
-          text: `You win, ${margin}. The letter resigning your seat is already drafted and goes in before the champagne. You are ${m.name} now, with a budget, a building and no whip to tell you what you think.`,
+          text: sat
+            ? `You win, ${margin}. The letter resigning your seat is already drafted and goes in before the champagne. You are ${m.name} now, with a budget, a building and no whip to tell you what you think.`
+            : `You win, ${margin}. The wilderness ends in a building with your name over the door: you are ${m.name} now, with a budget, a mandate and no whip to tell you what you think.`,
           deltas,
         };
       }
@@ -5091,7 +5099,9 @@ export function resolveForcedChoice(
       gain('profile', 2, 'Profile');
       gain('partyStanding', -4, 'Standing');
       return {
-        text: `You lose, ${margin}. You are still the MP you were on Thursday morning, which is the consolation and also the problem: the whips know exactly how much you wanted to leave, and so does your association.`,
+        text: sat
+          ? `You lose, ${margin}. You are still the MP you were on Thursday morning, which is the consolation and also the problem: the whips know exactly how much you wanted to leave, and so does your association.`
+          : `You lose, ${margin}. No seat and no City Hall: the wilderness goes on, with the next general election the only way out of it.`,
         deltas,
       };
     }
@@ -8305,8 +8315,7 @@ export function becomeMayor(state: GameState, rng: Rng, mayoraltyId: string): vo
   if (!m) return;
   if (state.player.officeId) stripOffice(state, rng, 'resigned');
   clearCommitteeChair(state, 'resigned');
-  for (const s of state.seatMap) delete s.isPlayerSeat;
-  state.player.seatId = '';
+  releaseSeatCandidacy(state);
   state.player.hasSeat = false;
   delete state.player.mayorCandidacy;
   // a live scandal belongs to the House you have left
@@ -8314,6 +8323,7 @@ export function becomeMayor(state: GameState, rng: Rng, mayoraltyId: string): vo
   delete state.player.flags.scandal_stage;
   state.player.mayor = { mayoralty: m.id, since: state.day, nextElection: nextMayoralElection(m, state.day), terms: 1 };
   state.player.flags._mayoralWins = Number(state.player.flags._mayoralWins ?? 0) + 1;
+  state.player.flags._lastMayorDraftDay = state.day;
   state.history.push({ kind: 'mayoralty', date: state.day, action: 'start', mayoralty: m.id, label: m.name });
   state.history.push({
     kind: 'event', date: state.day,
@@ -8321,9 +8331,9 @@ export function becomeMayor(state: GameState, rng: Rng, mayoraltyId: string): vo
   });
 }
 
-/** the mayoralty ends: back in the Commons on a won count (the seniority a full
- *  term earns comes with them), or out of office on a lost one, with a candidacy
- *  for the next general election so the wilderness has a way out */
+/** the mayoralty ends: back in the Commons on a won count, or out of office on a
+ *  lost one with a candidacy for the next general election so the wilderness has
+ *  a way out. Either way the record City Hall gave them comes with them. */
 export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lost'): void {
   const mayor = state.player.mayor;
   if (!mayor) return;
@@ -8332,14 +8342,17 @@ export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lo
   const senior = servedFullTerm(state);
   delete state.player.mayor;
   state.history.push({ kind: 'mayoralty', date: state.day, action: 'end', mayoralty: mayor.mayoralty, label });
+  // not asked to run again for a good while
+  state.player.flags._lastMayorDraftDay = state.day;
+  // cabinet rank after a full term, a minister's below it: the first offer comes
+  // early, the post is not automatic. The bonus fades from today either way.
+  const peak = Number(state.player.flags._peakTier ?? 0);
+  state.player.flags._incomingTier = Math.max(peak, senior ? 4 : 3);
+  state.player.flags._incomingDay = state.day;
+  // whichever seat comes next has never seen you
+  state.player.flags._seatSinceDay = state.day;
   if (how === 'returned') {
-    // cabinet rank after a full term, a minister's below it: the first offer
-    // comes early, the post is not automatic
-    const peak = Number(state.player.flags._peakTier ?? 0);
-    state.player.flags._incomingTier = Math.max(peak, senior ? 4 : 3);
-    state.player.flags._incomingDay = state.day;
-    // this seat has never seen you, and the calendar stood still while you were away
-    state.player.flags._seatSinceDay = state.day;
+    // the calendar stood still while you were away
     const seat = state.seatMap.find((s) => s.id === state.player.seatId);
     if (seat) state.player.region = seat.region;
     initCalendar(state);
@@ -8440,23 +8453,12 @@ export function buildLegacy(state: GameState): LegacySummary {
       }
     }
   }
-  // a spell as a directly elected mayor: its own rung, below a cabinet seat
-  let everMayor = false;
-  let mayorLabel = '';
-  let mayorDays = 0;
-  let mayorOpen: number | null = null;
-  for (const entry of state.history) {
-    if (entry.kind !== 'mayoralty') continue;
-    everMayor = true;
-    mayorLabel = entry.label;
-    if (entry.action === 'start') {
-      mayorOpen = entry.date;
-    } else if (mayorOpen !== null) {
-      mayorDays += entry.date - mayorOpen;
-      mayorOpen = null;
-    }
-  }
-  if (mayorOpen !== null) mayorDays += state.day - mayorOpen;
+  // a spell as a directly elected mayor: its own rung, below a cabinet seat,
+  // named for the office held longest
+  const spells = mayorSpans(state.history).map((s) => ({ ...s, days: (s.end ?? state.day) - s.start }));
+  const everMayor = spells.length > 0;
+  const mayorLabel = spells.length > 0 ? spells.reduce((a, b) => (b.days > a.days ? b : a)).label : '';
+  const mayorDays = spells.reduce((a, s) => a + s.days, 0);
   // leading the United Kingdom outranks leading a nation, so Westminster wins when both happened
   const headArena: ArenaId = headArenas.has('uk') ? 'uk' : ([...headArenas][0] ?? 'uk');
   const leaderArena: ArenaId = leaderArenas.has('uk') ? 'uk' : ([...leaderArenas][0] ?? 'uk');
