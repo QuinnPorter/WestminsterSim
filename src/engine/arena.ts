@@ -835,7 +835,11 @@ function vacatePlayerBench(state: GameState, rng: Rng): void {
  *  candidacy and never flipped: the count on polling day decides it. */
 export function pickSeatFor(
   state: GameState, rng: Rng, party: PartyId, previousSeatId: string | null,
-  opts: { region?: RegionId; byPartyStrength?: boolean; safest?: boolean; candidateOnly?: boolean } = {}
+  opts: {
+    region?: RegionId; byPartyStrength?: boolean; safest?: boolean; candidateOnly?: boolean;
+    /** search the whole country rather than the member's own region */
+    national?: boolean;
+  } = {}
 ): string {
   for (const s of state.seatMap) delete s.isPlayerSeat;
   const arena = state.arena ?? 'uk';
@@ -866,7 +870,7 @@ export function pickSeatFor(
   // player's own nation and only widens the search when the party holds
   // nothing there.
   const home = opts.region ?? state.player.region;
-  const atHome = state.seatMap.filter((x) => x.region === home && x.winner !== 'spk');
+  const atHome = state.seatMap.filter((x) => (opts.national || x.region === home) && x.winner !== 'spk');
   const heldHere = atHome.filter((x) => x.winner === party);
   const held = heldHere.length > 0
     ? heldHere

@@ -593,6 +593,9 @@ export type ForcedKind =
   | 'mayorDraft' | 'mayorElection' | 'mayorReturnOffer' | 'lostMayoralty'
   /** a general election watched from City Hall */
   | 'mayorBystander'
+  /** leading from outside the chamber: a mayor's party asking them to lead it
+   *  without a seat, and the seat they then stand for at the general election */
+  | 'outsideDraft' | 'standForSeat'
   /** a joint Executive: a head party's leader deciding whether to walk out, and
    *  the blocker's leader deciding whether to re-form it */
   | 'executiveCrisis' | 'executiveTalks'

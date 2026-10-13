@@ -47,6 +47,9 @@ export interface Requirement {
   /** true → only while the player is a sitting metro mayor (out of the
    *  chamber); a card that does not say is for a sitting member */
   mayor?: boolean;
+  /** true → only while the player leads their party from outside the chamber
+   *  (no seat); a card that does not say is for a sitting member */
+  outsideLeader?: boolean;
   /** only fire when the player is at least this old (years) */
   minAge?: number;
   /** only fire when the player has one of these career backgrounds */

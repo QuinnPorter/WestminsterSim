@@ -5,12 +5,15 @@
  *   ni: a Northern Ireland MP (DUP, UUP, SDLP or Alliance) sitting for a Northern Ireland seat
  *   stormont: an MLA in the 2011, 2016, 2017 or 2022 Assembly (DUP, SF, UUP, SDLP or Alliance)
  *   mayor: a well-known MP in a region with a metro mayoralty, who takes every mayoral offer
+ *   outside: a long-serving mayor of an opposition party who takes the leadership from City Hall when asked
  * Prints one block per game to stdout. */
 import { createNewGame, CreationInput } from './src/engine/newGame';
 import { resolveChoiceCore, continueCore, acknowledgeElectionCore } from './src/engine/turn';
 import { nextStep } from './src/engine/scheduler';
 import { initCalendar } from './src/engine/calendar';
-import { buildLegacy } from './src/engine/career';
+import { becomeMayor, buildLegacy } from './src/engine/career';
+import { isOutsideLeader } from './src/engine/outsideLeader';
+import { mayoraltiesIn } from './src/data/mayoralties';
 import { Rng } from './src/engine/rng';
 import { PLAYABLE_NI } from './src/data/parties';
 import { GameState } from './src/types/game';
@@ -23,7 +26,10 @@ const PARTIES_BY_STRATEGY: Record<string, string[]> = {
   ni: [...PLAYABLE_NI],
   stormont: ['dup', 'sf', 'uup', 'sdlp', 'alliance', 'dup', 'sf'],
   mayor: ['lab', 'con', 'lab', 'lab', 'con'],
+  outside: ['lab'],
 };
+/** the party in opposition at each era's start, for the outside strategy */
+const OPPOSITION_BY_ERA: Record<string, string> = { '2010': 'lab', '2015': 'lab', '2017': 'lab', '2019': 'lab', '2024': 'con' };
 const MAYOR_REGIONS = ['london', 'northWest', 'westMidlands', 'yorkshire', 'northEast'];
 const REGIONS = ['london', 'southEast', 'northWest', 'yorkshire', 'scotland', 'wales', 'westMidlands', 'eastMidlands'];
 const BGS = ['lawyer', 'teacher', 'business', 'journalist', 'doctor', 'councillor', 'advisor', 'tradeUnionist'];
@@ -48,6 +54,7 @@ function pickChoice(card: any, strategy: string, rng: Rng): number {
     frontbench: { reshuffleOffer: 0, deputyPmOffer: 0, leadershipStand: 0, committeeChairContest: 1, speakerContest: 1, leadershipBallot: 0 },
     free: {},
     mayor: { mayorDraft: 0, mayorElection: 0, mayorReturnOffer: 0, lostMayoralty: 0, exitOffer: 1, speakerContest: 1, leadershipStand: 1 },
+    outside: { mayorElection: 0, outsideDraft: 0, standForSeat: 0, mayorReturnOffer: 1, lostMayoralty: 0, exitOffer: 1, leadershipStand: 1, speakerContest: 1 },
   };
   const map = forced[strategy] || {};
   if (card.kind in map) return Math.min(map[card.kind], n - 1);
@@ -60,12 +67,14 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
   const flags: string[] = [];
   const lines: string[] = [];
   const choiceRng = new Rng(seed * 7919 + 13);
-  const party = PARTIES_BY_STRATEGY[strategy][seed % PARTIES_BY_STRATEGY[strategy].length];
+  const party = strategy === 'outside'
+    ? OPPOSITION_BY_ERA[ERAS[seed % ERAS.length]]
+    : PARTIES_BY_STRATEGY[strategy][seed % PARTIES_BY_STRATEGY[strategy].length];
   const input: CreationInput = {
     name: NAMES[seed % NAMES.length], gender: (seed % 3 === 0 ? 'm' : seed % 3 === 1 ? 'f' : 'nb') as any,
     age: 32 + (seed % 30),
     region: (strategy === 'ni' || strategy === 'stormont' ? 'ni'
-      : strategy === 'mayor' ? MAYOR_REGIONS[seed % MAYOR_REGIONS.length]
+      : strategy === 'mayor' || strategy === 'outside' ? MAYOR_REGIONS[seed % MAYOR_REGIONS.length]
         : REGIONS[seed % REGIONS.length]) as any,
     background: BGS[seed % BGS.length] as any, partyId: party as any,
     avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
@@ -79,6 +88,13 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
     initCalendar(game);
     // a name worth asking to run: the mayor strategy starts with a public profile
     if (strategy === 'mayor') game.player.stats.profile = Math.max(game.player.stats.profile, 60);
+    if (strategy === 'outside') {
+      // four years into a mayoralty already, with the name the draft needs
+      game.player.stats.profile = Math.max(game.player.stats.profile, 72);
+      const office = mayoraltiesIn(game.player.region, game.day + 4 * 365)[0];
+      withRng(game, (r) => becomeMayor(game, r, office));
+      game.player.mayor!.since = game.day - 4 * 365;
+    }
     withRng(game, (r) => nextStep(game, r));
   } catch (e: any) { return { lines, flags: [`FATAL createNewGame: ${e?.message || e}`], summary: { seed, crashed: true } }; }
 
@@ -122,9 +138,20 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
     if (ex?.status === 'formed' && game.government.cabinet.length === 0) flags.push(`formed Executive with an empty cabinet at step ${steps}`);
     if (ex?.status === 'collapsed' && (ex.collapsedDay === undefined || ex.deadline === undefined)) flags.push(`collapsed Executive without its clock at step ${steps}`);
     if (ex?.status === 'collapsed' && game.day - ex.collapsedDay! > 4 * 365) flags.push(`collapsed for more than four years at step ${steps}`);
-    // a member out of the House is a candidate in the wilderness or a mayor; nothing else lasts
+    // a member out of the House is a candidate in the wilderness, a mayor or a
+    // leader drafted from City Hall; nothing else lasts
     if (!game.player.hasSeat && !game.player.mayor && game.day - game.parliamentStart > 6 * 365) {
       flags.push(`seatless for more than six years without a mayoralty at step ${steps}`);
+    }
+    if (isOutsideLeader(game) && game.currentCard?.kind === 'electionNight' && !game.player.seatId) {
+      flags.push(`outside leader with no seat to fight at step ${steps}`);
+    }
+    if (game.player.officeId === 'leader' && !game.player.hasSeat && game.player.mayor) {
+      flags.push(`a mayor holding the party leadership at step ${steps}`);
+    }
+    {
+      const opened = game.pmHistory.filter((t) => t.startDay === game.day).length;
+      if (opened > 1) flags.push(`two head-of-government tenures opened on one day at step ${steps}`);
     }
     // stat sanity
     for (const [k, v] of Object.entries(game.player.stats)) {
@@ -132,7 +159,7 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
     }
     // a real player retires eventually — end the career around a plausible age so
     // games terminate naturally instead of marathoning for centuries
-    if (!game.gameOver && (game.player.hasSeat || game.player.mayor) && game.player.age >= 66 + (seed % 14)) {
+    if (!game.gameOver && (game.player.hasSeat || game.player.mayor || isOutsideLeader(game)) && game.player.age >= 66 + (seed % 14)) {
       try { game.gameOver = { reason: 'retired', legacy: buildLegacy(game) }; } catch (e: any) { flags.push(`retire buildLegacy threw: ${e?.message}`); break; }
     }
   }

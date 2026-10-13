@@ -5,6 +5,7 @@ import { chamberAt, nationOfRegion } from '../data/chambers';
 import { partyNameIn } from '../data/parties';
 import { COMMITTEE_NAMES } from '../data/committees';
 import { heldMayoralty } from '../data/mayoralties';
+import { isOutsideLeader } from './outsideLeader';
 
 import { getRelationship, relationshipName } from './relationships';
 import {
@@ -34,7 +35,9 @@ export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
     card.kind === 'coalitionOffer' ||
     card.kind === 'executiveCrisis' ||
     card.kind === 'executiveTalks' ||
-    card.kind === 'mayorElection'
+    card.kind === 'mayorElection' ||
+    card.kind === 'outsideDraft' ||
+    card.kind === 'standForSeat'
   );
 }
 
@@ -50,6 +53,8 @@ export function keyMomentLabel(card: DrawnCard): string {
   if (card.kind === 'executiveCrisis') return 'The Executive on the brink';
   if (card.kind === 'executiveTalks') return 'Forming an Executive';
   if (card.kind === 'mayorElection') return 'Mayoral election';
+  if (card.kind === 'outsideDraft') return 'Leadership contest';
+  if (card.kind === 'standForSeat') return 'General election';
   return 'Key moment';
 }
 
@@ -150,8 +155,10 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
       state.day - state.cardHistory[card.id] < card.cooldownDays) {
     return false;
   }
-  // a sitting mayor draws only City Hall's deck, and nobody else draws from it
+  // a sitting mayor draws only City Hall's deck, and nobody else draws from it;
+  // a leader with no seat likewise draws only the cards written for one
   if (state.player.mayor ? !req?.mayor : req?.mayor) return false;
+  if (isOutsideLeader(state) ? !req?.outsideLeader : req?.outsideLeader) return false;
   // an unmarked card belongs to the Commons. The corpus predates the devolved
   // chambers and is written throughout in Westminster language, so a card must
   // opt IN to a legislature rather than leak into one by omission.

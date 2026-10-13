@@ -34,6 +34,11 @@ import {
   buildMayorReturnOfferCard, countHeadline, countMargin, exitProse, mayorSelectionOdds, mayorSpans, mayorTitle,
   mayoralResult, playerMayoralty, servedFullTerm,
 } from './mayor';
+import {
+  buildOutsideDraftCard, buildStandForSeatCard, isOutsideLeader, neverHeldProse, outsideApproachChance,
+  outsideDraftEligible, outsideDraftOdds,
+} from './outsideLeader';
+import { INTERLUDES } from './interludes';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { causeDepartments } from '../data/causes';
 import { PARTIES } from '../data/parties';
@@ -217,7 +222,7 @@ export function timeInPostYears(state: GameState): number {
  *  government office and take the real ministerial titles */
 function minorPartyNameOf(state: GameState): string | undefined {
   if (playerInGovernmentBloc(state)) return undefined;
-  return onMinorPartyTrack(state) ? partyNameIn(state.player.partyId, state.arena) : undefined;
+  return onMinorPartyTrack(state) || playerLeadsMinorParty(state) ? partyNameIn(state.player.partyId, state.arena) : undefined;
 }
 
 /** an office's title for the player in the live chamber: the Westminster title
@@ -284,9 +289,17 @@ export function playerOfficeTitle(state: GameState): string {
   return base;
 }
 
-/** the title pill: the office held, City Hall, or the wilderness */
+/** the player leads a party that is neither the government's nor the official
+ *  opposition, seat or no seat (the minor-party track itself needs a seat) */
+export function playerLeadsMinorParty(state: GameState): boolean {
+  return playerLeaderRole(state) === 'minorLeader';
+}
+
+/** the title pill: the office held, City Hall, a leadership held from outside
+ *  the House, or the wilderness */
 export function playerStatusTitle(state: GameState): string {
   if (state.player.mayor) return mayorTitle(state);
+  if (isOutsideLeader(state)) return `${playerOfficeTitle(state)} (no seat)`;
   if (!state.player.hasSeat) return `Out of ${chamberAt(state.arena, state.day).houseThe}`;
   return playerOfficeTitle(state);
 }
@@ -2274,6 +2287,18 @@ export function openLeadershipVacancy(
   state: GameState, rng: Rng, party: PartyId, opts: { extraDelayDays?: number } = {}
 ): void {
   const isPlayerParty = party === state.player.partyId;
+  // a sitting mayor with a national name may be asked to lead the party from
+  // City Hall: rarely, once, and only an opposition or minor party. Everything
+  // here is behind the mayoralty, so a career that never left the House draws
+  // nothing from it.
+  if (isPlayerParty && INTERLUDES.outsideDraft && outsideDraftEligible(state, party)) {
+    state.player.flags._outsideDraftAttempts = Number(state.player.flags._outsideDraftAttempts ?? 0) + 1;
+    state.player.flags._lastOutsideApproach = state.day;
+    if (rng.chance(outsideApproachChance(state))) {
+      state.forcedQueue.push({ kind: 'outsideDraft', payload: { party, step: 1, winChance: outsideDraftOdds(state) } });
+      return;
+    }
+  }
   const playerContest = isPlayerParty
     && playerCanStandForLeader(state) && playerCredibleForLeadership(state, rng);
   if (!playerContest) {
@@ -2733,9 +2758,19 @@ export function applyElectionAftermath(
 
   // seat status for the player
   if (playerWonSeat && !state.player.hasSeat) {
+    const ledFromOutside = isOutsideLeader(state);
     state.player.hasSeat = true;
     if (state.player.mayor) {
       leaveMayoralty(state, rng, 'returned');
+    } else if (ledFromOutside) {
+      // the leader who could not sit can now: this seat has never seen them
+      state.player.flags._seatSinceDay = state.day;
+      const seat = state.seatMap.find((x) => x.id === state.player.seatId);
+      if (seat) state.player.region = seat.region;
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} enters the Commons${seat ? ` as MP for ${seat.name}` : ''}, a party leader at last able to sit`,
+      });
     } else {
       state.history.push({
         kind: 'event', date: state.day,
@@ -2954,6 +2989,8 @@ export function applyElectionAftermath(
       settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
       return;
     }
+    // a leader who led from outside the House never held the seat they fought
+    const neverHeld = isOutsideLeader(state);
     state.player.hasSeat = false;
     clearCommitteeChair(state, 'lostSeat'); // a chair who loses their seat loses the chair
     if (playerIsLeader(state)) {
@@ -2963,13 +3000,23 @@ export function applyElectionAftermath(
       // close the career-timeline span (PM / LO / minor leader) — without this the
       // Profile keeps showing the old role running "…–now" after they've left
       state.history.push({ kind: 'roleChange', arena: state.arena ?? 'uk', date: state.day, officeId: null, how: 'leftOffice' });
-      // the general-election aftermath (reconcileFrontbenches) already rebuilds the
-      // bench, so skip the new-leader reshaping here to avoid churning it twice
-      resolveNpcLeadership(state, rng, state.player.partyId, undefined, { skipReshape: true });
+      if (state.player.partyId === newGov && state.government.pmId !== 'player') {
+        // the party won without its leader: the bench's choice is already in
+        // Number 10, and the player's leader is now that person
+        const rel = getRelationship(state, 'leader');
+        if (rel) rel.characterId = state.government.pmId;
+      } else {
+        // the general-election aftermath (reconcileFrontbenches) already rebuilds the
+        // bench, so skip the new-leader reshaping here to avoid churning it twice
+        resolveNpcLeadership(state, rng, state.player.partyId, undefined, { skipReshape: true });
+      }
     } else if (state.player.officeId) {
       stripOffice(state, rng, 'leftOffice');
     }
-    state.forcedQueue.push({ kind: 'lostSeat' });
+    state.forcedQueue.push({
+      kind: 'lostSeat',
+      ...(neverHeld ? { payload: { neverHeld: true, partyWon: state.player.partyId === newGov } } : {}),
+    });
     // any leadership fallout in other parties resolves quietly
     settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
     return;
@@ -3615,9 +3662,11 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         cardId: `forced_lostseat_${state.day}`,
         kind: 'lostSeat',
         title: 'The count',
-        body: 'The returning officer reads the numbers and the room goes quiet. You have lost your seat. Outside, a journalist asks what you will do now.',
-        choices: [{ label: 'Vow to win it back' }, { label: 'Retire from politics' }],
-        payload: { advance: rng.int(14, 30) },
+        body: ev.payload?.neverHeld === true
+          ? neverHeldProse(ev.payload?.partyWon === true).body
+          : 'The returning officer reads the numbers and the room goes quiet. You have lost your seat. Outside, a journalist asks what you will do now.',
+        choices: [{ label: ev.payload?.neverHeld === true ? 'Vow to fight on' : 'Vow to win it back' }, { label: 'Retire from politics' }],
+        payload: { ...ev.payload, advance: rng.int(14, 30) },
       };
     case 'leadershipStand': {
       const candidateIds = (ev.payload?.candidateIds as string[]) ?? [];
@@ -4595,6 +4644,21 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     case 'lostMayoralty':
       return buildLostMayoraltyCard(state, rng, ev.payload as LostMayoraltyPayload);
 
+    // ---- leading from outside the chamber ----
+    case 'outsideDraft':
+      return buildOutsideDraftCard(state, rng, ev.payload);
+    case 'standForSeat': {
+      // the two seats on offer, previewed (neither pick draws, and the chosen one
+      // is marked again on the answer)
+      const regional = pickSeatFor(state, rng, state.player.partyId, null, { region: state.player.region, safest: true, candidateOnly: true });
+      const national = pickSeatFor(state, rng, state.player.partyId, null, { national: true, safest: true, candidateOnly: true });
+      for (const x of state.seatMap) delete x.isPlayerSeat;
+      const nameOf = (id: string) => state.seatMap.find((x) => x.id === id)?.name ?? null;
+      const card = buildStandForSeatCard(state, rng, { regional: nameOf(regional), national: nameOf(national) });
+      card.payload = { ...card.payload, regional, national };
+      return card;
+    }
+
     case 'calendar':
     case 'electionNight':
       // produced/handled by the scheduler, not here
@@ -5129,6 +5193,83 @@ export function resolveForcedChoice(
       };
     }
 
+    // ---- leading from outside the chamber ----
+    case 'outsideDraft': {
+      const party = (card.payload?.party as PartyId) ?? state.player.partyId;
+      const step = (card.payload?.step as number) ?? 1;
+      let winChance = (card.payload?.winChance as number) ?? outsideDraftOdds(state);
+      if (step === 1) {
+        if (choiceIndex !== 0) {
+          // the vacancy is filled from the Commons after all
+          openNpcContest(state, rng, party);
+          gain('constituencyApproval', 2, 'Approval');
+          return {
+            text: `You say no, and mean it, and the three of them take the train back to a contest among people who can vote in it. The city keeps its mayor. The party remembers that it asked.`,
+            deltas,
+          };
+        }
+        gain('profile', 4, 'Profile');
+        state.forcedQueue.unshift({ kind: 'outsideDraft', payload: { ...card.payload, step: 2, winChance } });
+        return {
+          text: `You say yes before the sentence is finished. By the weekend the papers have a word for it, and the word is a question mark: a candidate for the leadership of ${partyNameWithArticle(party, 'uk')} who could not take a seat in the House if they won.`,
+          deltas,
+        };
+      }
+      // step 2: the members' vote
+      if (choiceIndex === 0) {
+        winChance += 0.08;
+        gain('profile', 2, 'Profile');
+      } else if (choiceIndex === 1) {
+        winChance += 0.05;
+        gain('partyStanding', -2, 'Standing');
+        gain('integrity', 1, 'Integrity');
+      } else {
+        winChance += 0.15;
+        gain('integrity', -3, 'Integrity');
+        state.player.favours = [];
+      }
+      winChance = clamp(winChance, 0.03, 0.75);
+      if (!rng.chance(winChance)) {
+        state.player.flags._outsideDraftFailed = true;
+        state.history.push({ kind: 'leadershipContest', date: state.day, won: false, partyId: party });
+        openNpcContest(state, rng, party);
+        gain('profile', 3, 'Profile');
+        gain('partyStanding', -6, 'Standing');
+        return {
+          text: `It goes to somebody with a seat, which is what the members decided the job needed, and it is not close. You go back to City Hall with a national profile and a parliamentary party that has watched you try to run it from outside.`,
+          deltas,
+        };
+      }
+      makeOutsideLeader(state, rng);
+      gain('profile', 10, 'Profile');
+      return {
+        text: `You win it. The leader of ${partyNameWithArticle(party, 'uk')} is a former mayor with no seat, a deputy to take the despatch box, and one general election to put that right. The letter resigning City Hall goes in before the acceptance speech.`,
+        deltas,
+      };
+    }
+
+    case 'standForSeat': {
+      const chosen = (choiceIndex === 0 ? card.payload?.regional : card.payload?.national) as string | undefined;
+      const seat = state.seatMap.find((x) => x.id === chosen);
+      if (seat) {
+        for (const x of state.seatMap) delete x.isPlayerSeat;
+        seat.isPlayerSeat = true;
+        state.player.seatId = seat.id;
+      }
+      if (choiceIndex === 0) gain('constituencyApproval', 3, 'Approval');
+      else gain('partyStanding', 2, 'Standing');
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} will stand for ${seat?.name ?? 'a Commons seat'} at the general election`,
+      });
+      return {
+        text: choiceIndex === 0
+          ? `You stand where you are from. The seat is harder than the safe one and the voters are yours, and the party, which would rather you had taken the parachute, says it respects the choice.`
+          : `You take the safe seat, and every profile of you for the next six weeks uses the word parachute. The seat is as safe as the rosette; the question is how safe the rosette is.`,
+        deltas,
+      };
+    }
+
     case 'lostMayoralty': {
       if (choiceIndex === 0) {
         gain('constituencyApproval', 2, 'Approval');
@@ -5283,17 +5424,18 @@ export function resolveForcedChoice(
     }
 
     case 'lostSeat': {
+      const neverHeld = card.payload?.neverHeld === true ? neverHeldProse(card.payload?.partyWon === true) : null;
       if (choiceIndex === 0) {
         state.player.hasSeat = false;
         state.player.officeId = null;
         return {
-          text: 'You give a gracious speech and promise the count is not the end. The association adopts you again as their candidate. The wilderness years begin.',
+          text: neverHeld?.vow ?? 'You give a gracious speech and promise the count is not the end. The association adopts you again as their candidate. The wilderness years begin.',
           deltas,
         };
       }
       state.gameOver = { reason: 'lostSeat', legacy: buildLegacy(state) };
       return {
-        text: 'You thank the constituency for the years and step away. Politics will carry on without you — it always does.',
+        text: neverHeld?.retire ?? 'You thank the constituency for the years and step away. Politics will carry on without you — it always does.',
         deltas,
       };
     }
@@ -7589,7 +7731,9 @@ export function sackMinisterCore(state: GameState, rng: Rng, officeId: OfficeId,
 
 function partyLeaderId(state: GameState, rng: Rng, party: PartyId): string {
   if (party === state.government.governingParty) return state.government.pmId;
-  if (party === state.government.oppositionParty) return state.government.loId;
+  // a player leading the opposition without a seat (or having just lost it) is
+  // not the person who walks into Number 10: fall through to the party's bench
+  if (party === state.government.oppositionParty && state.government.loId !== 'player') return state.government.loId;
   const existing = Object.values(state.characters).find(
     (c) => c.active && c.partyId === party && c.officeId === 'leader'
   );
@@ -8299,7 +8443,7 @@ export function becomeMayor(state: GameState, rng: Rng, m: Mayoralty): void {
 /** the mayoralty ends: back in the Commons on a won count, or out of office on a
  *  lost one with a candidacy for the next general election so the wilderness has
  *  a way out. Either way the record City Hall gave them comes with them. */
-export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lost'): void {
+export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lost' | 'resigned'): void {
   const mayor = state.player.mayor;
   if (!mayor) return;
   const label = mayoraltyName(playerMayoralty(state));
@@ -8328,7 +8472,23 @@ export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lo
     });
     return;
   }
-  markSeatCandidacy(state, rng);
+  if (how === 'lost') markSeatCandidacy(state, rng);
+}
+
+/** a sitting mayor wins the leadership of their party from City Hall: the
+ *  mayoralty is resigned, the leadership taken with no seat, the calendar (which
+ *  stood still while they were away) restarted. The next general election
+ *  decides whether they can sit. */
+export function makeOutsideLeader(state: GameState, rng: Rng): void {
+  const label = mayoraltyName(playerMayoralty(state));
+  const party = state.player.partyId;
+  leaveMayoralty(state, rng, 'resigned');
+  makePlayerLeader(state, rng);
+  initCalendar(state);
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} resigns as ${label} to lead ${partyNameWithArticle(party, 'uk')} from outside the Commons`,
+  });
 }
 
 /** a selected candidate who has become party leader in the meantime withdraws */
@@ -8344,7 +8504,7 @@ export function withdrawMayorCandidacy(state: GameState): void {
 
 /** adopt the player as a Commons candidate in their region, on a seat the party
  *  holds where it can, without flipping it: the count decides */
-function markSeatCandidacy(state: GameState, rng: Rng): void {
+export function markSeatCandidacy(state: GameState, rng: Rng): void {
   state.player.seatId = pickSeatFor(state, rng, state.player.partyId, null, {
     region: state.player.region, byPartyStrength: true, candidateOnly: true,
   });

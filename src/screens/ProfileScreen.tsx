@@ -7,6 +7,7 @@ import { Avatar } from '../avatar/Avatar';
 import { PARTIES, counterpartParty, partyNameIn, playablePartiesFor } from '../data/parties';
 import { mayoraltyName } from '../data/mayoralties';
 import { mayorSpans, playerMayoralty } from '../engine/mayor';
+import { isOutsideLeader } from '../engine/outsideLeader';
 import { pairSpans } from '../engine/historySpans';
 import { REGIONS } from '../data/regions';
 import { CHAMBERS, chamberAt, houseHeading } from '../data/chambers';
@@ -486,7 +487,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
         </div>
       )}
 
-      {player.officeId && player.hasSeat && (
+      {player.officeId && (player.hasSeat || isOutsideLeader(game)) && (
         <button
           className="btn"
           style={{ textAlign: 'center', marginBottom: 8 }}
@@ -551,7 +552,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
         </button>
       )}
 
-      {(player.hasSeat || player.mayor) && (
+      {(player.hasSeat || player.mayor || isOutsideLeader(game)) && (
         <button
           className="btn"
           style={{ textAlign: 'center', marginBottom: 8 }}

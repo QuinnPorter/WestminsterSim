@@ -178,6 +178,7 @@ function tidy(text: string): string {
  *  wrong and confusing. These build their own chamber nouns explicitly. */
 const SPEAKS_FOR_ITSELF = new Set([
   'ukRecruit', 'devolvedDraft', 'mayorDraft', 'mayorElection', 'mayorReturnOffer', 'lostMayoralty', 'mayorBystander',
+  'outsideDraft', 'standForSeat',
 ]);
 
 export function exemptFromChamberVoice(kind: string | undefined): boolean {
