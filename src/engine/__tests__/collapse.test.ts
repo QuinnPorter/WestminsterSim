@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { GameState, PartyId } from '../../types/game';
 import { NI_ASSEMBLY, NI_EXECUTIVE_HISTORY, formationLaw } from '../../data/niAssembly';
 import { cabinetOfficesFor } from '../../data/offices';
-import { executiveInBeing, hasOfficialOpposition } from '../executive';
+import { decideFormation, executiveInBeing, hasOfficialOpposition } from '../executive';
 import {
-  COLLAPSE_CAP_DAYS, catchUpExecutive, collapseExecutive, collapseTick, decideFormation, restoreExecutive,
+  COLLAPSE_CAP_DAYS, catchUpExecutive, collapseExecutive, collapseTick, restoreExecutive,
   secretaryOfStateMoves, stormontStoodOn,
 } from '../collapse';
 import {
@@ -177,17 +177,24 @@ describe('falling and re-forming', () => {
     const collapsed = game({ seed: 8, arena: 'ni', election: '2017-03-02', partyId: 'dup', era: '2015' });
     let f1 = 0; let f2 = 0;
     for (let s = 1; s <= 100; s++) {
-      if (decideFormation(formed, new Rng(s), { fm: 'dup', dfm: 'sf' }).formed) f1++;
-      if (decideFormation(collapsed, new Rng(s), { fm: 'dup', dfm: 'sf' }).formed) f2++;
+      if (!decideFormation(formed, new Rng(s), { fm: 'dup', dfm: 'sf' })) f1++;
+      if (!decideFormation(collapsed, new Rng(s), { fm: 'dup', dfm: 'sf' })) f2++;
     }
     expect(f1).toBeGreaterThan(80);
     expect(f2).toBeGreaterThan(20);
     expect(f2).toBeLessThan(60);
-    // the player's party is never the one rolled against
+    // the player's party is never the one rolled against...
     for (let s = 1; s <= 50; s++) {
-      const d = decideFormation(collapsed, new Rng(s), { fm: 'dup', dfm: 'sf' }, { playerLeads: 'sf' });
-      if (!d.formed) expect(d.blocker).toBe('dup');
+      const d = decideFormation(collapsed, new Rng(s), { fm: 'dup', dfm: 'sf' }, { playerLeads: 'dup' });
+      if (d) expect(d.blocker).toBe('sf');
     }
+    // ...and a player who has been holding out stays out, without a roll, until the card asks
+    for (let s = 1; s <= 10; s++) {
+      const d = decideFormation(collapsed, new Rng(s), { fm: 'dup', dfm: 'sf' }, { playerLeads: 'sf' });
+      expect(d?.blocker).toBe('sf');
+    }
+    // a formed Executive has no hold-out to carry over
+    expect(decideFormation(formed, new Rng(3), { fm: 'dup', dfm: 'sf' }, { playerLeads: 'sf' })?.blocker ?? 'dup').toBe('dup');
   });
 
   it('a collapsed start resolves within the cap in every seed, usually within two years', () => {

@@ -21,7 +21,10 @@ import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
 import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
 import { initCalendar } from './calendar';
-import { executiveInBeing, formExecutive, isJointExecutive, makePlayerDeputyFirstMinister } from './executive';
+import {
+  closeOpenTenure, executiveInBeing, formExecutive, isJointExecutive, makePlayerDeputyFirstMinister,
+} from './executive';
+import { recordLoChange, recordPmChange } from './tenure';
 import { caretakersFrom, catchUpExecutive } from './collapse';
 import { castContext } from './cast';
 import { resignationPressure, runElection } from './election';
@@ -197,9 +200,7 @@ export function buildDevolvedArena(
       // no sitting First Minister: the tenure opened above never was
       pmHistory.length = 0;
     }
-    formExecutive(forming, rng, {
-      snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false, ...(collapsed ? { collapsed } : {}),
-    });
+    formExecutive(forming, rng, { snapshot: snap.executive, cast: { usedNames, idCounter }, playerSeated: false, collapsed });
     // ...up to the start, or to the first election the caller will fight
     const execTo = Math.min(startDay, nextElectionBy);
     if (execTo > since) catchUpExecutive(forming, rng, execTo);
@@ -357,8 +358,7 @@ function installNpcGovernment(
   const majority = workingMajorityIn(state.seats, governing, state.arena);
 
   if (gv.pmId !== pmId) {
-    const open = state.pmHistory.find((t) => t.endDay === null);
-    if (open) open.endDay = state.day;
+    closeOpenTenure(state.pmHistory, state.day);
     const pm = state.characters[pmId];
     state.pmHistory.push({
       characterId: pmId, name: pm?.name ?? chamber.head, partyId: governing,
@@ -367,8 +367,7 @@ function installNpcGovernment(
     gv.pmSinceDay = state.day;
   }
   if (gv.loId !== loId) {
-    const open = (state.loHistory ?? []).find((t) => t.endDay === null);
-    if (open) open.endDay = state.day;
+    closeOpenTenure(state.loHistory ?? [], state.day);
     const lo = state.characters[loId];
     state.loHistory = [...(state.loHistory ?? []), {
       characterId: loId, name: lo?.name ?? 'the Leader of the Opposition',
@@ -456,19 +455,19 @@ function ghostPlayer(state: GameState): GameState['player'] {
   };
 }
 
-/** Run a dormant chamber's clock forward to `toDay`: polling drift, and a
- *  general election on every fixed date that falls in the gap. Headlines are
+/** Run a dormant chamber's clock forward from `from` (the day it was last seen)
+ *  to `toDay`: polling drift, a general election on every fixed date that falls
+ *  in the gap, and a joint Executive's own clock between them. Headlines are
  *  dated to when they happened, so the History screen reads correctly even
  *  though the work was deferred to the moment the player looked. */
-export function catchUpArena(state: GameState, rng: Rng, toDay: number, from?: number): void {
+export function catchUpArena(state: GameState, rng: Rng, toDay: number, from: number): void {
   const arena = state.arena ?? 'uk';
   const chamber = chamberOf(arena);
   const realPlayer = state.player;
   const realDay = state.day;
   state.player = ghostPlayer(state);
-  // a joint Executive's clock runs from the day the chamber was last seen
   const joint = isJointExecutive(arena);
-  if (joint) state.day = from ?? state.polling.lastUpdated;
+  if (joint) state.day = from;
 
   // Any leadership contest that was in flight when the player walked out has
   // long since concluded. Settle it now rather than leaving it frozen in the
@@ -1060,28 +1059,16 @@ export function installPlayerAsLeader(state: GameState, rng: Rng): void {
 
   const inGovernment = party === state.government.governingParty && executiveInBeing(state);
   const isOpposition = party === state.government.oppositionParty;
-  if (party === state.government.governingParty && !inGovernment) {
-    // the largest party's leader with no Executive to head: the designate
+  if (party === state.government.governingParty) {
+    // the head of government, or with no Executive to head, its designate
     state.government.pmId = 'player';
     state.government.pmSinceDay = state.day;
   }
   if (inGovernment) {
-    const open = state.pmHistory.find((t) => t.endDay === null);
-    if (open) open.endDay = state.day;
-    state.government.pmId = 'player';
-    state.government.pmSinceDay = state.day;
-    state.pmHistory.push({
-      characterId: 'player', name: state.player.name, partyId: party,
-      startDay: state.day, endDay: null,
-    });
+    recordPmChange(state, 'player');
   } else if (isOpposition) {
-    const open = (state.loHistory ?? []).find((t) => t.endDay === null);
-    if (open) open.endDay = state.day;
     state.government.loId = 'player';
-    state.loHistory = [...(state.loHistory ?? []), {
-      characterId: 'player', name: state.player.name, partyId: party,
-      startDay: state.day, endDay: null,
-    }];
+    recordLoChange(state, 'player');
   }
   // the deputy First Minister's party has just changed leader: the post follows
   if (state.government.executive && state.government.coalitionPartner === party && executiveInBeing(state)) {

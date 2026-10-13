@@ -11,6 +11,7 @@ import {
 } from './career';
 import { Rng } from './rng';
 import { stormontStoodOn } from './collapse';
+import { executiveInBeing } from './executive';
 
 // ---------- key moments ----------
 
@@ -109,9 +110,7 @@ function otherGovernment(state: GameState): { leader: string; party: string; gov
     const snap = nation ? state.dormant?.[nation] : undefined;
     const chamber = chamberAt(nation ?? 'scotland', state.day);
     // Stormont without an Executive: the Northern Ireland Office speaks for it
-    const collapsed = snap
-      ? snap.government.executive?.status === 'collapsed'
-      : chamber.jointExecutive && !stormontStoodOn(state.day);
+    const collapsed = snap ? !executiveInBeing(snap) : chamber.jointExecutive && !stormontStoodOn(state.day);
     if (collapsed) {
       return { leader: 'the Secretary of State', party: 'the Northern Ireland Office', government: 'the Northern Ireland Office' };
     }

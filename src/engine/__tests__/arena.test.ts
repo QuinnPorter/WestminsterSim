@@ -391,7 +391,7 @@ describe('catching a dormant chamber up', () => {
     const g = game();
     const start = g.day;
     const n = Object.keys(g.elections).length;
-    catchUpArena(g, new Rng(1), g.day + 365 * 12);
+    catchUpArena(g, new Rng(1), g.day + 365 * 12, g.day);
     expect(Object.keys(g.elections).length).toBeGreaterThan(n);
     expect(sum(g.seats)).toBe(g.seatMap.length);
     expect(g.seats[g.government.governingParty] ?? 0).toBeGreaterThan(0);
@@ -401,7 +401,7 @@ describe('catching a dormant chamber up', () => {
   });
   it('does not disturb the player: no ghost result is recorded', () => {
     const g = game();
-    catchUpArena(g, new Rng(7), g.day + 365 * 9);
+    catchUpArena(g, new Rng(7), g.day + 365 * 9, g.day);
     for (const r of Object.values(g.elections)) {
       expect(r.playerResult).toBeNull();
       expect(r.playerHeldSeat).toBe(false);
@@ -411,7 +411,7 @@ describe('catching a dormant chamber up', () => {
     const g = game({ arena: 'scotland', devolvedElection: '2016-05-05', partyId: 'snp' });
     const before = g.nextElectionBy;
     expect(before).toBe(isoToDay('2021-05-06'));
-    catchUpArena(g, new Rng(2), isoToDay('2027-01-01'));
+    catchUpArena(g, new Rng(2), isoToDay('2027-01-01'), g.day);
     expect(g.nextElectionBy).toBe(isoToDay('2031-05-01'));
     expect(Object.values(g.elections).filter((e) => e.arena === 'scotland')).toHaveLength(2);
   });

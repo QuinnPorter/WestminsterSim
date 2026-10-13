@@ -1,17 +1,14 @@
-import { DrawnCard, ExecutiveCollapseCause, GameState, PartyId, StatDelta } from '../types/game';
-import {
-  ExecutiveSnapshot, FORMATION_ACT_2022, NI_EXECUTIVE_HISTORY, NI_EXECUTIVE_HISTORY_END, formationLaw,
-} from '../data/niAssembly';
+import { DrawnCard, ExecutiveCollapseCause, GameState, PartyId } from '../types/game';
+import { ExecutiveSnapshot, NI_EXECUTIVE_HISTORY, NI_EXECUTIVE_HISTORY_END, formationLaw } from '../data/niAssembly';
 import { chamberOf } from '../data/chambers';
 import { partyNameIn, partyNameWithArticle } from '../data/parties';
 import { executiveDepartments } from '../data/offices';
 import { legislatureAt } from '../data/devolved';
 import {
-  ExecutivePlan, InstallOptions, allocateMinistries, clearDeputyFirstMinister, closeOpenTenure, emptyCabinet,
-  installExecutive, isJointExecutive, planExecutive,
+  ExecutivePlan, FormOptions, InstallOptions, allocateMinistries, blockingParty, emptyCabinet, executiveInBeing,
+  formExecutive, isJointExecutive, vacateHeads,
 } from './executive';
-export { NON_NOMINATION_EXTRAORDINARY, NON_NOMINATION_ORDINARY, decideFormation } from './executive';
-import { partyPollingShare } from './polling';
+import { arenaBaseline, partyPollingShare } from './polling';
 import { isoToDay } from './clock';
 import { characterName } from './relationships';
 import { Rng, clamp } from './rng';
@@ -25,7 +22,7 @@ import { Rng, clamp } from './rng';
  * two offices, and the other ministers stay only as caretakers until the law
  * removes them. The clock runs on the statutory period, which the Secretary of
  * State extends a few times before an extraordinary election, and a deal re-forms
- * the Executive through `installExecutive`. A player who leads a head party is
+ * the Executive through `formExecutive`. A player who leads a head party is
  * asked (the `executiveCrisis` and `executiveTalks` cards) where the NPC world
  * rolls. Everything here is reached only through `isJointExecutive`, so the
  * Commons never draws from it.
@@ -47,6 +44,8 @@ export const COLLAPSE_CAP_DAYS = Math.round(3.5 * 365);
 /** the dormant catch-up steps the clock in strides of this many days */
 const CATCH_UP_STRIDE = 28;
 
+/** the real chronology, dated */
+const CHRONOLOGY = NI_EXECUTIVE_HISTORY.map((ev) => ({ ...ev, day: isoToDay(ev.on) }));
 const HISTORY_END = isoToDay(NI_EXECUTIVE_HISTORY_END);
 
 // ---------------------------------------------------------------------------
@@ -59,39 +58,37 @@ const HISTORY_END = isoToDay(NI_EXECUTIVE_HISTORY_END);
 export function collapseExecutive(
   state: GameState, cause: ExecutiveCollapseCause, blocker: PartyId
 ): void {
-  const gv = state.government;
-  if (!gv.executive || gv.executive.status === 'collapsed') return;
+  const ex = state.government.executive;
+  if (!ex || !executiveInBeing(state)) return;
   const law = formationLaw(state.day);
-  gv.executive.status = 'collapsed';
-  gv.executive.collapsedDay = state.day;
-  gv.executive.cause = cause;
-  gv.executive.blocker = blocker;
-  gv.executive.deadline = state.day + law.afterVacancy;
-  gv.executive.extensions = 0;
-  gv.executive.caretakerUntil = law.caretakerAfterVacancy === 'untilElection'
+  ex.status = 'collapsed';
+  ex.collapsedDay = state.day;
+  ex.cause = cause;
+  ex.blocker = blocker;
+  ex.deadline = state.day + law.afterVacancy;
+  ex.extensions = 0;
+  ex.caretakerUntil = law.caretakerAfterVacancy === 'untilElection'
     ? state.nextElectionBy
     : state.day + law.caretakerAfterVacancy;
-  delete gv.executive.strain;
-  closeOpenTenure(state.pmHistory, state.day);
-  clearDeputyFirstMinister(state);
-  const arena = state.arena ?? 'uk';
-  const head = chamberOf(arena).head;
-  const fmName = characterName(state, gv.pmId);
-  const dfmParty = gv.coalitionPartner ?? blocker;
+  delete ex.strain;
+  vacateHeads(state);
+  const chamber = chamberOf(state.arena);
+  const fmName = characterName(state, state.government.pmId);
+  const party = partyNameIn(blocker, state.arena);
   state.history.push({
     kind: 'event', date: state.day,
     headline: cause === 'dfmWalkout'
-      ? `${partyNameIn(dfmParty, arena)} pulls its ${chamberOf(arena).deputyHead} out; ${fmName} ceases to be ${head} with them and the Executive falls`
+      ? `${party} pulls its ${chamber.deputyHead} out; ${fmName} ceases to be ${chamber.head} with them and the Executive falls`
       : cause === 'fmWalkout'
-        ? `${fmName} resigns as ${head}; the ${chamberOf(arena).deputyHead} goes with the office and the Executive falls`
-        : `${partyNameIn(blocker, arena)} refuses to nominate; the Executive falls`,
+        ? `${fmName} resigns as ${chamber.head}; the ${chamber.deputyHead} goes with the office and the Executive falls`
+        : `${party} refuses to nominate; the Executive falls`,
   });
 }
 
 /** past the day the law lets them stay, the caretakers go */
 function retireCaretakers(state: GameState): void {
   const ex = state.government.executive;
-  if (!ex || ex.status !== 'collapsed') return;
+  if (!ex || executiveInBeing(state)) return;
   if (ex.caretakerUntil !== undefined && state.day >= ex.caretakerUntil) {
     delete ex.caretakerUntil;
     if (state.government.cabinet.length > 0) {
@@ -119,18 +116,8 @@ export function callExtraordinaryElection(state: GameState): void {
 
 /** the Executive re-forms around the designates: the rules run again on the
  *  seats, with the blocker's party back inside */
-export function restoreExecutive(
-  state: GameState, rng: Rng, opts: InstallOptions & { snapshot?: ExecutiveSnapshot } = {}
-): ExecutivePlan | null {
-  const arena = state.arena ?? 'uk';
-  const plan = planExecutive(state.seats, state.polling.shares, rng, state.day, arena, opts.snapshot);
-  if (!plan) return null;
-  installExecutive(state, rng, plan, opts);
-  state.history.push({
-    kind: 'event', date: state.day,
-    headline: `A deal is done: ${characterName(state, state.government.pmId)} and ${characterName(state, state.government.deputyPmId ?? '')} are nominated and the Executive is back`,
-  });
-  return plan;
+export function restoreExecutive(state: GameState, rng: Rng, opts: FormOptions = {}): ExecutivePlan | null {
+  return formExecutive(state, rng, { ...opts, restored: true });
 }
 
 /** the caretaker arrangement a collapsed snapshot describes, as an install option */
@@ -148,9 +135,7 @@ export function caretakersFrom(
       caretakers: {
         until: isoToDay(care.until),
         parties: [...care.parties],
-        allocation: allocateMinistries(
-          seats, care.parties.filter((p) => p !== 'ind'), executiveDepartments('ni'), care.justice
-        ),
+        allocation: allocateMinistries(seats, care.parties, executiveDepartments('ni'), care.justice),
       },
     } : {}),
   };
@@ -162,7 +147,7 @@ export function caretakersFrom(
 
 function yearsCollapsed(state: GameState): number {
   const ex = state.government.executive;
-  if (!ex || ex.status !== 'collapsed' || ex.collapsedDay === undefined) return 0;
+  if (!ex || executiveInBeing(state) || ex.collapsedDay === undefined) return 0;
   return (state.day - ex.collapsedDay) / 365;
 }
 
@@ -185,13 +170,13 @@ export function collapseTick(state: GameState, rng: Rng): boolean {
   if (!ex) return false;
   const playerHead = playerLedHead(state);
 
-  if (ex.status === 'formed') {
+  if (executiveInBeing(state)) {
     // strain eases while things hold; the deputy's party sliding in the polls tightens it
     const dfm = gv.coalitionPartner;
-    const slide = dfm ? Math.max(0, (state.anchorShares?.[dfm] ?? 0) - partyPollingShare(state, dfm)) * 100 : 0;
-    ex.strain = clamp((ex.strain ?? 0) * 0.97 + slide * 0.4, 0, 100);
-    const hazard = WALKOUT_HAZARD * (1 + (ex.strain ?? 0) / 50);
-    if (!rng.chance(hazard)) return false;
+    const slide = dfm ? Math.max(0, (arenaBaseline(state)[dfm] ?? 0) - partyPollingShare(state, dfm)) * 100 : 0;
+    const strain = clamp((ex.strain ?? 0) * 0.97 + slide * 0.4, 0, 100);
+    ex.strain = strain;
+    if (!rng.chance(WALKOUT_HAZARD * (1 + strain / 50))) return false;
     // the deputy's party walks far more often than the First Minister's
     const walker: PartyId = rng.chance(0.7) ? (dfm ?? gv.governingParty) : gv.governingParty;
     if (walker === playerHead) {
@@ -207,10 +192,10 @@ export function collapseTick(state: GameState, rng: Rng): boolean {
   // collapsed
   retireCaretakers(state);
   const years = yearsCollapsed(state);
-  const blockerIsPlayer = ex.blocker !== undefined && ex.blocker === playerHead;
+  const blockerIsPlayer = playerHead !== undefined && blockingParty(state) === playerHead;
+  const talksQueued = state.forcedQueue.some((e) => e.kind === 'executiveTalks');
   const talks = (context: TalksContext) => {
-    if (state.forcedQueue.some((e) => e.kind === 'executiveTalks')) return true;
-    state.forcedQueue.push({ kind: 'executiveTalks', payload: { context } });
+    if (!talksQueued) state.forcedQueue.push({ kind: 'executiveTalks', payload: { context } });
     return true;
   };
 
@@ -234,7 +219,7 @@ export function collapseTick(state: GameState, rng: Rng): boolean {
 
   // the statutory deadline: an extension, or the extraordinary election
   if (ex.deadline !== undefined && state.day >= ex.deadline) {
-    if (blockerIsPlayer && !state.forcedQueue.some((e) => e.kind === 'executiveTalks')) {
+    if (blockerIsPlayer && !talksQueued) {
       // the blocker's leader is asked first; the Secretary of State's move follows the answer
       ex.deadline = state.day + 14;
       return talks('deadline');
@@ -247,13 +232,14 @@ export function collapseTick(state: GameState, rng: Rng): boolean {
 /** the period has run out: the Secretary of State extends it, or calls the election */
 export function secretaryOfStateMoves(state: GameState, rng: Rng): void {
   const ex = state.government.executive;
-  if (!ex || ex.status !== 'collapsed') return;
-  const used = ex.extensions ?? 0;
-  const electionPending = state.nextElectionBy - state.day <= EXTRAORDINARY_ELECTION_LEAD;
-  if (electionPending) {
-    ex.deadline = state.nextElectionBy + formationLaw(state.day).afterElection;
+  if (!ex || executiveInBeing(state)) return;
+  // the clock restarts after the election
+  const afterTheElection = () => state.nextElectionBy + formationLaw(state.day).afterElection;
+  if (state.nextElectionBy - state.day <= EXTRAORDINARY_ELECTION_LEAD) {
+    ex.deadline = afterTheElection();
     return;
   }
+  const used = ex.extensions ?? 0;
   if (used < MAX_EXTENSIONS && rng.chance(EXTENSION_CHANCE)) {
     ex.extensions = used + 1;
     ex.deadline = state.day + EXTENSION_DAYS;
@@ -264,7 +250,7 @@ export function secretaryOfStateMoves(state: GameState, rng: Rng): void {
     return;
   }
   callExtraordinaryElection(state);
-  ex.deadline = state.nextElectionBy + formationLaw(state.day).afterElection;
+  ex.deadline = afterTheElection();
 }
 
 // ---------------------------------------------------------------------------
@@ -281,25 +267,20 @@ export function catchUpExecutive(state: GameState, rng: Rng, to: number): void {
   let day = state.day;
   while (day < to && day < state.nextElectionBy) {
     const next = Math.min(day + CATCH_UP_STRIDE, to, state.nextElectionBy);
-    const scripted = NI_EXECUTIVE_HISTORY.filter((ev) => {
-      const on = isoToDay(ev.on);
-      return on > day && on <= next;
-    });
+    const scripted = CHRONOLOGY.filter((ev) => ev.day > day && ev.day <= next);
     day = next;
-    state.day = day;
     for (const ev of scripted) {
-      state.day = isoToDay(ev.on);
+      state.day = ev.day;
       if (ev.kind === 'collapse') {
-        if (state.government.executive.status === 'formed') {
+        if (executiveInBeing(state)) {
           collapseExecutive(state, ev.cause, ev.blocker);
-          // the real calendar: the Secretary of State called the election seven weeks on
-          if (state.day < isoToDay(FORMATION_ACT_2022)) state.nextElectionBy = Math.min(state.nextElectionBy, state.day + 52);
+          if (ev.electionOn) state.nextElectionBy = Math.min(state.nextElectionBy, isoToDay(ev.electionOn));
         }
-      } else if (state.government.executive.status === 'collapsed') {
+      } else if (!executiveInBeing(state)) {
         restoreExecutive(state, rng, { snapshot: ev.executive, playerSeated: false });
       }
-      state.day = day;
     }
+    state.day = day;
     if (scripted.length > 0 || day <= HISTORY_END) {
       // the chronology speaks for this stretch: no hazards
       retireCaretakers(state);
@@ -318,8 +299,8 @@ export function catchUpExecutive(state: GameState, rng: Rng, to: number): void {
  *  an Executive at all */
 export function stormontStoodOn(day: number): boolean {
   let formed = true;
-  for (const ev of NI_EXECUTIVE_HISTORY) {
-    if (isoToDay(ev.on) > day) break;
+  for (const ev of CHRONOLOGY) {
+    if (ev.day > day) break;
     formed = ev.kind === 'restore';
   }
   return formed;
@@ -378,8 +359,7 @@ export function buildExecutiveCard(state: GameState, rng: Rng, kind: 'executiveC
 export function resolveExecutiveCard(
   state: GameState, rng: Rng, card: DrawnCard, choiceIndex: number,
   gain: (key: 'profile' | 'partyStanding' | 'integrity' | 'competence' | 'constituencyApproval', delta: number, label: string) => void
-): { text: string; deltas: StatDelta[] } {
-  const deltas: StatDelta[] = [];
+): string {
   const arena = state.arena ?? 'uk';
   const chamber = chamberOf(arena);
   const gv = state.government;
@@ -391,19 +371,13 @@ export function resolveExecutiveCard(
       gain('partyStanding', 10, 'Standing');
       gain('profile', 6, 'Profile');
       gain('competence', -4, 'Competence');
-      return {
-        text: `You do it on the steps, in the rain, with the letter already delivered. By evening the departments belong to their permanent secretaries and ${chamber.place} has no government. Your party is jubilant. Everybody else is writing down the date.`,
-        deltas,
-      };
+      return `You do it on the steps, in the rain, with the letter already delivered. By evening the departments belong to their permanent secretaries and ${chamber.place} has no government. Your party is jubilant. Everybody else is writing down the date.`;
     }
     gain('partyStanding', -8, 'Standing');
     gain('integrity', 3, 'Integrity');
     gain('competence', 2, 'Competence');
     if (gv.executive) gv.executive.strain = clamp((gv.executive.strain ?? 0) - 25, 0, 100);
-    return {
-      text: `You stay. The statement says the people of ${chamber.place} did not elect an Executive to walk out of itself, which is true and which your own backbenchers receive in silence. The Executive meets on Thursday as if nothing had happened, and everyone knows something has.`,
-      deltas,
-    };
+    return `You stay. The statement says the people of ${chamber.place} did not elect an Executive to walk out of itself, which is true and which your own backbenchers receive in silence. The Executive meets on Thursday as if nothing had happened, and everyone knows something has.`;
   }
   // executiveTalks
   const context = (card.payload?.context as TalksContext) ?? 'deadline';
@@ -412,10 +386,7 @@ export function resolveExecutiveCard(
     gain('competence', 5, 'Competence');
     gain('profile', 4, 'Profile');
     gain('partyStanding', context === 'cap' ? 2 : -6, 'Standing');
-    return {
-      text: `You nominate. The chamber fills for the first time in months, the Speaker is elected, and the two of you read out the names of an Executive while the gallery watches for a flicker. Your hardliners call it a surrender. The waiting lists call it Tuesday.`,
-      deltas,
-    };
+    return `You nominate. The chamber fills for the first time in months, the Speaker is elected, and the two of you read out the names of an Executive while the gallery watches for a flicker. Your hardliners call it a surrender. The waiting lists call it Tuesday.`;
   }
   gain('partyStanding', context === 'cap' ? -12 : 6, 'Standing');
   gain('competence', -3, 'Competence');
@@ -423,20 +394,14 @@ export function resolveExecutiveCard(
   if (context === 'cap') {
     // the party overrules you: a challenge, and the deal is done by whoever wins
     state.forcedQueue.unshift({ kind: 'partyCoup' });
-    return {
-      text: `You hold out, and the delegation leaves without shaking your hand. By the weekend the letters are going in. The party has decided to go back in, and it is deciding whether that is with you.`,
-      deltas,
-    };
+    return `You hold out, and the delegation leaves without shaking your hand. By the weekend the letters are going in. The party has decided to go back in, and it is deciding whether that is with you.`;
   }
   if (context === 'deadline' && gv.executive) {
     // the Secretary of State's move follows
     gv.executive.deadline = state.day;
     secretaryOfStateMoves(state, rng);
   }
-  return {
-    text: context === 'postElection'
+  return context === 'postElection'
       ? `You do not nominate. The Assembly meets, fails to elect a Speaker, and adjourns. ${chamber.place} has elected a parliament that cannot sit, and the clock has started again.`
-      : `You hold out. The Secretary of State does what Secretaries of State do, which is extend things and look pained. Your base is delighted. The permanent secretaries order more stationery.`,
-    deltas,
-  };
+      : `You hold out. The Secretary of State does what Secretaries of State do, which is extend things and look pained. Your base is delighted. The permanent secretaries order more stationery.`;
 }

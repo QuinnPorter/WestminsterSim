@@ -124,7 +124,7 @@ function buildCalendarCard(state: GameState, rng: Rng, key: string): DrawnCard {
         'Budget day, of a sort. With no Executive to set one, the Secretary of State has published {nation}’s budget from London: departmental allocations by letter, no debate, no minister to answer for them. Your inbox would like you to answer for them anyway.',
         'The budget for {nation} arrives as a written statement from the Northern Ireland Office, because there is nobody at Stormont Castle to make it. The departments get their numbers; the Assembly gets nothing to vote on. You get the phone calls.',
       ];
-      const collapsed = state.government.executive?.status === 'collapsed';
+      const collapsed = !executiveInBeing(state);
       const bodies = collapsed ? collapsedBodies : govBloc ? govBodies : oppBodies;
       return {
         ...base,

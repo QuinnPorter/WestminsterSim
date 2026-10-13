@@ -72,13 +72,17 @@ export interface ExecutiveSnapshot {
  *  (3 February 2024), legislation.gov.uk (the Executive Formation Acts of 2022,
  *  2023 and 2024) and the Institute for Government's timeline. */
 export type ExecutiveHistoryEvent =
-  | { on: string; kind: 'collapse'; cause: ExecutiveCollapseCause; blocker: PartyId }
+  | {
+    on: string; kind: 'collapse'; cause: ExecutiveCollapseCause; blocker: PartyId;
+    /** the extraordinary election the Secretary of State called, where one was */
+    electionOn?: string;
+  }
   | { on: string; kind: 'restore'; executive: ExecutiveSnapshot };
 
 export const NI_EXECUTIVE_HISTORY: ExecutiveHistoryEvent[] = [
   // Martin McGuinness resigns as deputy First Minister at 5pm; Arlene Foster
-  // ceases to hold office with him; the election is called on the 16th
-  { on: '2017-01-09', kind: 'collapse', cause: 'dfmWalkout', blocker: 'sf' },
+  // ceases to hold office with him; the election is called on the 16th for 2 March
+  { on: '2017-01-09', kind: 'collapse', cause: 'dfmWalkout', blocker: 'sf', electionOn: '2017-03-02' },
   // New Decade, New Approach: Foster and O'Neill nominated, five parties return
   { on: '2020-01-11', kind: 'restore', executive: {
     fm: 'dup', dfm: 'sf', parties: ['dup', 'sf', 'sdlp', 'uup', 'alliance'], justice: 'alliance',
@@ -94,7 +98,7 @@ export const NI_EXECUTIVE_HISTORY: ExecutiveHistoryEvent[] = [
 ];
 
 /** the last day the history above speaks for */
-export const NI_EXECUTIVE_HISTORY_END = '2024-02-03';
+export const NI_EXECUTIVE_HISTORY_END = NI_EXECUTIVE_HISTORY[NI_EXECUTIVE_HISTORY.length - 1].on;
 
 /** The statutory clock for filling the two offices. Until the Northern Ireland
  *  (Ministers, Elections and Petitions of Concern) Act 2022 (Royal Assent

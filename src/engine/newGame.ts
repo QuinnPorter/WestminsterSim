@@ -286,8 +286,9 @@ export function createNewGame(input: CreationInput): GameState {
   if (devolvedStart) {
     // run the Commons forward to the day the devolved legislature was elected,
     // then freeze it behind the player and stand the devolved chamber up
+    const lastSeen = state.day;
     state.day = devolvedStart.day;
-    catchUpArena(state, rng, devolvedStart.day);
+    catchUpArena(state, rng, devolvedStart.day, lastSeen);
     state.startDay = devolvedStart.day;
     state.player.enteredParliament = devolvedStart.day;
     // the Westminster seat was a placeholder for a member who never sat there;
