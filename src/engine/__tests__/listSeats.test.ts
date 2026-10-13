@@ -90,15 +90,15 @@ describe('building a devolved map from a real result', () => {
           for (const s of seatMap) {
             if (s.kind !== 'list' && s.listRegion === lr.id) won[s.winner] = (won[s.winner] ?? 0) + 1;
           }
-          expect(won).toEqual(snap.constituencySeats[lr.id]);
+          expect(won).toEqual(snap.constituencySeats![lr.id]);
         }
         // lists: the calibration must reproduce the real national list totals for
         // every party on the ballot (an independent's list seat goes to the biggest party)
         const listWon: Partial<Record<PartyId, number>> = {};
         for (const s of seatMap) if (s.kind === 'list') listWon[s.winner] = (listWon[s.winner] ?? 0) + 1;
         for (const p of snap.parties) {
-          const want = (snap.listSeats[p] ?? 0) + (p === snap.governing && snap.listSeats.ind ? 0 : 0);
-          if (snap.listSeats.ind && p === 'lab' && arena === 'scotland') {
+          const want = (snap.listSeats![p] ?? 0) + (p === snap.governing && snap.listSeats!.ind ? 0 : 0);
+          if (snap.listSeats!.ind && p === 'lab' && arena === 'scotland') {
             // 2011: Margo MacDonald's Lothian list seat is carried by Labour, the
             // biggest list party
             expect(listWon[p]).toBe(want + 1);

@@ -7,7 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import { Era, GameState, PartyId } from '../../types/game';
 import { createNewGame } from '../newGame';
-import { initCalendar, nextStep } from '../scheduler';
+import { nextStep } from '../scheduler';
+import { initCalendar } from '../calendar';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
 import { Rng } from '../rng';
 

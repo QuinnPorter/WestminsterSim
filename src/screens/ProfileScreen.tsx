@@ -69,7 +69,7 @@ export function buildOfficeSpans(history: GameState['history']): OfficeSpan[] {
   return spans.reverse(); // newest first
 }
 
-export interface DeputySpan { title: 'dpm' | 'firstSec'; label?: string; start: number; end: number | null; }
+export interface DeputySpan { title: 'dpm' | 'firstSec' | 'dfm'; label?: string; start: number; end: number | null; }
 
 /** the concurrent government-overlay spans (Deputy PM / First Secretary, or a junior
  *  coalition leader's department brief), paired from the deputyOverlay start/end history

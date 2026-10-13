@@ -9,6 +9,7 @@ import { seatsForMajorityIn, totalSeats, votingSeatsIn } from '../engine/seats';
 import { useUiStore } from '../store/uiStore';
 import { useGameStore } from '../store/gameStore';
 import { playerIsPM, playerIsLeader } from '../engine/career';
+import { hasOfficialOpposition } from '../engine/executive';
 
 export function ParliamentScreen({ game }: { game: GameState }) {
   const setPmHistoryOpen = useUiStore((s) => s.setPmHistoryOpen);
@@ -30,7 +31,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const workingTarget = seatsForMajorityIn(game.seats, arena);
   const leadSeats = game.seats[gov.governingParty] ?? 0;
   // a formal coalition's seats are counted toward the government total
-  const coalitionSeats = gov.arrangement === 'coalition' && gov.coalitionPartner
+  const coalitionSeats = (gov.arrangement === 'coalition' || gov.arrangement === 'executive') && gov.coalitionPartner
     ? (game.seats[gov.coalitionPartner] ?? 0) : 0;
   const govSeats = leadSeats + coalitionSeats;
 
@@ -43,6 +44,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const isJuniorPartner = game.player.partyId === gov.coalitionPartner;
   // only a party leader (the PM of the senior party, or the junior partner's
   // leader) can pull their party out of the coalition
+  // (the Executive is its own arrangement, not a coalition a leader can walk out of)
   const inCoalition = gov.arrangement === 'coalition'
     && playerIsLeader(game)
     && (isJuniorPartner || game.player.partyId === gov.governingParty);
@@ -62,14 +64,27 @@ export function ParliamentScreen({ game }: { game: GameState }) {
     <div className="screen">
       <h2 style={{ marginBottom: 4 }}>{houseHeading(arena, game.day)}</h2>
       <p style={{ color: 'var(--muted)', fontSize: 'var(--fs-sm)', marginBottom: 12 }}>
-        {partyNameIn(gov.governingParty, arena)}{' '}
-        {gov.majority > 0
-          ? `majority of ${gov.majority}`
-          : gov.arrangement === 'coalition' && gov.coalitionPartner
-            ? `coalition with the ${PARTIES[gov.coalitionPartner].shortName}`
-            : gov.arrangement === 'supplyConfidence' && gov.confidencePartner
-              ? `minority, with ${PARTIES[gov.confidencePartner].shortName} support`
-              : 'minority government'}
+        {gov.executive ? (
+          // the Executive is shared out by party, not won: name the share-out
+          <>
+            {gov.executive.parties.map((p) => PARTIES[p].shortName).join('–')} Executive · First Minister{' '}
+            {PARTIES[gov.governingParty].shortName}, {chamberOf(arena).deputyHead} {PARTIES[gov.coalitionPartner ?? gov.governingParty].shortName}
+            {hasOfficialOpposition(game)
+              ? ` · ${PARTIES[gov.oppositionParty].shortName} the official opposition`
+              : ' · no official opposition'}
+          </>
+        ) : (
+          <>
+            {partyNameIn(gov.governingParty, arena)}{' '}
+            {gov.majority > 0
+              ? `majority of ${gov.majority}`
+              : gov.arrangement === 'coalition' && gov.coalitionPartner
+                ? `coalition with the ${PARTIES[gov.coalitionPartner].shortName}`
+                : gov.arrangement === 'supplyConfidence' && gov.confidencePartner
+                  ? `minority, with ${PARTIES[gov.confidencePartner].shortName} support`
+                  : 'minority government'}
+          </>
+        )}
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 8, alignItems: 'center', marginBottom: 12 }}>
         <button

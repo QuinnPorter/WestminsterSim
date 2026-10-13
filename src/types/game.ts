@@ -6,7 +6,7 @@
  *  from the Green Party of England and Wales) and Alba. `spk` and `ind` are shared. */
 export type PartyId =
   | 'con' | 'lab' | 'ld' | 'snp' | 'green' | 'reform' | 'pc' | 'ukip' | 'brexit'
-  | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'tuv' | 'spk' | 'ind'
+  | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'tuv' | 'gpni' | 'pbp' | 'spk' | 'ind'
   | 'sgp' | 'alba';
 
 /** which community a Northern Ireland party's members designate as in the
@@ -20,12 +20,14 @@ export type RegionId =
   | 'yorkshire';
 
 /** The nations with a devolved legislature a career can be lived in. Northern
- *  Ireland is deliberately absent: Stormont is STV, mandatory power-sharing with a
- *  joint First and deputy First Minister, cross-community votes and periodic
- *  collapse, and nothing in this engine can represent that. */
-export type DevolvedArenaId = 'scotland' | 'wales';
+ *  Ireland's Assembly is the odd one out: multi-member constituencies rather
+ *  than a list, and an Executive every large party sits in by right, with a
+ *  First and deputy First Minister from the two communities. What differs is
+ *  carried by `ChamberProfile` (`jointExecutive`, `ladder`) and
+ *  `GovernmentState.executive`, not by branches in the career engine. */
+export type DevolvedArenaId = 'scotland' | 'wales' | 'ni';
 
-/** a chamber a career can be lived in: the Commons, Holyrood or the Senedd */
+/** a chamber a career can be lived in: the Commons, Holyrood, the Senedd or Stormont */
 export type ArenaId = 'uk' | DevolvedArenaId;
 
 /** the Whitehall departments. Kept as its own union because `DEPARTMENTS` is
@@ -40,7 +42,9 @@ export type UkDepartmentId =
  *  education, justice, transport, environment, business, culture, housing,
  *  energy) are reused from the Whitehall list rather than duplicated. */
 export type DevolvedDepartmentId =
-  | 'finance' | 'rural' | 'socialJustice' | 'constitution';
+  | 'finance' | 'rural' | 'socialJustice' | 'constitution'
+  // the Northern Ireland Executive's departments
+  | 'economy' | 'infrastructure' | 'communities' | 'agriculture';
 
 export type DepartmentId = UkDepartmentId | DevolvedDepartmentId;
 
@@ -75,9 +79,9 @@ export interface Party {
   /** can this party plausibly govern / lead the opposition */
   major?: boolean;
   /** the party exists only in this devolved chamber (Scottish Greens, Alba, the
-   *  TUV) and never stands for Westminster, whatever its `contestsRegions`
-   *  says. Widened to admit Northern Ireland ahead of the Assembly itself. */
-  devolvedOnly?: DevolvedArenaId | 'ni';
+   *  TUV, Green NI, People Before Profit) and never stands for Westminster,
+   *  whatever its `contestsRegions` says */
+  devolvedOnly?: DevolvedArenaId;
   /** Northern Ireland parties only: the community their members designate as */
   designation?: Designation;
 }
@@ -288,6 +292,8 @@ export interface CabinetPost {
   characterId: string; // 'player' refers to the player
 }
 
+export type Arrangement = 'majority' | 'minority' | 'supplyConfidence' | 'coalition' | 'executive';
+
 export interface GovernmentState {
   governingParty: PartyId;
   oppositionParty: PartyId;
@@ -301,7 +307,8 @@ export interface GovernmentState {
   /** day the current PM took office (for longevity resignations) */
   pmSinceDay: GameDay;
   /** how the current government holds power */
-  arrangement: 'majority' | 'minority' | 'supplyConfidence' | 'coalition';
+  /** `'executive'` is Northern Ireland's: the parties sit in government by right */
+  arrangement: Arrangement;
   /** formal junior coalition partner — sits in government */
   coalitionPartner?: PartyId;
   /** party propping up a minority on supply & confidence — NOT in government */
@@ -318,8 +325,24 @@ export interface GovernmentState {
   loInheritedPolls?: number;
   /** the cabinet minister (or 'player') currently doubling as Deputy PM / First Secretary */
   deputyPmId?: string;
-  /** which deputy title the current deputy holds */
-  deputyTitle?: 'dpm' | 'firstSec';
+  /** which deputy title the current deputy holds: Deputy Prime Minister, First
+   *  Secretary of State, or Northern Ireland's deputy First Minister */
+  deputyTitle?: 'dpm' | 'firstSec' | 'dfm';
+  /** Northern Ireland only: the Executive the Assembly's parties sit in by
+   *  right. `governingParty` is the First Minister's party and
+   *  `coalitionPartner` the deputy First Minister's; the other ministries are
+   *  held by `parties`. */
+  executive?: ExecutiveState;
+}
+
+/** the Northern Ireland Executive as it stands */
+export interface ExecutiveState {
+  status: 'formed' | 'collapsed';
+  /** every party holding a ministry, the First and deputy First Ministers' first */
+  parties: PartyId[];
+  /** who holds Justice, elected by cross-community vote rather than d'Hondt */
+  justiceParty?: PartyId;
+  formedDay: GameDay;
 }
 
 // ---- elections & history ----
@@ -429,7 +452,7 @@ export type HistoryEntry =
   | { kind: 'event'; date: GameDay; headline: string }
   /** the Deputy-PM / First-Secretary overlay held ON TOP of a brief — a separate,
    *  concurrent timeline track (paired start→end), so it shows alongside the office */
-  | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec'; label?: string }
+  | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' | 'dfm'; label?: string }
   | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: UkDepartmentId }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
   /** the player left one chamber for another — the timeline's chamber divider */

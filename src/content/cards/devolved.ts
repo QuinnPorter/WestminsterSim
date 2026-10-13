@@ -13,7 +13,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The A&E serving {constituency} has posted its worst waiting figures in a decade, and the local paper has a photograph of a pensioner on a trolley in a corridor. Health is devolved, which means there is nobody up the road to blame but {government}.',
     tags: ['constituency', 'policy', 'serious'],
     weight: 13, cooldownDays: 300,
-    requires: { arena: ['scotland', 'wales'], minTier: 0 },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 0 },
     choices: [
       {
         label: 'Go to the hospital and stand with the staff',
@@ -88,7 +88,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'A crisis has landed in {constituency} exactly on the seam between reserved and devolved: {othergov} controls the money, {government} controls the service, and both have issued statements blaming the other within the hour. Your inbox would like to know what you are going to do.',
     tags: ['constituency', 'media', 'policy'],
     weight: 12, cooldownDays: 320,
-    requires: { arena: ['scotland', 'wales'], minTier: 0 },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 0 },
     choices: [
       {
         label: 'Blame {otherleader}\'s government',
@@ -113,7 +113,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'Your committee has a senior official in the chair opposite and a stack of written evidence saying their flagship programme is behind schedule and over budget. The committee chair wants a forensic morning; the whips, since the programme is {government}\'s, would prefer a gentle one.',
     tags: ['westminster', 'policy', 'serious'],
     weight: 11, cooldownDays: 300,
-    requires: { arena: ['scotland', 'wales'], minTier: 0, maxTier: 2 },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 0, maxTier: 2 },
     choices: [
       {
         label: 'Go forensic',
@@ -138,7 +138,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'Your members\' bill — a modest, worthy thing about a devolved matter nobody else has bothered with — has cross-party sponsors and a committee slot. {government} has not said it opposes it, which means it has not yet decided whether to kill it.',
     tags: ['westminster', 'policy'],
     weight: 10, cooldownDays: 420,
-    requires: { arena: ['scotland', 'wales'], minTier: 0, maxTier: 2 },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 0, maxTier: 2 },
     choices: [
       {
         label: 'Push it through on cross-party support',
@@ -264,7 +264,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     tags: ['constituency', 'media'],
     speaker: 'journalist',
     weight: 9, cooldownDays: 480,
-    requires: { arena: ['scotland', 'wales'], minTier: 0 },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 0 },
     choices: [
       {
         label: 'Campaign to save it',
@@ -316,7 +316,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The teaching unions have balloted for strikes, the school estate survey has found crumbling concrete in forty buildings, and as the minister for {department} you have one budget line that can fix either. The {head} would like neither on the news.',
     tags: ['policy', 'serious'],
     weight: 12, cooldownDays: 360,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true, department: ['education', 'finance'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true, department: ['education', 'finance'] },
     choices: [
       {
         label: 'Settle the pay claim',
@@ -341,7 +341,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The Treasury\'s statement lands and the Barnett consequentials for {nation} are smaller than every forecast on your desk. Your officials have a grievance letter drafted; the {head} wants a number to say on the news; {othergov} says the formula is the formula.',
     tags: ['policy', 'media', 'serious'],
     weight: 12, cooldownDays: 360,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true, department: ['finance'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true, department: ['finance'] },
     choices: [
       {
         label: 'Lead with the grievance',
@@ -367,7 +367,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     tags: ['media', 'scandal', 'serious'],
     speaker: 'journalist',
     weight: 12, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true },
     choices: [
       {
         label: 'Front it up and extend the timetable',
@@ -392,7 +392,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The {speaker} has ruled that {government} should have told {house} first — about the announcement your department made to the press on Monday. It is the third such ruling this session, and you were the minister on the podium.',
     tags: ['westminster', 'serious'],
     weight: 11, cooldownDays: 360,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true },
     choices: [
       {
         label: 'Apologise to the chamber',
@@ -417,7 +417,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'A named storm has taken the power out across half of {nation}, closed the main trunk road and flooded two towns. In the resilience room you have an energy company that will not give a restoration time, a council that wants money, and a press conference in an hour.',
     tags: ['crisis', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true },
     choices: [
       {
         label: 'Run the room properly',
@@ -442,7 +442,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The operator of a lifeline air or ferry route to one of {nation}\'s remotest communities has given notice. The subsidy is {department}\'s, the vessel or aircraft is thirty years old, and the people at the far end of the route have found your personal mobile.',
     tags: ['policy', 'constituency', 'serious'],
     weight: 10, cooldownDays: 420,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true, department: ['transport', 'rural', 'finance'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true, department: ['transport', 'infrastructure', 'rural', 'agriculture', 'finance'] },
     choices: [
       {
         label: 'Underwrite the route',
@@ -492,7 +492,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The universities of {nation} say funding per home student has fallen so far that they are closing departments and leaning on overseas fees that {othergov}\'s visa rules are now choking. As the minister for {department} you can find money, let them charge more, or let them shrink.',
     tags: ['policy', 'serious'],
     weight: 10, cooldownDays: 420,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true, department: ['education', 'finance'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true, department: ['education', 'economy', 'finance'] },
     choices: [
       {
         label: 'Scrape together an emergency fund',
@@ -517,7 +517,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The chair of a {department} public body falls vacant. The independent panel has shortlisted an eminent and dull expert, and {headoffice} has texted the name of a party loyalist who "would be marvellous". Both are appointable; only one is defensible.',
     tags: ['party', 'policy'],
     weight: 10, cooldownDays: 440,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: true },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: true },
     choices: [
       {
         label: 'Appoint the expert',
@@ -544,7 +544,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'A think tank has costed {government}\'s flagship universal entitlement — free at the point of use for the millionaire and the pensioner alike — and found it eats the budget that would have gone to the people who actually need it. As a {party} frontbencher you have to say whether you would keep it.',
     tags: ['policy', 'media', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: false },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: false },
     choices: [
       {
         label: 'Pledge to keep it',
@@ -569,7 +569,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The other parliament is consumed by a culture-war row and {otherparty} wants {nation} to pick a side. {government} has dodged; the papers want to know whether {party} will. As a frontbencher you will be asked by lunchtime.',
     tags: ['media', 'party', 'serious'],
     weight: 10, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales'], minTier: 3, inGovernment: false },
+    requires: { arena: ['scotland', 'wales', 'ni'], minTier: 3, inGovernment: false },
     choices: [
       {
         label: 'Refuse to engage',
@@ -696,7 +696,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: 'The intergovernmental council — the forum where {othergov} and the devolved governments are meant to meet as equals — convenes next week, and {otherleader} has sent a junior minister with apologies. You are expected to turn up, smile, and be seen to be snubbed.',
     tags: ['policy', 'media'],
     weight: 11, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales'], leaderRole: ['pm'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'] },
     choices: [
       {
         label: 'Go and say so loudly',
@@ -721,7 +721,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: '{party}\'s conference in {nation} is yours to close. The hall wants red meat about {othergov}; the pollsters want "delivery"; your speechwriter has produced a draft with both and a joke about {otherleader} that the lawyers have flagged.',
     tags: ['party', 'media'],
     weight: 11, cooldownDays: 360,
-    requires: { arena: ['scotland', 'wales'], leaderRole: ['pm'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'] },
     choices: [
       {
         label: 'Red meat',
@@ -746,7 +746,7 @@ export const DEVOLVED_CARDS: DecisionCard[] = [
     body: '{otherleader} rings. {othergov} is about to legislate in a devolved area and would like {government}\'s consent, or failing that, its silence. The Prime Minister is charming, brief and plainly reading from a note.',
     tags: ['policy', 'serious'],
     weight: 11, cooldownDays: 400,
-    requires: { arena: ['scotland', 'wales'], leaderRole: ['pm'] },
+    requires: { arena: ['scotland', 'wales', 'ni'], leaderRole: ['pm'] },
     choices: [
       {
         label: 'Withhold consent, publicly',

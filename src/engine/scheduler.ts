@@ -4,6 +4,7 @@ import {
 import { ALL_CARDS, fallbackPoolFor } from '../content/cards';
 import { outcomeAsChamber, speakAsChamber } from './chamberVoice';
 import { chamberOf, nationOfRegion } from '../data/chambers';
+import { calendarFor, nextOccurrence } from './calendar';
 import { legislatureAt } from '../data/devolved';
 import { homeNation } from './arena';
 import { SCANDAL_ARC_BEATS } from '../content/cards/crisis';
@@ -19,12 +20,13 @@ import {
   resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
   noteReshuffle, reshuffleOnCooldown,
 } from './career';
+import { offerableOffice } from './executive';
 import { OFFICES } from '../data/offices';
 import { relationshipValue, getRelationship, adjustRelationship, characterName } from './relationships';
 import { runElection } from './election';
 import { gainStat } from './effects';
-import { partyPolling, pollingLead, lastElectionShares, updatePolling } from './polling';
-import { isoToDay, yearOf, monthOf } from './clock';
+import { calibratedPolling, partyPolling, pollingLead, lastElectionShares, updatePolling } from './polling';
+import { yearOf, monthOf } from './clock';
 import { Rng, clamp } from './rng';
 import { seatsForMajorityIn } from './seats';
 
@@ -41,37 +43,9 @@ function softMandatePressure(state: GameState): number {
 }
 
 // ---------- calendar ----------
+// the table and its initialisation live in calendar.ts; the scheduler only
+// fires what the live chamber holds
 
-interface CalendarEvent {
-  key: string;
-  month: number; // 1-12
-  day: number;
-}
-
-const CALENDAR: CalendarEvent[] = [
-  { key: 'pmqsWinter', month: 1, day: 22 },
-  { key: 'budget', month: 3, day: 10 },
-  { key: 'locals', month: 5, day: 4 },
-  { key: 'pmqsSummer', month: 6, day: 18 },
-  { key: 'recess', month: 8, day: 5 },
-  { key: 'conference', month: 9, day: 28 },
-];
-
-function nextOccurrence(after: number, month: number, day: number): number {
-  let year = yearOf(after);
-  let due = isoToDay(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-  if (due <= after) {
-    year += 1;
-    due = isoToDay(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-  }
-  return due;
-}
-
-export function initCalendar(state: GameState): void {
-  for (const ev of CALENDAR) {
-    state.calendarDone[ev.key] = nextOccurrence(state.day, ev.month, ev.day);
-  }
-}
 
 // ---------- calendar variant rotation ----------
 //
@@ -669,7 +643,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
 
   // 2. calendar events (skip while seatless)
   if (state.player.hasSeat) {
-    for (const ev of CALENDAR) {
+    for (const ev of calendarFor(state.arena)) {
       const due = state.calendarDone[ev.key];
       if (due !== undefined && state.day >= due) {
         state.calendarDone[ev.key] = nextOccurrence(state.day, ev.month, ev.day);
@@ -962,7 +936,9 @@ function nextStepCore(state: GameState, rng: Rng): void {
     const arr = state.government.arrangement;
     const yearsSinceFormation = (state.day - state.parliamentStart) / 365;
     const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
-    if (arr !== 'majority' && yearsSinceFormation > 0.6 && state.day >= coupCool) {
+    // a joint Executive's parties govern by right, not on a majority
+    const precarious = arr === 'minority' || arr === 'supplyConfidence' || arr === 'coalition';
+    if (precarious && yearsSinceFormation > 0.6 && state.day >= coupCool) {
       const govParty = state.government.governingParty;
       const majorityLine = seatsForMajorityIn(state.seats, state.arena);
       const govSeats = state.seats[govParty] ?? 0;
@@ -1020,7 +996,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // their own rebellious backbenches or sheer longevity faces an authority
   // crisis — usually survivable, occasionally fatal to the premiership
   if (playerIsPM(state) && state.day >= coupCool) {
-    const polls = partyPolling(state, state.player.partyId);
+    const polls = calibratedPolling(state, state.player.partyId);
     const tenureYears = (state.day - state.government.pmSinceDay) / 365;
     let pressure = 0;
     // B3 (player-PMs can fall): a sitting PM only faces ~150 of these checks across a
@@ -1067,7 +1043,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     // a LOW absolute backstop floor (a genuine wipeout still bites), but the
     // dominant driver is how far they've SLID from the polling they inherited — a
     // stable-but-low FPTP standing shouldn't by itself force a heave
-    const floor = onMinorPartyTrack(state) ? 10 : 16;
+    const floor = (onMinorPartyTrack(state) ? 10 : 16) * chamberOf(state.arena).pressureScale;
     let pressure = 0;
     if (polls < floor) pressure += (floor - polls) * 0.5;
     pressure += state.player.rebellionCount * 4;
@@ -1093,7 +1069,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     state.government.pmId !== 'player' && state.player.hasSeat &&
     state.day >= ((state.player.flags._pmHeaveCooldownUntil as number) ?? 0)
   ) {
-    const polls = partyPolling(state, state.government.governingParty);
+    const polls = calibratedPolling(state, state.government.governingParty);
     if (polls < 28) {
       const hazard = Math.min(0.03, (28 - polls) * 0.004);
       if (rng.chance(hazard)) {
@@ -1109,7 +1085,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // to the PM is elevated to Deputy Prime Minister / First Secretary of State
   if (
     playerInGovernment(state) && !playerIsLeader(state) &&
-    state.government.pmId !== 'player' &&
+    state.government.pmId !== 'player' && !state.government.executive &&
     // a departmental Secretary of State (never the Chief Whip) can be made deputy
     !!state.player.officeId?.startsWith('sos_') &&
     !state.player.flags._isDeputyPM && canHoldOffice(state) &&
@@ -1130,7 +1106,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // the title clears _isDeputyPM, so this can't re-fire on a player who's already out.
   if (
     state.player.flags._isDeputyPM && !playerIsLeader(state) &&
-    state.government.pmId !== 'player' && canHoldOffice(state)
+    state.government.pmId !== 'player' && canHoldOffice(state) && !state.government.executive
   ) {
     const fallout = relationshipValue(state, 'leader') < 12 || !!state.player.flags.scandal;
     const hazard = (fallout ? DEPUTY_REMOVAL_FALLOUT : 0) + DEPUTY_REMOVAL_REFRESH;
@@ -1177,7 +1153,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
       && !reshuffleOfferThisMonth(state) && !reshuffleOnCooldown(state)
       && !newLeaderBeatPending) {
     // a party deep in the polling mire reshuffles in desperation
-    const inTheMire = partyPolling(state, state.player.partyId) < 28;
+    const inTheMire = calibratedPolling(state, state.player.partyId) < 28;
     const hazard = RESHUFFLE_HAZARD + (inTheMire ? EMERGENCY_RESHUFFLE_BONUS : 0);
     if (rng.chance(hazard)) {
       runReshuffle(state, rng, inTheMire);
@@ -1226,7 +1202,8 @@ function nextStepCore(state: GameState, rng: Rng): void {
     const target = nextOfficeFor(state, rng);
     state.forcedQueue.push({
       kind: 'reshuffleOffer',
-      payload: { officeId: target ?? (rng.chance(0.55) ? 'pps' : 'whip') },
+      // the raw first rungs still go through the chamber's ladder (no PPS in some)
+      payload: { officeId: target ?? offerableOffice(state, rng, rng.chance(0.55) ? 'pps' : 'whip') ?? 'whip' },
     });
     nextStep(state, rng);
     return;
@@ -1350,10 +1327,10 @@ function nextStepCore(state: GameState, rng: Rng): void {
     // low absolute backstop floor to still catch a genuine wipeout.
     const polls = partyPolling(state, party);
     const ref = (lastElectionShares(state)[party] ?? 0) * 100;
-    const BACKSTOP_FLOOR = 16;
+    const BACKSTOP_FLOOR = 16 * chamberOf(state.arena).pressureScale;
     const SLIDE_PTS = 8;
     // a leader still polling respectably isn't "collapsing", even if down from a big win
-    const SLIDE_CEILING = 30;
+    const SLIDE_CEILING = 30 * chamberOf(state.arena).pressureScale;
     const scandalFall = rng.chance(NPC_LEADER_SCANDAL);
     // a PM gets a ~3-month grace before the polls can fell them — a leader who just
     // won shouldn't resign over polling the same month (only scandal, Liz-Truss-style)

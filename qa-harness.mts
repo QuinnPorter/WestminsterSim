@@ -1,12 +1,14 @@
 /* Headless QA play-harness — drives the pure engine to "play" full careers and emit
  * a compact transcript + summary + auto-flagged anomalies. NOT game code; a test tool.
  * Usage:  npx tsx qa-harness.mts <strategy> <startSeed> <count>
- *   strategy: backbench | frontbench | free | ni
+ *   strategy: backbench | frontbench | free | ni | stormont
  *   ni: a Northern Ireland MP (DUP, UUP, SDLP or Alliance) sitting for a Northern Ireland seat
+ *   stormont: an MLA in the 2011 Assembly (DUP, SF, UUP, SDLP or Alliance)
  * Prints one block per game to stdout. */
 import { createNewGame, CreationInput } from './src/engine/newGame';
 import { resolveChoiceCore, continueCore, acknowledgeElectionCore } from './src/engine/turn';
-import { nextStep, initCalendar } from './src/engine/scheduler';
+import { nextStep } from './src/engine/scheduler';
+import { initCalendar } from './src/engine/calendar';
 import { buildLegacy } from './src/engine/career';
 import { Rng } from './src/engine/rng';
 import { PLAYABLE_NI } from './src/data/parties';
@@ -18,6 +20,7 @@ const PARTIES_BY_STRATEGY: Record<string, string[]> = {
   backbench: ['con', 'lab', 'ld', 'snp', 'green'],
   free: ['con', 'lab', 'ld', 'snp', 'green', 'reform', 'con', 'lab'],
   ni: [...PLAYABLE_NI],
+  stormont: ['dup', 'sf', 'uup', 'sdlp', 'alliance', 'dup', 'sf'],
 };
 const REGIONS = ['london', 'southEast', 'northWest', 'yorkshire', 'scotland', 'wales', 'westMidlands', 'eastMidlands'];
 const BGS = ['lawyer', 'teacher', 'business', 'journalist', 'doctor', 'councillor', 'advisor', 'tradeUnionist'];
@@ -52,10 +55,11 @@ function playOne(strategy: string, seed: number): { lines: string[]; flags: stri
   const party = PARTIES_BY_STRATEGY[strategy][seed % PARTIES_BY_STRATEGY[strategy].length];
   const input: CreationInput = {
     name: NAMES[seed % NAMES.length], gender: (seed % 3 === 0 ? 'm' : seed % 3 === 1 ? 'f' : 'nb') as any,
-    age: 32 + (seed % 30), region: (strategy === 'ni' ? 'ni' : REGIONS[seed % REGIONS.length]) as any,
+    age: 32 + (seed % 30), region: (strategy === 'ni' || strategy === 'stormont' ? 'ni' : REGIONS[seed % REGIONS.length]) as any,
     background: BGS[seed % BGS.length] as any, partyId: party as any,
     avatar: { skin: 0, hairStyle: 0, hairColour: 0, eyes: 0, brows: 0, outfit: 0, outfitColour: 0, accessory: 0, bg: 0 },
-    era: ERAS[seed % ERAS.length] as any, seed,
+    era: (strategy === 'stormont' ? '2010' : ERAS[seed % ERAS.length]) as any, seed,
+    ...(strategy === 'stormont' ? { arena: 'ni' as const, devolvedElection: '2011-05-05' } : {}),
   };
 
   let game: GameState;

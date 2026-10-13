@@ -10,6 +10,7 @@ import {
 } from '../engine/career';
 import { Avatar } from '../avatar/Avatar';
 import { tap } from '../native/haptics';
+import { hasOfficialOpposition } from '../engine/executive';
 import './CabinetScreen.css';
 
 export function CabinetScreen({ game }: { game: GameState }) {
@@ -31,7 +32,8 @@ export function CabinetScreen({ game }: { game: GameState }) {
   const leadsOpposition = playerIsLeader(game) && game.player.partyId === game.government.oppositionParty;
   const canSack = (isGov && playerIsPM(game)) || (!isGov && leadsOpposition);
   // only a sitting Prime Minister names the Deputy PM
-  const canMakeDeputy = isGov && playerIsPM(game);
+  // the deputy First Minister is nominated by the other community, not appointed
+  const canMakeDeputy = isGov && playerIsPM(game) && !game.government.executive;
   // a reshuffle only waits on genuinely vital business (a contest, an election, a
   // confidence vote, a multi-step set-piece) — not on routine cards
   const reshuffleBlocked = isReshuffleBlocking(game.currentCard);
@@ -42,7 +44,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
     <div className="screen">
       <div className="cab-toggle">
         <button className={isGov ? 'active' : ''} onClick={() => setSide('gov')}>
-          Government
+          {game.government.executive ? 'The Executive' : 'Government'}
         </button>
         <button className={!isGov ? 'active' : ''} onClick={() => setSide('opp')}>
           Opposition
@@ -54,7 +56,9 @@ export function CabinetScreen({ game }: { game: GameState }) {
         characterId={leaderId}
         title={isGov
           ? (arena === 'uk' ? 'Prime Minister' : `First Minister of ${chamber.place}`)
-          : 'Leader of the Opposition'}
+          : (game.government.executive && !hasOfficialOpposition(game)
+            ? `${partyNameIn(game.government.oppositionParty, arena)} leader`
+            : 'Leader of the Opposition')}
         onTitleClick={isGov ? () => setPmHistoryOpen(true) : () => setLoHistoryOpen(true)}
         titleColour={isGov
           ? partyTextColour(game.government.governingParty)
@@ -107,7 +111,7 @@ export function CabinetScreen({ game }: { game: GameState }) {
               characterId={post.characterId}
               title={cabinetTitleFor(officeId, isGov, isDeputy, game.government.deputyTitle, arena, game.day)}
               coalitionOf={coalitionOf}
-              onSack={canSack && isNpc
+              onSack={canSack && isNpc && !(game.government.executive && memberParty !== game.player.partyId)
                 ? () => {
                     const name = game.characters[post.characterId]?.name ?? 'this minister';
                     setSackTarget({ officeId: officeId as OfficeId, name });
@@ -128,10 +132,17 @@ export function CabinetScreen({ game }: { game: GameState }) {
           );
         })}
       </div>
+      {!isGov && game.government.executive && !hasOfficialOpposition(game) && (
+        <p style={{ marginTop: 12, fontSize: 'var(--fs-sm)', color: 'var(--muted)', textAlign: 'center' }}>
+          No official opposition: the largest party outside the Executive is too small for a bench.
+        </p>
+      )}
       <p style={{
         marginTop: 12, fontSize: 'var(--fs-xs)', color: 'var(--muted)', textAlign: 'center',
       }}>
-        {partyNameIn(party, arena)}
+        {isGov && game.government.executive
+          ? game.government.executive.parties.map((p) => partyNameIn(p, arena)).join(' · ')
+          : partyNameIn(party, arena)}
       </p>
     </div>
   );

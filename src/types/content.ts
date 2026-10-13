@@ -1,6 +1,6 @@
 import {
   ArenaId, BackgroundId, CauseId, DepartmentId, Era, OfficeId, OfficeTier, PartyId,
-  PlayerStats, RegionId, RelationshipKind,
+  PlayerStats, RegionId, RelationshipKind, Arrangement
 } from './game';
 
 export type CardTag =
@@ -30,7 +30,7 @@ export interface Requirement {
    *  official opposition). Distinguishes third-party scrutiny from shadow cards. */
   minorParty?: boolean;
   /** only fire under these government arrangements (coalition-life cards) */
-  arrangementIn?: ('majority' | 'minority' | 'supplyConfidence' | 'coalition')[];
+  arrangementIn?: Arrangement[];
   /** true → only before the first general election (the game's ORIGINAL government,
    *  e.g. the 2010 coalition before it ever faces the country) */
   firstParliament?: boolean;

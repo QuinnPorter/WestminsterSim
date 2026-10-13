@@ -1,5 +1,7 @@
-import { DevolvedArenaId, GameDay, PartyId } from '../types/game';
+import { Arrangement, DevolvedArenaId, GameDay, PartyId } from '../types/game';
 import { isoToDay } from '../engine/clock';
+import { NI_ASSEMBLY } from './niAssembly';
+import type { ExecutiveSnapshot } from './niAssembly';
 
 /** One devolved general election — the starting composition for a career that
  *  begins in that chamber, or arrives in it any time after this date and before
@@ -11,22 +13,29 @@ export interface LegislatureSnapshot {
   blurb: string;
   /** every seat won, by party. Must sum to the size of the House. */
   seats: Partial<Record<PartyId, number>>;
-  /** constituency seats won, by list region and party */
-  constituencySeats: Record<string, Partial<Record<PartyId, number>>>;
-  /** list seats won nationally, by party (regional breakdown is calibrated) */
-  listSeats: Partial<Record<PartyId, number>>;
-  /** the regional-list vote (0..1) — the headline figure Holyrood polls report
-   *  and the election model's swing anchor */
+  /** AMS: constituency seats won, by list region and party */
+  constituencySeats?: Record<string, Partial<Record<PartyId, number>>>;
+  /** AMS: list seats won nationally, by party (regional breakdown is calibrated) */
+  listSeats?: Partial<Record<PartyId, number>>;
+  /** multi-member constituencies (the Assembly): seats won in each, by party */
+  districtSeats?: Record<string, Partial<Record<PartyId, number>>>;
+  /** the headline vote (0..1): the regional-list vote at Holyrood, the
+   *  first-preference vote at Stormont. The election model's swing anchor. */
   shares: Partial<Record<PartyId, number>>;
-  /** the constituency vote (0..1) — what each FPTP seat's shares calibrate to */
-  constituencyShares: Partial<Record<PartyId, number>>;
+  /** AMS: the constituency vote (0..1) — what each FPTP seat's shares calibrate to */
+  constituencyShares?: Partial<Record<PartyId, number>>;
+  /** entered and tested but not yet on the era picker: the simulation cannot
+   *  yet play what followed (the 2016 Assembly collapsed eight months in) */
+  heldBack?: boolean;
   /** the parties actually on the ballot in THIS parliament */
   parties: PartyId[];
   governing: PartyId;
   opposition: PartyId;
-  arrangement: 'majority' | 'minority' | 'supplyConfidence' | 'coalition';
+  arrangement: Arrangement;
   coalitionPartner?: PartyId;
   confidencePartner?: PartyId;
+  /** a joint Executive (the Assembly): the one this election actually produced */
+  executive?: ExecutiveSnapshot;
 }
 
 /* ---------------------------------------------------------------------------
@@ -162,6 +171,7 @@ const WALES: LegislatureSnapshot[] = [
 export const DEVOLVED_LEGISLATURES: Record<DevolvedArenaId, LegislatureSnapshot[]> = {
   scotland: SCOTLAND,
   wales: WALES,
+  ni: NI_ASSEMBLY,
 };
 
 /** How a party's regional-list vote compares with its constituency vote, as a
@@ -176,6 +186,8 @@ export const LIST_RATIO: Record<DevolvedArenaId, Partial<Record<PartyId, number>
   wales: {
     lab: 0.90, con: 0.95, pc: 1.02, ld: 0.85, green: 3.2, ukip: 1.05, reform: 1.0,
   },
+  // the Assembly has no list
+  ni: {},
 };
 
 /** The legislature a player arriving on `day` walks into: the most recent
@@ -190,7 +202,7 @@ export function legislatureAt(arena: DevolvedArenaId, day: GameDay): Legislature
   return best;
 }
 
-/** the ISO polling days a career may begin on in a given chamber */
+/** the legislatures a career may begin in, in a given chamber */
 export function erasFor(arena: DevolvedArenaId): LegislatureSnapshot[] {
-  return DEVOLVED_LEGISLATURES[arena];
+  return DEVOLVED_LEGISLATURES[arena].filter((s) => !s.heldBack);
 }

@@ -6,7 +6,8 @@ import {
   sackMinisterCore, playerOfficeTitle, playerInGovernmentBloc, startBacking,
   applyElectionAftermath, recordLoChange,
 } from '../career';
-import { initCalendar, nextStep, resolveCalendarChoice } from '../scheduler';
+import { nextStep, resolveCalendarChoice } from '../scheduler';
+import { initCalendar } from '../calendar';
 import { runElection } from '../election';
 import { applyEffects } from '../effects';
 import { cardEligible } from '../cardEngine';

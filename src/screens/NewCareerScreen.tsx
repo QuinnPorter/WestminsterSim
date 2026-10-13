@@ -10,7 +10,7 @@ import { PLAYER_REGIONS, REGIONS } from '../data/regions';
 import { BACKGROUND_IDS, BACKGROUNDS } from '../data/backgrounds';
 import { PARLIAMENTS } from '../data/parliaments';
 import { CHAMBERS, DEVOLVED_ARENAS, chamberAt, houseHeading } from '../data/chambers';
-import { DEVOLVED_LEGISLATURES } from '../data/devolved';
+import { DEVOLVED_LEGISLATURES, erasFor } from '../data/devolved';
 import { formatFull, isoToDay } from '../engine/clock';
 import { Avatar } from '../avatar/Avatar';
 import { SwipeCarousel } from '../components/SwipeCarousel';
@@ -51,6 +51,7 @@ const ERA_LABELS: Record<Era, { title: string; blurb: string }> = {
 const CHAMBER_BLURBS: Record<DevolvedArenaId, string> = {
   scotland: 'Holyrood. A hundred and twenty-nine seats elected by the Additional Member System, so nobody wins a majority twice; a government that runs the NHS, the schools and the courts; and the constitutional question under every other question.',
   wales: 'Cardiff Bay. Sixty members until 2026 and ninety-six after it, a Labour government since devolution began, and a nation arguing about whether it gets its fair share — and in which language.',
+  ni: 'The Assembly. Multi-member constituencies, a five-party Executive the big parties sit in by right, and a First and deputy First Minister who cannot govern without each other.',
 };
 
 const LAYER_PILLS: { key: AvatarLayerKey; label: string }[] = [
@@ -112,7 +113,7 @@ export function NewCareerScreen() {
 
   /** the legislatures on offer in the chosen devolved chamber, newest first */
   const devolvedEras = useMemo(
-    () => (arena === 'uk' ? [] : [...DEVOLVED_LEGISLATURES[arena]].reverse()),
+    () => (arena === 'uk' ? [] : [...erasFor(arena)].reverse()),
     [arena]
   );
   const devolvedSnap = useMemo(
@@ -131,7 +132,7 @@ export function NewCareerScreen() {
       if (!playablePartiesFor(era).includes(partyId)) setPartyId('lab');
       return;
     }
-    const latest = DEVOLVED_LEGISLATURES[a][DEVOLVED_LEGISLATURES[a].length - 1];
+    const latest = erasFor(a)[erasFor(a).length - 1];
     setDevolvedElection(latest.election);
     if (!latest.parties.includes(partyId)) setPartyId(latest.governing);
     setRegion(CHAMBERS[a].regions[0]);

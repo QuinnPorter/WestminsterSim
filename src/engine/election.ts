@@ -1,12 +1,12 @@
 import {
-  CandidateResult, ConstituencyResult, ElectionOutcome, ElectionResult, GameState, PartyId,
-  RegionId, RegionalBallot, SyntheticSeat,
+  CandidateResult, ConstituencyResult, DevolvedArenaId, ElectionOutcome, ElectionResult, GameState,
+  PartyId, RegionId, RegionalBallot, SyntheticSeat,
 } from '../types/game';
 import { PARTIES, isMajorIn, outsidePartyPolitics } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { seatSystemAt, SeatSystem } from '../data/chambers';
 import { generateName } from '../generation/characters';
-import { countSeats, normalisedShares, rebuildForListPr } from '../generation/constituency';
+import { countSeats, listPrRebuildOptions, normalisedShares, rebuildForListPr } from '../generation/constituency';
 import { arenaBaseline, arenaPolledParties, ballotParties } from './polling';
 import { Rng } from './rng';
 import { seatsForMajorityIn, totalSeats } from './seats';
@@ -398,17 +398,17 @@ function ensureSeatSystem(state: GameState, rng: Rng, system: SeatSystem): void 
     && state.seatMap.every((s) => s.kind === 'list')
     && state.seatMap.length === system.districts.length * system.seatsPer;
   if (alreadyListPr) return;
+  const arena = (state.arena ?? 'uk') as DevolvedArenaId;
   const rebuilt = rebuildForListPr(
     rng, state.seatMap, system.districts, system.seatsPer,
     state.player.seatId, state.player.partyId, playerListRank(state),
-    arenaPolledParties(state)
+    arenaPolledParties(state), listPrRebuildOptions(arena, system.seatsPer)
   );
   state.seatMap = rebuilt.seatMap;
   if (state.player.hasSeat || state.player.seatId) state.player.seatId = rebuilt.playerSeatId;
-  state.history.push({
-    kind: 'event', date: state.day,
-    headline: 'The Senedd expands to 96 members, elected by closed-list PR in sixteen constituencies',
-  });
+  if (system.changeHeadline) {
+    state.history.push({ kind: 'event', date: state.day, headline: system.changeHeadline });
+  }
 }
 
 /** Run a general election: swing every synthetic seat, build the result,

@@ -1,5 +1,6 @@
 import { GameState, PartyId, SyntheticSeat } from '../types/game';
 import { OFFICES } from '../data/offices';
+import { seatSystemAt } from '../data/chambers';
 import { Rng } from './rng';
 
 /**
@@ -94,6 +95,12 @@ export function playerListRank(state: GameState): number {
       (x) => x.kind === 'list' && x.listRegion === seat.listRegion && x.winner === state.player.partyId
     ).length;
     if (held > 0) rank = Math.min(rank, held);
+    // in a chamber elected wholly from multi-member constituencies the seats are
+    // not top-ups: a sitting member is a known name on the slate and the party
+    // runs them in the middle of it, not as the candidate it expects to lose
+    if (held > 1 && seatSystemAt(state.arena, state.day).kind === 'listPr') {
+      rank = Math.min(rank, Math.ceil(held / 2));
+    }
   }
   return Math.max(1, Math.min(6, rank));
 }

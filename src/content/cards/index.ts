@@ -31,6 +31,7 @@ import { EVENTS_EXTRA_CARDS } from './eventsExtra';
 import { DEVOLVED_CARDS } from './devolved';
 import { SCOTLAND_CARDS } from './nations/scotland';
 import { WALES_CARDS } from './nations/wales';
+import { NI_CARDS } from './nations/ni';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling.
  *  Per-chamber, because the last-resort branch of `drawCard` ignores eligibility
@@ -39,7 +40,11 @@ export const FALLBACK_POOL: DecisionCard[] = PERSONAL_CARDS;
 export const DEVOLVED_FALLBACK: DecisionCard[] = DEVOLVED_CARDS;
 
 export function fallbackPoolFor(arena: string): DecisionCard[] {
-  return arena === 'uk' ? FALLBACK_POOL : DEVOLVED_FALLBACK;
+  if (arena === 'uk') return FALLBACK_POOL;
+  // the Assembly's own deck: the shared devolved deck is only partly written
+  // for a chamber with no First Minister's Questions and no minority government
+  if (arena === 'ni') return NI_CARDS;
+  return DEVOLVED_FALLBACK;
 }
 
 export const ALL_CARDS: DecisionCard[] = [
@@ -74,6 +79,7 @@ export const ALL_CARDS: DecisionCard[] = [
   ...DEVOLVED_CARDS,
   ...SCOTLAND_CARDS,
   ...WALES_CARDS,
+  ...NI_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {

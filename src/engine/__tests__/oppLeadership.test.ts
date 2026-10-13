@@ -4,7 +4,8 @@ import {
   openLeadershipVacancy, openNpcContest, resolvePendingContests, applyElectionAftermath,
 } from '../career';
 import { resolveChoiceCore, continueCore, acknowledgeElectionCore } from '../turn';
-import { nextStep, initCalendar } from '../scheduler';
+import { nextStep } from '../scheduler';
+import { initCalendar } from '../calendar';
 import { GameState, ElectionResult, PartyId } from '../../types/game';
 import { Rng } from '../rng';
 
