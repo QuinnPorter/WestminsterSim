@@ -23,7 +23,7 @@ import {
   onMinorPartySide,
 } from './career';
 import {
-  CANDIDATE_COUNT_LEAD, INCUMBENT_COUNT_LEAD, MAYOR_DRAFT_COOLDOWN, mayorDraftChance, mayorDraftTarget,
+  CANDIDATE_COUNT_LEAD, INCUMBENT_COUNT_LEAD, MAYOR_DRAFT_COOLDOWN, mayorDraftChance, mayorDraftTargets,
   returnOfferDue,
 } from './mayor';
 import type { ExitRole } from './mayor';
@@ -804,8 +804,11 @@ function nextStepCore(state: GameState, rng: Rng): void {
     // The regional party asks a sitting MP to run for the mayoralty. The roll is
     // on a side stream, so a quiet tick leaves the Commons' draws untouched.
     if (INTERLUDES.mayorDraft && canBeApproached && sinceFlag(state, '_lastMayorDraftDay') > MAYOR_DRAFT_COOLDOWN) {
-      const target = mayorDraftTarget(state);
-      if (target && sideRng(rng, state.day, MAYOR_DRAFT_SALT).chance(mayorDraftChance(state, target))) {
+      // a region with two mayoralties polling in the window offers either, evenly
+      const targets = mayorDraftTargets(state);
+      const side = sideRng(rng, state.day, MAYOR_DRAFT_SALT);
+      if (targets.length > 0 && side.chance(mayorDraftChance(state, targets[0]))) {
+        const target = side.pick(targets);
         state.forcedQueue.push({
           kind: 'mayorDraft',
           payload: { mayoralty: target.mayoralty.id, pollingDay: target.pollingDay, step: 1 },

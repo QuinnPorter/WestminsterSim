@@ -8,7 +8,7 @@ import { INTERLUDES } from '../scheduler';
 import { cardEligible, resolveTokens } from '../cardEngine';
 import { newTestGame as game, play } from '../../test/play';
 import { pickSeatFor } from '../arena';
-import { RETURN_OFFER_MIN_DAYS, mayorDraftTarget, mayoralResult, regionalStrength } from '../mayor';
+import { RETURN_OFFER_MIN_DAYS, mayorDraftTargets, mayoralResult, regionalStrength } from '../mayor';
 import {
   becomeMayor, buildLegacy, materializeForced, playerStatusTitle,
 } from '../career';
@@ -55,18 +55,55 @@ describe('the draft', () => {
   it('targets the mayoralty in the member’s own region with a poll in the window', () => {
     const g = game({ seed: 1, profile: 60 });
     g.day = isoToDay('2020-06-01');
-    const target = mayorDraftTarget(g);
-    expect(target?.mayoralty.id).toBe('london');
-    expect(target?.pollingDay).toBe(isoToDay('2021-05-06'));
+    const targets = mayorDraftTargets(g);
+    expect(targets.map((t) => t.mayoralty.id)).toEqual(['london']);
+    expect(targets[0].pollingDay).toBe(isoToDay('2021-05-06'));
     // nothing to run for in the South East; a leader is not asked; nor is a nobody
-    expect(mayorDraftTarget(game({ seed: 1, region: 'southEast', profile: 60 }))).toBeNull();
+    expect(mayorDraftTargets(game({ seed: 1, region: 'southEast', profile: 60 }))).toEqual([]);
     const leader = game({ seed: 1, profile: 60 });
     leader.day = g.day;
     leader.player.officeId = 'leader';
-    expect(mayorDraftTarget(leader)).toBeNull();
+    expect(mayorDraftTargets(leader)).toEqual([]);
     const nobody = game({ seed: 1, profile: 30 });
     nobody.day = g.day;
-    expect(mayorDraftTarget(nobody)).toBeNull();
+    expect(mayorDraftTargets(nobody)).toEqual([]);
+    // cabinet rank is a name in itself
+    nobody.player.flags._peakTier = 4;
+    expect(mayorDraftTargets(nobody).map((t) => t.mayoralty.id)).toEqual(['london']);
+  });
+
+  it('offers every mayoralty in a region that has two, not only the first listed', () => {
+    const g = game({ seed: 1, region: 'northWest', profile: 60 });
+    g.day = isoToDay('2020-06-01');
+    expect(mayorDraftTargets(g).map((t) => t.mayoralty.id).sort()).toEqual(['greaterManchester', 'liverpoolCityRegion']);
+    // and the draft picks between them: across careers, both come up
+    const asked = new Set<string>();
+    for (let seed = 1; seed <= 40 && asked.size < 2; seed++) {
+      const career = game({ seed, region: 'northWest', profile: 60 });
+      career.player.flags._peakTier = 4;
+      play(career, new Rng(seed), 60, (cur, kind) => {
+        if (kind !== 'mayorDraft') return 0;
+        asked.add(String(cur.currentCard!.payload!.mayoralty));
+        return 1;
+      });
+    }
+    expect([...asked].sort()).toEqual(['greaterManchester', 'liverpoolCityRegion']);
+  });
+
+  it('asks a former cabinet minister more often than a backbencher', () => {
+    const drafted = (peak: number) => {
+      let n = 0;
+      for (let seed = 1; seed <= 40; seed++) {
+        const g = game({ seed, profile: 60 });
+        g.player.flags._peakTier = Math.max(Number(g.player.flags._peakTier ?? 0), peak);
+        if (play(g, new Rng(seed), 60).includes('mayorDraft')) n++;
+      }
+      return n;
+    };
+    const backbench = drafted(0);
+    const cabinet = drafted(4);
+    expect(cabinet).toBeGreaterThan(backbench + 5);
+    expect(cabinet).toBeGreaterThanOrEqual(20);
   });
 
   it('asks a well-known London MP in a good share of careers, and never with the interludes off', () => {

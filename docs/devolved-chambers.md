@@ -656,8 +656,9 @@ Everything in the plan's P5 and P6.
 verified polling days, the four-year cycle, the North of Tyne's succession by the North East, and
 the voting system (the supplementary vote to 2021, first past the post for the 2024 and 2025
 polls, the supplementary vote again from June 2026). A sitting MP in such a region may be asked to
-run (`mayorDraftTarget`, a side-stream roll behind the exported `INTERLUDES` switch so the seeded
-tests can turn it off), is selected, and fights the count on the real polling day
+run (`mayorDraftTargets`, a side-stream roll behind the exported `INTERLUDES` switch so the seeded
+tests can turn it off; the odds rise with the highest rung held, cabinet rank waives the profile
+bar, and a region with two mayoralties polling in the window offers either evenly), is selected, and fights the count on the real polling day
 (`mayoralResult`: regional seat strength, a personal vote, transfers by ideology under SV).
 Winning resigns the seat: `Player.mayor` carries the term, the deck is City Hall's
 (`content/cards/mayor.ts`), re-elections come round, the other parties keep changing leaders
