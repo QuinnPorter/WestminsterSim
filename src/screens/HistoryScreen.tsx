@@ -52,7 +52,7 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
         >
           🗳️ {(result.arena ?? 'uk') === 'uk' ? 'General election' : `${chamberOf(result.arena).seat} election`} — {PARTIES[result.governingParty].shortName}{' '}
           {result.outcome === 'majority' ? 'majority' : 'minority'} ·{' '}
-          {entry.heldSeat ? 'seat held' : 'seat lost'} {open ? '▾' : '▸'}
+          {entry.bystander ? 'did not stand' : entry.heldSeat ? 'seat held' : 'seat lost'} {open ? '▾' : '▸'}
         </button>
         {open && (
           <div style={{ marginTop: 10 }}>
@@ -99,6 +99,9 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
   } else if (entry.kind === 'leadershipContest') {
     icon = entry.won ? '🏆' : '🥈';
     text = entry.won ? 'Won the party leadership' : 'Lost a leadership contest';
+  } else if (entry.kind === 'mayoralty') {
+    icon = '🏙️';
+    text = entry.action === 'start' ? `Elected ${entry.label}` : `Left office as ${entry.label}`;
   }
 
   // overlay-only entries (committeeTenure, deputyOverlay) carry no feed line of

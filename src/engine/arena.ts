@@ -590,7 +590,7 @@ export const JUMP_COOLDOWN_DAYS = 365 * 3;
 
 /** can the player move chambers at all right now */
 export function canJump(state: GameState): boolean {
-  if (state.gameOver || !state.player.hasSeat) return false;
+  if (state.gameOver || !state.player.hasSeat || state.player.mayorCandidacy) return false;
   if (state.player.partyId === 'ind' || state.player.flags._isSpeaker) return false;
   if (state.player.stats.profile < JUMP_MIN_PROFILE) return false;
   const last = Number(state.player.flags._lastJumpDay ?? 0);
@@ -831,10 +831,11 @@ function vacatePlayerBench(state: GameState, rng: Rng): void {
 /** a seat for a returning or arriving member: their old one if their new party
  *  can still plausibly hold it, else one the party holds, else the most winnable
  *  flipped. In a devolved chamber a party with no constituencies hands out a list
- *  place instead. */
-function pickSeatFor(
+ *  place instead. With `candidateOnly` the seat is only marked as the player's
+ *  candidacy and never flipped: the count on polling day decides it. */
+export function pickSeatFor(
   state: GameState, rng: Rng, party: PartyId, previousSeatId: string | null,
-  opts: { region?: RegionId; byPartyStrength?: boolean; safest?: boolean } = {}
+  opts: { region?: RegionId; byPartyStrength?: boolean; safest?: boolean; candidateOnly?: boolean } = {}
 ): string {
   for (const s of state.seatMap) delete s.isPlayerSeat;
   const arena = state.arena ?? 'uk';
@@ -900,6 +901,7 @@ function pickSeatFor(
   const best = [...(atHome.length > 0 ? atHome : state.seatMap.filter((x) => x.winner !== 'spk'))].sort(
     (a, b) => (b.shares[party] ?? 0) - (a.shares[party] ?? 0)
   )[0];
+  if (opts.candidateOnly) return finish(best);
   const loser = best.winner;
   const loserShare = best.shares[loser] ?? 0.4;
   const flipMargin = 0.01 + rng.next() * 0.03;

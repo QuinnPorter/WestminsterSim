@@ -13,7 +13,9 @@ import { dayToDate, isoToDay } from '../engine/clock';
  * North East MCA, HEYCA, the Greater Lincolnshire CCA) and their constituent
  * councils' statements of results, GOV.UK (the 2020 postponement), the
  * Coronavirus Act 2020 s.60, legislation.gov.uk (SI 2024/414 bringing South
- * Yorkshire's 2026 poll forward to 2024), the Commons Library and the Institute
+ * Yorkshire's 2026 poll forward to 2024; the Elections Act 2022 s.13, in force
+ * for the May 2024 polls; the English Devolution and Community Empowerment Act
+ * 2026, Sch. 30, commenced 29 June 2026), the Commons Library and the Institute
  * for Government. Where a next-election date is a four-year inference rather
  * than a published date it is noted on the entry.
  */
@@ -123,11 +125,17 @@ export function mayoraltiesIn(region: RegionId, day: GameDay): Mayoralty[] {
 }
 
 /** the mayoralty's next polling day strictly after `after`: a listed one, else
- *  the first Thursday in May four years on from the last, and so on */
+ *  the first Thursday in May four years on from the last, and so on. An office
+ *  that was abolished has no next poll of its own: its successor's is the one
+ *  its holder faces (the North of Tyne's mayor stood for the North East). */
 export function nextMayoralElection(m: Mayoralty, after: GameDay): GameDay {
   for (const iso of m.elections) {
     const d = isoToDay(iso);
     if (d > after) return d;
+  }
+  if (m.abolished && m.successor) {
+    const heir = mayoraltyById(m.successor);
+    if (heir) return nextMayoralElection(heir, after);
   }
   // the postponed 2021 polls left three-year terms and the cycle resumed on the
   // original years, so count on from the last listed poll in whole terms
@@ -154,4 +162,12 @@ export function mayoralVotingSystemAt(day: GameDay): MayoralVotingSystem {
 
 export function mayoraltyById(id: string): Mayoralty | undefined {
   return MAYORALTIES.find((m) => m.id === id);
+}
+
+/** the office a holder of `id` actually occupies on a day: the successor's,
+ *  once the original has been abolished */
+export function mayoraltyOn(id: string, day: GameDay): Mayoralty | undefined {
+  const m = mayoraltyById(id);
+  if (m?.abolished && m.successor && day >= isoToDay(m.abolished)) return mayoraltyById(m.successor);
+  return m;
 }

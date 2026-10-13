@@ -10,7 +10,7 @@ import {
 } from '../engine/turn';
 import {
   buildLegacy, changeParty, resignOfficeCore, sackMinisterCore, callForPmResignationCore,
-  callForLeaderResignationCore, setDeputyPmCore, playerOfficeTitle, reconstructPmHistory,
+  callForLeaderResignationCore, setDeputyPmCore, playerStatusTitle, reconstructPmHistory,
   continueAsProtegeCore, backfillCabinetOffices, reconcileCharacterOffices,
   withdrawFromCoalitionCore, openPlayerReshuffle,
 } from '../engine/career';
@@ -187,6 +187,8 @@ export function migrateGameState(game: GameState): GameState {
   // `government.executive` shape as part of the format.
   // v13 — the Executive can collapse. Every new field is optional and only
   // written by the collapse itself; a v12 Stormont save is a formed Executive.
+  // v14 — the metro-mayor interlude: `player.mayor` and `player.mayorCandidacy`
+  // are optional and absent on every older save, which is a sitting member.
   // clear any "ghost" ministers carrying a cabinet title they no longer hold
   // (e.g. an NPC the player displaced in an older save). Idempotent.
   reconcileCharacterOffices(game);
@@ -240,7 +242,7 @@ function snapshotSlot(game: GameState, id: string, name: string): SaveSlot {
     name: name.trim() || 'Saved career',
     savedAt: Date.now(),
     era: game.startEra,
-    legacyLabel: `${game.player.name} — ${playerOfficeTitle(game)}`,
+    legacyLabel: `${game.player.name} — ${playerStatusTitle(game)}`,
     game: structuredClone(game),
   };
 }

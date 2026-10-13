@@ -5,6 +5,7 @@ import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES, counterpartParty, partyNameIn, playablePartiesFor } from '../data/parties';
+import { mayoraltyById } from '../data/mayoralties';
 import { REGIONS } from '../data/regions';
 import { CHAMBERS, chamberAt, houseHeading } from '../data/chambers';
 import { canJump, homeNation, jumpPartyOptions, jumpTargets, JUMP_MIN_PROFILE } from '../engine/arena';
@@ -14,7 +15,7 @@ import { CAUSES_BY_ID } from '../data/causes';
 import { committeeChairTitle } from '../data/committees';
 import { STAT_LABELS } from '../engine/effects';
 import {
-  playerOfficeLabel, playerOfficeTitle, playerIsLeader, playerInGovernment, playerTier,
+  playerOfficeLabel, playerOfficeTitle, playerStatusTitle, playerIsLeader, playerInGovernment, playerTier,
 } from '../engine/career';
 import { relationshipName, getRelationship } from '../engine/relationships';
 import { formatMonthYear, yearsBetween } from '../engine/clock';
@@ -92,6 +93,27 @@ export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
   return spans;
 }
 
+export interface MayorSpan { label: string; start: number; end: number | null; }
+
+/** the spells as a directly elected mayor, paired from the mayoralty start/end entries */
+export function buildMayorSpans(history: GameState['history']): MayorSpan[] {
+  const spans: MayorSpan[] = [];
+  let open: MayorSpan | null = null;
+  for (const entry of history) {
+    if (entry.kind !== 'mayoralty') continue;
+    if (entry.action === 'start') {
+      if (open) spans.push(open);
+      open = { label: entry.label, start: entry.date, end: null };
+    } else if (open) {
+      open.end = entry.date;
+      spans.push(open);
+      open = null;
+    }
+  }
+  if (open) spans.push(open);
+  return spans;
+}
+
 export interface CommitteeSpan { dept: UkDepartmentId; start: number; end: number | null; }
 
 /** the concurrent select-committee chairmanship spans (a backbench overlay),
@@ -133,7 +155,10 @@ export function timelineRowsFromHistory(
   const committee: TimelineRow[] = buildCommitteeSpans(history).map((c) => ({
     title: committeeChairTitle(c.dept), start: c.start, end: close(c.end),
   }));
-  return [...office, ...deputy, ...committee].sort((a, b) => b.start - a.start);
+  const mayoral: TimelineRow[] = buildMayorSpans(history).map((m) => ({
+    title: m.label, start: m.start, end: close(m.end),
+  }));
+  return [...office, ...deputy, ...committee, ...mayoral].sort((a, b) => b.start - a.start);
 }
 
 /** the live career timeline. Once the career is over, an office still "open" ended
@@ -216,7 +241,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
             {partyNameIn(party.id, arena)} · {player.age} years old
           </p>
           <p style={{ fontSize: 'var(--fs-sm)', fontWeight: 700, color: 'var(--party)' }}>
-            {player.hasSeat ? playerOfficeTitle(game) : `Out of ${chamber.houseThe}`}
+            {playerStatusTitle(game)}
           </p>
         </div>
       </div>
@@ -225,6 +250,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>
             {player.hasSeat ? `${chamber.member} for` : 'Candidate for'} {seat.name}
+            {player.mayorCandidacy ? ` · candidate for ${mayoraltyById(player.mayorCandidacy.mayoralty)?.name ?? 'mayor'}` : ''}
           </h3>
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
             {REGIONS[seat.region].name}
@@ -572,7 +598,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
         </button>
       )}
 
-      {player.hasSeat && (
+      {(player.hasSeat || player.mayor) && (
         <button
           className="btn"
           style={{ textAlign: 'center', marginBottom: 8 }}

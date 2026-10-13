@@ -33,6 +33,8 @@ import { SCOTLAND_CARDS } from './nations/scotland';
 import { WALES_CARDS } from './nations/wales';
 import { NI_CARDS } from './nations/ni';
 import { NI_COLLAPSE_CARDS } from './nations/niCollapse';
+import { MAYOR_CARDS } from './mayor';
+export { MAYOR_CARDS } from './mayor';
 
 /** the fallback pool: always-eligible cards that keep the engine from stalling.
  *  Per-chamber, because the last-resort branch of `drawCard` ignores eligibility
@@ -82,6 +84,8 @@ export const ALL_CARDS: DecisionCard[] = [
   ...WALES_CARDS,
   ...NI_CARDS,
   ...NI_COLLAPSE_CARDS,
+  // out of the chamber: eligible only while the player is a sitting mayor
+  ...MAYOR_CARDS,
 ];
 
 export function validateCards(cards: DecisionCard[]): string[] {

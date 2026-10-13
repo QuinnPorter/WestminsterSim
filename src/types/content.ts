@@ -44,6 +44,9 @@ export interface Requirement {
   hasFavour?: boolean;
   /** only fire when the player's seat is in one of these regions */
   region?: RegionId[];
+  /** true → only while the player is a sitting metro mayor (out of the
+   *  chamber); a card that does not say is for a sitting member */
+  mayor?: boolean;
   /** only fire when the player is at least this old (years) */
   minAge?: number;
   /** only fire when the player has one of these career backgrounds */

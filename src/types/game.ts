@@ -243,8 +243,12 @@ export interface Player {
    *  chosen identity (e.g. the accepted "chosen exit" role) rather than a count/toggle. */
   flags: Record<string, boolean | number | string>;
   seatId: string;
-  /** false → lost seat, in the wilderness */
+  /** false → lost seat, in the wilderness (or at City Hall: see `mayor`) */
   hasSeat: boolean;
+  /** a sitting metro mayor: out of the Commons for the term, with a way back */
+  mayor?: MayorState;
+  /** a sitting MP selected to run for a mayoralty, between selection and the poll */
+  mayorCandidacy?: MayorCandidacy;
   /** day the player first entered parliament */
   enteredParliament: GameDay;
   /** broad causes chosen at career start (0–3) — mostly aesthetic + light weighting */
@@ -253,6 +257,27 @@ export interface Player {
   favours: Favour[];
   /** job promises made or received during leadership contests — the debt ledger */
   promises: Pledge[];
+}
+
+/** the player as a directly elected mayor (`data/mayoralties.ts`) */
+export interface MayorState {
+  mayoralty: string;
+  /** the day they took office */
+  since: GameDay;
+  /** the next mayoral polling day */
+  nextElection: GameDay;
+  /** mayoral elections won, the first included */
+  terms: number;
+  /** standing for a Commons seat at the general election now being fought */
+  standingForSeat?: boolean;
+  /** the parliament (its `parliamentStart`) in which the party last offered a seat */
+  returnOfferParliament?: GameDay;
+}
+
+export interface MayorCandidacy {
+  mayoralty: string;
+  pollingDay: GameDay;
+  selectedDay: GameDay;
 }
 
 // ---- politics state ----
@@ -470,12 +495,16 @@ export type HistoryEntry =
       /** an explicit timeline label, for composite roles the office id can't express
        *  on its own (e.g. a junior-coalition-partner "Deputy Prime Minister and X") */
       label?: string }
-  | { kind: 'election'; date: GameDay; resultId: string; heldSeat: boolean }
+  | { kind: 'election'; date: GameDay; resultId: string; heldSeat: boolean;
+      /** the player was a sitting mayor and did not stand */
+      bystander?: boolean }
   | { kind: 'event'; date: GameDay; headline: string }
   /** the Deputy-PM / First-Secretary overlay held ON TOP of a brief — a separate,
    *  concurrent timeline track (paired start→end), so it shows alongside the office */
   | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' | 'dfm'; label?: string }
   | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: UkDepartmentId }
+  /** a spell as a directly elected mayor: its own timeline track */
+  | { kind: 'mayoralty'; date: GameDay; action: 'start' | 'end'; mayoralty: string; label: string }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
   /** the player left one chamber for another — the timeline's chamber divider */
   | { kind: 'arenaChange'; date: GameDay; from: ArenaId; to: ArenaId; partyId: PartyId }
@@ -561,6 +590,9 @@ export type ForcedKind =
   /** recruited by the other chamber: Westminster asking a devolved member to stand,
    *  or a devolved party asking a Westminster figure to come and lead it */
   | 'ukRecruit' | 'devolvedDraft'
+  /** the metro-mayor interlude: the party asking an MP to run, the mayoral
+   *  count, the party offering a sitting mayor a seat back, a lost mayoralty */
+  | 'mayorDraft' | 'mayorElection' | 'mayorReturnOffer' | 'lostMayoralty'
   /** a joint Executive: a head party's leader deciding whether to walk out, and
    *  the blocker's leader deciding whether to re-form it */
   | 'executiveCrisis' | 'executiveTalks'
@@ -620,6 +652,10 @@ export interface LegacySummary {
   yearsAsFirstMinister?: number;
   /** every chamber the career sat in, in order */
   arenasServed?: ArenaId[];
+  /** held a directly elected mayoralty */
+  wasMayor?: boolean;
+  yearsAsMayor?: number;
+  mayoralElectionsWon?: number;
 }
 
 // ---- arenas ----

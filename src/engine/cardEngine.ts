@@ -4,6 +4,7 @@ import { departmentInfo, OFFICES } from '../data/offices';
 import { chamberAt, nationOfRegion } from '../data/chambers';
 import { partyNameIn } from '../data/parties';
 import { COMMITTEE_NAMES } from '../data/committees';
+import { mayoraltyById, mayoraltyOn } from '../data/mayoralties';
 
 import { getRelationship, relationshipName } from './relationships';
 import {
@@ -32,7 +33,8 @@ export function isKeyMoment(card: DrawnCard | null | undefined): boolean {
     card.kind === 'coalitionTalks' ||
     card.kind === 'coalitionOffer' ||
     card.kind === 'executiveCrisis' ||
-    card.kind === 'executiveTalks'
+    card.kind === 'executiveTalks' ||
+    card.kind === 'mayorElection'
   );
 }
 
@@ -47,6 +49,7 @@ export function keyMomentLabel(card: DrawnCard): string {
   if (card.kind === 'coalitionTalks' || card.kind === 'coalitionOffer') return 'Coalition talks';
   if (card.kind === 'executiveCrisis') return 'The Executive on the brink';
   if (card.kind === 'executiveTalks') return 'Forming an Executive';
+  if (card.kind === 'mayorElection') return 'Mayoral election';
   return 'Key moment';
 }
 
@@ -63,6 +66,9 @@ export function resolveTokens(state: GameState, text: string): string {
   // devolved administration of the player's nation; in a devolved chamber, the UK
   // government. Both are simulated, so they have a real leader and a real party.
   const other = otherGovernment(state);
+  // the mayoralty held or sought, successor office included
+  const mayoraltyId = state.player.mayor?.mayoralty ?? state.player.mayorCandidacy?.mayoralty;
+  const mayoralty = mayoraltyId ? (mayoraltyOn(mayoraltyId, state.day) ?? mayoraltyById(mayoraltyId)) : undefined;
   const map: Record<string, string> = {
     leader: relationshipName(state, 'leader'),
     pm: state.government.pmId === 'player' ? state.player.name
@@ -96,6 +102,9 @@ export function resolveTokens(state: GameState, text: string): string {
     otherleader: other.leader,
     otherparty: other.party,
     othergov: other.government,
+    // the mayor's office and place
+    mayoralty: mayoralty?.name ?? 'the mayoralty',
+    city: mayoralty?.city ?? 'the city',
   };
   return text.replace(/\{(\w+)\}/g, (m, key) => map[key] ?? m);
 }
@@ -142,6 +151,9 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
       state.day - state.cardHistory[card.id] < card.cooldownDays) {
     return false;
   }
+  // a sitting mayor is out of the chamber: only the cards written for City Hall
+  // fire, and they fire nowhere else
+  if (!!state.player.mayor !== (req?.mayor === true)) return false;
   // an unmarked card belongs to the Commons. The corpus predates the devolved
   // chambers and is written throughout in Westminster language, so a card must
   // opt IN to a legislature rather than leak into one by omission.

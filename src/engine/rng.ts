@@ -1,6 +1,14 @@
 /** Seeded PRNG (mulberry32). The state lives in GameState.rngState so a save
  *  fully determines the future. All engine randomness must go through an Rng. */
 
+/** A side stream for a roll that must not touch the main one: seeded from the
+ *  main stream's current state, the day and a salt, so it is reproducible from
+ *  a save and consumes no main draw. It cannot hide an event that fires (the
+ *  card drawn that tick changes); it only keeps the quiet ticks identical. */
+export function sideRng(rng: Rng, day: number, salt: number): Rng {
+  return new Rng((rng.state ^ Math.imul(day, 0x9e3779b1) ^ salt) >>> 0);
+}
+
 export class Rng {
   private s: number;
 

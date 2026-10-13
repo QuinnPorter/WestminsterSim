@@ -25,12 +25,19 @@ import { calibratedPolling } from './polling';
 export { offerableOffice } from './executive';
 import { recordLoChange, recordPmChange } from './tenure';
 export { recordLoChange, recordPmChange } from './tenure';
-import { incomingSeniorityBonus, installPlayerAsLeader, jumpToArena } from './arena';
+import { incomingSeniorityBonus, installPlayerAsLeader, jumpToArena, pickSeatFor } from './arena';
+import { initCalendar } from './calendar';
+import { mayoraltyById, mayoraltyOn, nextMayoralElection } from '../data/mayoralties';
+import {
+  buildLostMayoraltyCard, buildMayorBystanderCard, buildMayorDraftCard, buildMayorElectionCard,
+  buildMayorReturnOfferCard, countHeadline, mayorExitProse, mayorSelectionOdds, mayorTitle, mayoralResult,
+  playerMayoralty, servedFullTerm,
+} from './mayor';
 import { BACKGROUNDS } from '../data/backgrounds';
 import { causeDepartments } from '../data/causes';
 import { PARTIES } from '../data/parties';
 import { PARLIAMENTS } from '../data/parliaments';
-import { UK_TERM_DAYS } from './clock';
+import { UK_TERM_DAYS, formatMonthYear } from './clock';
 import { generateCharacter } from '../generation/characters';
 import {
   adjustRelationship, averageColleagueWarmth, characterName, getRelationship,
@@ -276,6 +283,13 @@ export function playerOfficeTitle(state: GameState): string {
   return base;
 }
 
+/** the title pill: the office held, City Hall, or the wilderness */
+export function playerStatusTitle(state: GameState): string {
+  if (state.player.mayor) return mayorTitle(state);
+  if (!state.player.hasSeat) return `Out of ${chamberAt(state.arena, state.day).houseThe}`;
+  return playerOfficeTitle(state);
+}
+
 // ---------- select committees ----------
 
 /** the player can win a committee chair only as a pure backbencher with a seat
@@ -314,7 +328,7 @@ function setCommitteeChair(state: GameState, dept: UkDepartmentId): void {
 }
 
 /** relinquish the chair (on taking office, losing the seat, or being voted out) */
-function clearCommitteeChair(state: GameState, reason: 'tookOffice' | 'lostSeat' | 'votedOut'): void {
+function clearCommitteeChair(state: GameState, reason: 'tookOffice' | 'lostSeat' | 'votedOut' | 'resigned'): void {
   const dept = state.player.committeeChair;
   if (!dept) return;
   state.player.committeeChair = null;
@@ -2712,15 +2726,21 @@ export function applyElectionAftermath(
 
   state.history.push({
     kind: 'election', date: state.day, resultId: result.id, heldSeat: playerWonSeat,
+    // a sitting mayor who did not stand is a bystander, not a loser
+    ...(state.player.mayor && !state.player.mayor.standingForSeat ? { bystander: true } : {}),
   });
 
   // seat status for the player
   if (playerWonSeat && !state.player.hasSeat) {
     state.player.hasSeat = true;
-    state.history.push({
-      kind: 'event', date: state.day,
-      headline: `${state.player.name} returns to ${chamberAt(state.arena, state.day).houseThe}`,
-    });
+    if (state.player.mayor) {
+      leaveMayoralty(state, rng, 'returned');
+    } else {
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} returns to ${chamberAt(state.arena, state.day).houseThe}`,
+      });
+    }
   }
 
   // the official opposition is the largest non-governing party by seats — driven
@@ -2920,6 +2940,19 @@ export function applyElectionAftermath(
 
   // ---- player seat lost? ----
   if (!playerWonSeat) {
+    if (state.player.mayor) {
+      // City Hall carries on: a mayor who did not stand, or stood and lost,
+      // keeps the office and loses only the candidacy
+      if (state.player.mayor.standingForSeat) {
+        releaseSeatCandidacy(state);
+        state.history.push({
+          kind: 'event', date: state.day,
+          headline: `${state.player.name} fails to win a Commons seat and stays on as ${mayorTitle(state)}`,
+        });
+      }
+      settleNpcLeaderships(state, rng, prevGov, newGov, prevOpp, result, prevSeats);
+      return;
+    }
     state.player.hasSeat = false;
     clearCommitteeChair(state, 'lostSeat'); // a chair who loses their seat loses the chair
     if (playerIsLeader(state)) {
@@ -3018,6 +3051,8 @@ export function applyElectionAftermath(
   const isSpeaker = !!state.player.flags._isSpeaker;
   const eligibleForChair =
     state.player.hasSeat &&
+    // not on the day they arrive from City Hall
+    state.player.flags._incomingDay !== state.day &&
     (isSpeaker || state.player.officeId === null) &&
     (isSpeaker || state.player.stats.integrity > 55) &&
     (isSpeaker || !wasEverPmOrLeader(state));
@@ -4182,6 +4217,7 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       };
     }
     case 'campaign': {
+      if (ev.payload?.bystander === true) return buildMayorBystanderCard(state, rng);
       const step = (ev.payload?.step as number) ?? 1;
       const isLeader = ev.payload?.leader === true;
       if (isLeader) {
@@ -4492,12 +4528,14 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
         },
       };
       const e = exit[role];
+      // a mayor is offered the same ways out, from City Hall rather than the House
+      const asMayor = state.player.mayor ? mayorExitProse(role) : null;
       return {
         cardId: `forced_exit_${state.day}`,
         kind: 'exitOffer',
         title: e.title,
-        body: e.body,
-        choices: [{ label: e.accept }, { label: 'Stay in the Commons' }],
+        body: asMayor?.body ?? e.body,
+        choices: [{ label: e.accept }, { label: asMayor?.stay ?? 'Stay in the Commons' }],
         payload: { role, advance: rng.int(7, 14) },
       };
     }
@@ -4568,6 +4606,16 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
     case 'executiveCrisis':
     case 'executiveTalks':
       return buildExecutiveCard(state, rng, ev.kind, ev.payload);
+
+    // ---- the metro-mayor interlude ----
+    case 'mayorDraft':
+      return buildMayorDraftCard(state, rng, ev.payload);
+    case 'mayorElection':
+      return buildMayorElectionCard(state, rng, ev.payload);
+    case 'mayorReturnOffer':
+      return buildMayorReturnOfferCard(state, rng);
+    case 'lostMayoralty':
+      return buildLostMayoraltyCard(state, rng, ev.payload);
 
     case 'calendar':
     case 'electionNight':
@@ -4929,6 +4977,173 @@ export function resolveForcedChoice(
       return { text: resolveExecutiveCard(state, rng, card, choiceIndex, gain), deltas };
     }
 
+    // ---- the metro-mayor interlude ----
+    case 'mayorDraft': {
+      const step = (card.payload?.step as number) ?? 1;
+      const m = mayoraltyById(card.payload?.mayoralty as string);
+      const name = m?.name ?? 'the mayoralty';
+      const city = m?.city ?? 'the region';
+      let winChance = (card.payload?.winChance as number) ?? mayorSelectionOdds(state);
+      if (step === 1) {
+        if (choiceIndex !== 0) {
+          state.player.flags._lastMayorDraftDay = state.day;
+          gain('partyStanding', 2, 'Standing');
+          return {
+            text: `You thank them and say the job you were elected to do is the one you are doing. The regional party finds somebody else, who loses, and several people remember that you could have won.`,
+            deltas,
+          };
+        }
+        gain('profile', 3, 'Profile');
+        adjustRelationship(state, 'leader', -4); push('Leader', -4);
+        state.forcedQueue.unshift({ kind: 'mayorDraft', payload: { ...card.payload, step: 2, winChance } });
+        return {
+          text: `You tell them yes before you have told your own whips, which is the order these things have to go in. The declaration is in the regional paper by Friday, and the leader’s office learns of it from the regional paper.`,
+          deltas,
+        };
+      }
+      if (step === 2) {
+        if (choiceIndex === 0) {
+          winChance += 0.08;
+          gain('profile', 3, 'Profile');
+        } else if (choiceIndex === 1) {
+          winChance += 0.05;
+          gain('constituencyApproval', 3, 'Approval');
+        } else {
+          winChance += 0.15;
+          gain('integrity', -3, 'Integrity');
+          state.player.favours = [];
+        }
+        winChance = clamp(winChance, 0.05, 0.92);
+        state.forcedQueue.unshift({ kind: 'mayorDraft', payload: { ...card.payload, step: 3, winChance } });
+        const text = choiceIndex === 0
+          ? `You talk about the Treasury and the people in it who take your calls, and the members are torn between finding that useful and finding it a little grand.`
+          : choiceIndex === 1
+            ? `You talk about ${city} and the bus you used to catch, and mean most of it. The hall likes you more than it trusts you, which is the right way round for a selection.`
+            : `You call in everything: every favour, every debt, every person who owes you a phone call. The account is empty and a great many members have been rung.`;
+        return { text, deltas };
+      }
+      // step 3: the members' vote
+      state.player.flags._lastMayorDraftDay = state.day;
+      if (!m || !rng.chance(winChance)) {
+        gain('profile', 2, 'Profile');
+        gain('partyStanding', -5, 'Standing');
+        return {
+          text: `It goes to a council leader who has been going to the members’ meetings for twenty years, and it is not close. You go back to Westminster to a parliamentary party that watched you try to leave.`,
+          deltas,
+        };
+      }
+      state.player.mayorCandidacy = { mayoralty: m.id, pollingDay: card.payload?.pollingDay as number, selectedDay: state.day };
+      gain('profile', 5, 'Profile');
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} selected as ${partyNameWithArticle(state.player.partyId, 'uk')}’s candidate for ${name}`,
+      });
+      return {
+        text: `You win it, and the next morning you are a sitting MP with a second job: candidate for ${name}, with a poll in ${formatMonthYear(card.payload?.pollingDay as number)} and a seat you will have to give up if you win it.`,
+        deltas,
+      };
+    }
+
+    case 'mayorElection': {
+      const reElection = card.payload?.reElection === true;
+      const m = playerMayoralty(state);
+      if (!m) return { text: 'The count comes and goes without you on the ballot.', deltas };
+      if (choiceIndex === 0) gain('constituencyApproval', 1, 'Approval');
+      const count = mayoralResult(state, rng, m, { incumbent: reElection, bonus: choiceIndex === 0 ? 0.01 : 0 });
+      state.history.push({ kind: 'event', date: state.day, headline: countHeadline(state, m, count) });
+      const pct = (x: number) => `${Math.round(x * 100)}%`;
+      const margin = count.finalRound
+        ? `${pct(count.finalRound.shares[0])} to ${pct(count.finalRound.shares[1])} after second preferences`
+        : `${pct(count.firstRound[count.winner] ?? 0)} of the vote`;
+      if (reElection) {
+        const mayor = state.player.mayor;
+        if (mayor && count.won) {
+          mayor.terms += 1;
+          mayor.mayoralty = m.id;
+          mayor.nextElection = nextMayoralElection(m, state.day);
+          state.player.flags._mayoralWins = Number(state.player.flags._mayoralWins ?? 0) + 1;
+          gain('profile', 4, 'Profile');
+          gain('constituencyApproval', 3, 'Approval');
+          return {
+            text: `Re-elected, ${margin}. Another four years of ${m.city}, and a mandate that is unmistakably yours rather than the party’s. Somebody at Westminster writes that down.`,
+            deltas,
+          };
+        }
+        leaveMayoralty(state, rng, 'lost');
+        gain('profile', -3, 'Profile');
+        state.forcedQueue.unshift({ kind: 'lostMayoralty', payload: { label: m.name } });
+        return {
+          text: `You lose, ${margin}. The speech is gracious because the alternative is remembered. By morning there is a removal van at City Hall and your name is coming off the website.`,
+          deltas,
+        };
+      }
+      if (count.won) {
+        becomeMayor(state, rng, m.id);
+        gain('profile', 8, 'Profile');
+        gain('competence', 2, 'Competence');
+        return {
+          text: `You win, ${margin}. The letter resigning your seat is already drafted and goes in before the champagne. You are ${m.name} now, with a budget, a building and no whip to tell you what you think.`,
+          deltas,
+        };
+      }
+      delete state.player.mayorCandidacy;
+      state.player.flags._lastMayorDraftDay = state.day;
+      gain('profile', 2, 'Profile');
+      gain('partyStanding', -4, 'Standing');
+      return {
+        text: `You lose, ${margin}. You are still the MP you were on Thursday morning, which is the consolation and also the problem: the whips know exactly how much you wanted to leave, and so does your association.`,
+        deltas,
+      };
+    }
+
+    case 'mayorReturnOffer': {
+      const mayor = state.player.mayor;
+      if (!mayor) return { text: 'The offer lapses.', deltas };
+      if (choiceIndex !== 0) {
+        gain('constituencyApproval', 3, 'Approval');
+        return {
+          text: `You say no. The job is not finished and the city would notice if you left it half done. The party selects somebody else and the seat is held, or not, without you.`,
+          deltas,
+        };
+      }
+      mayor.standingForSeat = true;
+      state.player.seatId = pickSeatFor(state, rng, state.player.partyId, null, {
+        region: state.player.region, byPartyStrength: true, candidateOnly: true,
+      });
+      // the campaign is now a real one
+      state.forcedQueue = state.forcedQueue.filter((e) => !(e.kind === 'campaign' && e.payload?.bystander === true));
+      state.forcedQueue.unshift(
+        { kind: 'campaign', payload: { step: 1 } },
+        { kind: 'campaign', payload: { step: 2 } },
+        { kind: 'campaign', payload: { step: 3 } },
+      );
+      const seat = state.seatMap.find((s) => s.id === state.player.seatId);
+      state.history.push({
+        kind: 'event', date: state.day,
+        headline: `${state.player.name} selected to stand for ${seat?.name ?? 'a Commons seat'} at the general election`,
+      });
+      gain('profile', 3, 'Profile');
+      return {
+        text: `You say yes, and the selection is arranged with a speed that tells you how long it had been arranged for. ${seat?.name ?? 'The seat'} is yours to fight. Win and you go back; lose and you are still the mayor, with a bruise.`,
+        deltas,
+      };
+    }
+
+    case 'lostMayoralty': {
+      if (choiceIndex === 0) {
+        gain('constituencyApproval', 2, 'Approval');
+        return {
+          text: `The local party finds you a seat to fight when the country next votes, and the wilderness years begin: a consultancy, a column, a lot of radio about buses.`,
+          deltas,
+        };
+      }
+      state.gameOver = { reason: 'lostSeat', legacy: buildLegacy(state) };
+      return {
+        text: `You thank the city for the years and step away. Politics will carry on without you; it always does.`,
+        deltas,
+      };
+    }
+
     case 'exitOffer': {
       const role = card.payload?.role as 'peerage' | 'international' | 'executive' | 'university';
       if (choiceIndex === 0) {
@@ -4956,7 +5171,7 @@ export function resolveForcedChoice(
         executive: 'You pass on the boardroom and the noughts. The contacts book will keep, and so, for now, will your seat.',
         university: 'You decline the robes, with real regret. Not yet. There is unfinished business on the green benches, and you mean to finish it.',
       };
-      return { text: declineText[role], deltas };
+      return { text: state.player.mayor ? mayorExitProse(role).decline : declineText[role], deltas };
     }
 
     case 'resignPrompt': {
@@ -6374,6 +6589,22 @@ export function resolveForcedChoice(
     }
 
     case 'campaign': {
+      if (card.payload?.bystander === true) {
+        // the general election, watched from City Hall
+        if (choiceIndex === 0) {
+          gain('partyStanding', 5, 'Standing');
+          gain('profile', 2, 'Profile');
+          return { text: 'You are on every regional stage the party can book, the mayor as its local face. The candidates are grateful; the ones who lose are grateful too, which is rarer.', deltas };
+        }
+        if (choiceIndex === 1) {
+          gain('constituencyApproval', 4, 'Approval');
+          gain('integrity', 1, 'Integrity');
+          return { text: 'You open things and shake hands and decline to say who you are voting for, which everybody knows. The city rather likes a mayor who is not on the bus.', deltas };
+        }
+        gain('profile', 2, 'Profile');
+        gain('partyStanding', -2, 'Standing');
+        return { text: 'A few lunches, a few names, a sense of which associations might be looking for a candidate next time. Nothing is said. Several people notice that nothing was said.', deltas };
+      }
       if (card.payload?.leader === true) {
         return resolveLeaderCampaignChoice(state, rng, card, choiceIndex, deltas, push);
       }
@@ -7423,7 +7654,7 @@ function partyWhipId(state: GameState, rng: Rng, party: PartyId): string {
  *  entries are lifted out of the shared history feed and stored here. */
 function snapshotMentor(state: GameState): Mentor {
   const career: HistoryEntry[] = state.history.filter((h) =>
-    h.kind === 'roleChange' || h.kind === 'leadershipContest' ||
+    h.kind === 'roleChange' || h.kind === 'leadershipContest' || h.kind === 'mayoralty' ||
     h.kind === 'enteredParliament' || h.kind === 'election' ||
     // concurrent-overlay roles a backbencher/minister can hold (select-committee
     // chairmanships, Deputy PM / First Secretary) so the mentor timeline is complete
@@ -8066,6 +8297,71 @@ function careerVerdict(
   return { rating, verdict: `${verdict}.` };
 }
 
+// ---------- the metro-mayor interlude ----------
+
+/** the player wins the mayoralty: out of the Commons for the term */
+export function becomeMayor(state: GameState, rng: Rng, mayoraltyId: string): void {
+  const m = mayoraltyById(mayoraltyId);
+  if (!m) return;
+  if (state.player.officeId) stripOffice(state, rng, 'resigned');
+  clearCommitteeChair(state, 'resigned');
+  for (const s of state.seatMap) delete s.isPlayerSeat;
+  state.player.seatId = '';
+  state.player.hasSeat = false;
+  delete state.player.mayorCandidacy;
+  // a live scandal belongs to the House you have left
+  delete state.player.flags.scandal;
+  delete state.player.flags.scandal_stage;
+  state.player.mayor = { mayoralty: m.id, since: state.day, nextElection: nextMayoralElection(m, state.day), terms: 1 };
+  state.player.flags._mayoralWins = Number(state.player.flags._mayoralWins ?? 0) + 1;
+  state.history.push({ kind: 'mayoralty', date: state.day, action: 'start', mayoralty: m.id, label: m.name });
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} resigns from the Commons to take office as ${m.name}`,
+  });
+}
+
+/** the mayoralty ends: back in the Commons on a won count (the seniority a full
+ *  term earns comes with them), or out of office on a lost one, with a candidacy
+ *  for the next general election so the wilderness has a way out */
+export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lost'): void {
+  const mayor = state.player.mayor;
+  if (!mayor) return;
+  const m = mayoraltyOn(mayor.mayoralty, state.day) ?? mayoraltyById(mayor.mayoralty);
+  const label = m?.name ?? 'the mayoralty';
+  const senior = servedFullTerm(state);
+  delete state.player.mayor;
+  state.history.push({ kind: 'mayoralty', date: state.day, action: 'end', mayoralty: mayor.mayoralty, label });
+  if (how === 'returned') {
+    // cabinet rank after a full term, a minister's below it: the first offer
+    // comes early, the post is not automatic
+    const peak = Number(state.player.flags._peakTier ?? 0);
+    state.player.flags._incomingTier = Math.max(peak, senior ? 4 : 3);
+    state.player.flags._incomingDay = state.day;
+    // this seat has never seen you, and the calendar stood still while you were away
+    state.player.flags._seatSinceDay = state.day;
+    const seat = state.seatMap.find((s) => s.id === state.player.seatId);
+    if (seat) state.player.region = seat.region;
+    initCalendar(state);
+    state.history.push({
+      kind: 'event', date: state.day,
+      headline: `${state.player.name} returns to the Commons${seat ? ` as MP for ${seat.name}` : ''}; ${label} passes to a successor`,
+    });
+    return;
+  }
+  state.player.seatId = pickSeatFor(state, rng, state.player.partyId, null, {
+    region: state.player.region, byPartyStrength: true, candidateOnly: true,
+  });
+  state.player.hasSeat = false;
+}
+
+/** a mayor who stood for the Commons and lost gives the candidacy back */
+function releaseSeatCandidacy(state: GameState): void {
+  for (const s of state.seatMap) delete s.isPlayerSeat;
+  state.player.seatId = '';
+  if (state.player.mayor) delete state.player.mayor.standingForSeat;
+}
+
 export function buildLegacy(state: GameState): LegacySummary {
   // career levels: 0 backbencher, 1 minister, 2 cabinet, 3 party leader, 4 PM
   let level = 0;
@@ -8144,6 +8440,23 @@ export function buildLegacy(state: GameState): LegacySummary {
       }
     }
   }
+  // a spell as a directly elected mayor: its own rung, below a cabinet seat
+  let everMayor = false;
+  let mayorLabel = '';
+  let mayorDays = 0;
+  let mayorOpen: number | null = null;
+  for (const entry of state.history) {
+    if (entry.kind !== 'mayoralty') continue;
+    everMayor = true;
+    mayorLabel = entry.label;
+    if (entry.action === 'start') {
+      mayorOpen = entry.date;
+    } else if (mayorOpen !== null) {
+      mayorDays += entry.date - mayorOpen;
+      mayorOpen = null;
+    }
+  }
+  if (mayorOpen !== null) mayorDays += state.day - mayorOpen;
   // leading the United Kingdom outranks leading a nation, so Westminster wins when both happened
   const headArena: ArenaId = headArenas.has('uk') ? 'uk' : ([...headArenas][0] ?? 'uk');
   const leaderArena: ArenaId = leaderArenas.has('uk') ? 'uk' : ([...leaderArenas][0] ?? 'uk');
@@ -8170,6 +8483,7 @@ export function buildLegacy(state: GameState): LegacySummary {
     : level === 3 ? (leaderArena === 'uk' ? 'Party Leader' : `Party Leader (${chamberOf(leaderArena).place})`)
     : everDeputyPM ? (deputyArena === 'uk' ? 'Deputy Prime Minister' : `Deputy First Minister of ${chamberOf(deputyArena).place}`)
     : level === 2 ? `Cabinet — ${cabinetTitle}${cabinetArena === 'uk' ? '' : ` (${chamberOf(cabinetArena).place})`}`
+    : everMayor ? mayorLabel
     : everChiefRole ? chiefTitle
     : level === 1 ? `${ministerTitle}${ministerArena === 'uk' ? '' : ` (${chamberOf(ministerArena).place})`}`
     : everCommitteeChair ? 'Select Committee Chair'
@@ -8223,6 +8537,11 @@ export function buildLegacy(state: GameState): LegacySummary {
     // in the shared rundown alike
     headOfGovernmentTitle: headArena === 'uk' ? 'Prime Minister' : 'First Minister',
     ...firstMinisterRecord(state),
+    ...(everMayor ? {
+      wasMayor: true,
+      yearsAsMayor: Math.floor(mayorDays / 365),
+      mayoralElectionsWon: Number(state.player.flags._mayoralWins ?? 0),
+    } : {}),
   };
 }
 

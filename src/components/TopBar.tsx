@@ -1,6 +1,6 @@
 import { GameState } from '../types/game';
 import { formatMonthYear } from '../engine/clock';
-import { playerOfficeTitle } from '../engine/career';
+import { playerStatusTitle } from '../engine/career';
 import { partyTextColour } from '../data/parties';
 import './TopBar.css';
 
@@ -17,7 +17,7 @@ export function TopBar({ game }: { game: GameState }) {
           className="topbar-role"
           style={{ background: 'var(--party)', color: 'var(--party-ink)' }}
         >
-          {game.player.hasSeat ? playerOfficeTitle(game) : 'Out of Parliament'}
+          {playerStatusTitle(game)}
         </span>
       </div>
       {latestHeadline && (

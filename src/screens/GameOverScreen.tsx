@@ -60,6 +60,9 @@ export function GameOverScreen({ game }: { game: GameState }) {
     if (legacy.becamePM && (legacy.pmStints ?? 0) > 0) {
       lines.push(`Years as ${headTitle}: ${legacy.yearsAsPM ?? 0}`);
     }
+    if (legacy.wasMayor) {
+      lines.push(`Years as mayor: ${legacy.yearsAsMayor ?? 0} (${legacy.mayoralElectionsWon ?? 0} mayoral election${legacy.mayoralElectionsWon === 1 ? '' : 's'} won)`);
+    }
     lines.push(`Elections won: ${legacy.electionsContested !== undefined
       ? `${legacy.electionsWon} of ${legacy.electionsContested}`
       : `${legacy.electionsWon}`}`);
@@ -168,6 +171,12 @@ export function GameOverScreen({ game }: { game: GameState }) {
               value={`${legacy.pmStints}`}
             />
           </>
+        )}
+        {legacy.wasMayor && (
+          <LegacyRow
+            label="Years as mayor"
+            value={`${legacy.yearsAsMayor ?? 0} (${legacy.mayoralElectionsWon ?? 0} mayoral election${legacy.mayoralElectionsWon === 1 ? '' : 's'} won)`}
+          />
         )}
         <LegacyRow
           label="Elections won"
