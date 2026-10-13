@@ -412,7 +412,7 @@ export const useGameStore = create<GameStore>()(
           // a fixed-term chamber cannot be dissolved by its First Minister
           if (chamberOf(game.arena).fixedTerm) return;
           // guard: don't double-queue if a campaign is already under way
-          if (game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight')) return;
+          if (game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'mayorBystander' || e.kind === 'electionNight')) return;
           queueGeneralElection(game);
           game.history.push({
             kind: 'event', date: game.day,

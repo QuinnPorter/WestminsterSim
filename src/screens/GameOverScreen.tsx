@@ -45,6 +45,10 @@ export function GameOverScreen({ game }: { game: GameState }) {
   const causes = (legacy.causes ?? []).map((c) => CAUSES_BY_ID[c]?.label).filter(Boolean);
   // a First Minister's spells are spells as First Minister
   const headTitle = legacy.headOfGovernmentTitle ?? 'Prime Minister';
+  // a mayor's years, with the mayoral elections won
+  const mayorLine = legacy.wasMayor
+    ? `${legacy.yearsAsMayor ?? 0} (${legacy.mayoralElectionsWon ?? 0} mayoral election${legacy.mayoralElectionsWon === 1 ? '' : 's'} won)`
+    : null;
 
   const [sharing, setSharing] = useState(false);
   const [shareMsg, setShareMsg] = useState('');
@@ -60,9 +64,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
     if (legacy.becamePM && (legacy.pmStints ?? 0) > 0) {
       lines.push(`Years as ${headTitle}: ${legacy.yearsAsPM ?? 0}`);
     }
-    if (legacy.wasMayor) {
-      lines.push(`Years as mayor: ${legacy.yearsAsMayor ?? 0} (${legacy.mayoralElectionsWon ?? 0} mayoral election${legacy.mayoralElectionsWon === 1 ? '' : 's'} won)`);
-    }
+    if (mayorLine) lines.push(`Years as mayor: ${mayorLine}`);
     lines.push(`Elections won: ${legacy.electionsContested !== undefined
       ? `${legacy.electionsWon} of ${legacy.electionsContested}`
       : `${legacy.electionsWon}`}`);
@@ -175,7 +177,7 @@ export function GameOverScreen({ game }: { game: GameState }) {
         {legacy.wasMayor && (
           <LegacyRow
             label="Years as mayor"
-            value={`${legacy.yearsAsMayor ?? 0} (${legacy.mayoralElectionsWon ?? 0} mayoral election${legacy.mayoralElectionsWon === 1 ? '' : 's'} won)`}
+            value={mayorLine ?? ''}
           />
         )}
         <LegacyRow

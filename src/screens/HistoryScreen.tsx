@@ -99,13 +99,10 @@ function HistoryItem({ game, entry }: { game: GameState; entry: HistoryEntry }) 
   } else if (entry.kind === 'leadershipContest') {
     icon = entry.won ? '🏆' : '🥈';
     text = entry.won ? 'Won the party leadership' : 'Lost a leadership contest';
-  } else if (entry.kind === 'mayoralty') {
-    icon = '🏙️';
-    text = entry.action === 'start' ? `Elected ${entry.label}` : `Left office as ${entry.label}`;
   }
 
-  // overlay-only entries (committeeTenure, deputyOverlay) carry no feed line of
-  // their own — they surface as their paired event headline / timeline span
+  // overlay-only entries (committeeTenure, deputyOverlay, mayoralty) carry no feed
+  // line of their own — they surface as their paired event headline / timeline span
   if (!text) return null;
 
   return (

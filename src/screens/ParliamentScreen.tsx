@@ -40,7 +40,7 @@ export function ParliamentScreen({ game }: { game: GameState }) {
   const isPM = playerIsPM(game) && !chamberOf(arena).fixedTerm;
   // hide the snap-election button once an election is already on its way
   const electionImminent = game.day >= game.nextElectionBy - 60
-    || game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'electionNight');
+    || game.forcedQueue.some((e) => e.kind === 'campaign' || e.kind === 'mayorBystander' || e.kind === 'electionNight');
   // the player can pull out of a coalition as either partner (junior leader or senior PM)
   const isJuniorPartner = game.player.partyId === gov.coalitionPartner;
   // only a party leader (the PM of the senior party, or the junior partner's

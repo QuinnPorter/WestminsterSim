@@ -1,4 +1,4 @@
-import { GameDay, RegionId } from '../types/game';
+import { GameDay, Player, RegionId } from '../types/game';
 import { dayToDate, isoToDay } from '../engine/clock';
 
 /**
@@ -114,13 +114,17 @@ function firstThursdayInMay(year: number): GameDay {
 }
 
 const TERM_YEARS = 4;
+/** an authority exists, and its party is looking for a candidate, from about
+ *  thirteen months before its first poll: the orders creating the combined
+ *  authorities were made the spring before the first May election */
+const CREATED_BEFORE_FIRST_POLL = 400;
 
 /** the mayoralties whose area includes a region, on a day: created by then and
  *  not yet abolished */
 export function mayoraltiesIn(region: RegionId, day: GameDay): Mayoralty[] {
   return MAYORALTIES.filter((m) =>
     m.region === region
-    && isoToDay(m.elections[0]) - 400 <= day
+    && isoToDay(m.elections[0]) - CREATED_BEFORE_FIRST_POLL <= day
     && (!m.abolished || day < isoToDay(m.abolished)));
 }
 
@@ -168,6 +172,17 @@ export function mayoraltyById(id: string): Mayoralty | undefined {
  *  once the original has been abolished */
 export function mayoraltyOn(id: string, day: GameDay): Mayoralty | undefined {
   const m = mayoraltyById(id);
-  if (m?.abolished && m.successor && day >= isoToDay(m.abolished)) return mayoraltyById(m.successor);
+  if (m?.abolished && m.successor && day >= isoToDay(m.abolished)) return mayoraltyById(m.successor) ?? m;
   return m;
+}
+
+/** the office a player holds or is running for on a day, successor included */
+export function heldMayoralty(player: Pick<Player, 'mayor' | 'mayorCandidacy'>, day: GameDay): Mayoralty | undefined {
+  const id = player.mayor?.mayoralty ?? player.mayorCandidacy?.mayoralty;
+  return id ? mayoraltyOn(id, day) : undefined;
+}
+
+/** the office's name in prose, with a fallback for a missing one */
+export function mayoraltyName(m: Mayoralty | undefined): string {
+  return m?.name ?? 'the mayoralty';
 }

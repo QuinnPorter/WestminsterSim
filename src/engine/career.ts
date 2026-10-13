@@ -27,10 +27,11 @@ import { recordLoChange, recordPmChange } from './tenure';
 export { recordLoChange, recordPmChange } from './tenure';
 import { incomingSeniorityBonus, installPlayerAsLeader, jumpToArena, pickSeatFor } from './arena';
 import { initCalendar } from './calendar';
-import { mayoraltyById, mayoraltyOn, nextMayoralElection } from '../data/mayoralties';
+import { Mayoralty, mayoraltyById, mayoraltyName, nextMayoralElection } from '../data/mayoralties';
 import {
+  ExitRole, LostMayoraltyPayload, MayorDraftPayload, MayorElectionPayload,
   buildLostMayoraltyCard, buildMayorBystanderCard, buildMayorDraftCard, buildMayorElectionCard,
-  buildMayorReturnOfferCard, countHeadline, mayorExitProse, mayorSelectionOdds, mayorSpans, mayorTitle,
+  buildMayorReturnOfferCard, countHeadline, countMargin, exitProse, mayorSelectionOdds, mayorSpans, mayorTitle,
   mayoralResult, playerMayoralty, servedFullTerm,
 } from './mayor';
 import { BACKGROUNDS } from '../data/backgrounds';
@@ -4217,7 +4218,6 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       };
     }
     case 'campaign': {
-      if (ev.payload?.bystander === true) return buildMayorBystanderCard(state, rng);
       const step = (ev.payload?.step as number) ?? 1;
       const isLeader = ev.payload?.leader === true;
       if (isLeader) {
@@ -4501,42 +4501,18 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
       };
     }
     case 'exitOffer': {
-      const role = ev.payload?.role as 'peerage' | 'international' | 'executive' | 'university';
-      // each role gets its own framing, its own trade-off, and its own accept label.
-      // Accepting sets flags._pendingExit; the store fires the confirm modal, and only
-      // a confirmed exit ends the game. Declining returns to play (no _pendingExit set).
-      const exit: Record<typeof role, { title: string; body: string; accept: string }> = {
-        peerage: {
-          title: 'The ermine',
-          body: 'A discreet lunch, a discreet offer. The party would like to send you to the other place — a peerage, a red bench, and a title to carry the rest of your days. It is the establishment\'s thank-you to those who served long and gave no scandal: an elevation, and an ending. The Commons would go on without you.',
-          accept: 'Take the peerage',
-        },
-        international: {
-          title: 'The world stage',
-          body: 'The approach comes through familiar channels: an international role, the kind that trades a green bench for a delegation and a motorcade. Governance, defence, the slow diplomacy of rooms most voters never see. It is a serious job for a serious late career — but you would leave the House to do it. A constituency is a hard thing to hand back.',
-          accept: 'Leave for the world stage',
-        },
-        executive: {
-          title: 'The boardroom',
-          body: 'A headhunter, a good bottle, and a number with a lot of noughts. There is an executive role waiting for someone with your contacts book and your understanding of how Whitehall really works. The money is real; so is the quiet knowledge that the register of members\' interests, and a certain kind of colleague, will remember exactly what you cashed in.',
-          accept: 'Cash out',
-        },
-        university: {
-          title: 'A dignified retreat',
-          body: 'A university comes calling: would you be its Chancellor? Robes and Latin, degree ceremonies and a seat at High Table — a role that asks for gravitas and gives back dignity. It is the honourable off-ramp of the principled long-server: no red box, no whip, no more late-night votes. Just a green campus, and the slow applause of an institution that respects you.',
-          accept: 'Retire to academia',
-        },
-      };
-      const e = exit[role];
-      // a mayor is offered the same ways out, from City Hall rather than the House
-      const asMayor = state.player.mayor ? mayorExitProse(role) : null;
+      // each role gets its own framing, its own trade-off, and its own accept label,
+      // from the Commons or from City Hall. Accepting sets flags._pendingExit; the
+      // store fires the confirm modal, and only a confirmed exit ends the game.
+      // Declining returns to play (no _pendingExit set).
+      const e = exitProse(ev.payload?.role as ExitRole, !!state.player.mayor);
       return {
         cardId: `forced_exit_${state.day}`,
         kind: 'exitOffer',
         title: e.title,
-        body: asMayor?.body ?? e.body,
-        choices: [{ label: e.accept }, { label: asMayor?.stay ?? 'Stay in the Commons' }],
-        payload: { role, advance: rng.int(7, 14) },
+        body: e.body,
+        choices: [{ label: e.accept }, { label: e.stay }],
+        payload: { role: ev.payload?.role, advance: rng.int(7, 14) },
       };
     }
     // ---- recruited by the other chamber ----
@@ -4609,13 +4585,15 @@ export function materializeForced(state: GameState, rng: Rng, ev: ForcedEvent): 
 
     // ---- the metro-mayor interlude ----
     case 'mayorDraft':
-      return buildMayorDraftCard(state, rng, ev.payload);
+      return buildMayorDraftCard(state, rng, ev.payload as MayorDraftPayload);
     case 'mayorElection':
-      return buildMayorElectionCard(state, rng, ev.payload);
+      return buildMayorElectionCard(state, rng, ev.payload as MayorElectionPayload);
     case 'mayorReturnOffer':
       return buildMayorReturnOfferCard(state, rng);
+    case 'mayorBystander':
+      return buildMayorBystanderCard(state, rng);
     case 'lostMayoralty':
-      return buildLostMayoraltyCard(state, rng, ev.payload);
+      return buildLostMayoraltyCard(state, rng, ev.payload as LostMayoraltyPayload);
 
     case 'calendar':
     case 'electionNight':
@@ -4978,12 +4956,30 @@ export function resolveForcedChoice(
     }
 
     // ---- the metro-mayor interlude ----
+    case 'mayorBystander': {
+      // the general election, watched from City Hall
+      if (choiceIndex === 0) {
+        gain('partyStanding', 5, 'Standing');
+        gain('profile', 2, 'Profile');
+        return { text: 'You are on every regional stage the party can book, the mayor as its local face. The candidates are grateful; the ones who lose are grateful too, which is rarer.', deltas };
+      }
+      if (choiceIndex === 1) {
+        gain('constituencyApproval', 4, 'Approval');
+        gain('integrity', 1, 'Integrity');
+        return { text: 'You open things and shake hands and decline to say who you are voting for, which everybody knows. The city rather likes a mayor who is not on the bus.', deltas };
+      }
+      gain('profile', 2, 'Profile');
+      gain('partyStanding', -2, 'Standing');
+      return { text: 'A few lunches, a few names, a sense of which associations might be looking for a candidate next time. Nothing is said. Several people notice that nothing was said.', deltas };
+    }
+
     case 'mayorDraft': {
-      const step = (card.payload?.step as number) ?? 1;
-      const m = mayoraltyById(card.payload?.mayoralty as string);
-      const name = m?.name ?? 'the mayoralty';
+      const p = card.payload as MayorDraftPayload;
+      const step = p.step;
+      const m = mayoraltyById(p.mayoralty);
+      const name = mayoraltyName(m);
       const city = m?.city ?? 'the region';
-      let winChance = (card.payload?.winChance as number) ?? mayorSelectionOdds(state);
+      let winChance = p.winChance ?? mayorSelectionOdds(state);
       if (step === 1) {
         if (choiceIndex !== 0) {
           state.player.flags._lastMayorDraftDay = state.day;
@@ -4995,7 +4991,7 @@ export function resolveForcedChoice(
         }
         gain('profile', 3, 'Profile');
         adjustRelationship(state, 'leader', -4); push('Leader', -4);
-        state.forcedQueue.unshift({ kind: 'mayorDraft', payload: { ...card.payload, step: 2, winChance } });
+        state.forcedQueue.unshift({ kind: 'mayorDraft', payload: { ...p, step: 2, winChance } });
         return {
           text: `You tell them yes before you have told your own whips, which is the order these things have to go in. The declaration is in the regional paper by Friday, and the leader’s office learns of it from the regional paper.`,
           deltas,
@@ -5014,7 +5010,7 @@ export function resolveForcedChoice(
           state.player.favours = [];
         }
         winChance = clamp(winChance, 0.05, 0.92);
-        state.forcedQueue.unshift({ kind: 'mayorDraft', payload: { ...card.payload, step: 3, winChance } });
+        state.forcedQueue.unshift({ kind: 'mayorDraft', payload: { ...p, step: 3, winChance } });
         const text = choiceIndex === 0
           ? `You talk about the Treasury and the people in it who take your calls, and the members are torn between finding that useful and finding it a little grand.`
           : choiceIndex === 1
@@ -5032,20 +5028,20 @@ export function resolveForcedChoice(
           deltas,
         };
       }
-      state.player.mayorCandidacy = { mayoralty: m.id, pollingDay: card.payload?.pollingDay as number, selectedDay: state.day };
+      state.player.mayorCandidacy = { mayoralty: m.id, pollingDay: p.pollingDay };
       gain('profile', 5, 'Profile');
       state.history.push({
         kind: 'event', date: state.day,
         headline: `${state.player.name} selected as ${partyNameWithArticle(state.player.partyId, 'uk')}’s candidate for ${name}`,
       });
       return {
-        text: `You win it, and the next morning you are a sitting MP with a second job: candidate for ${name}, with a poll in ${formatMonthYear(card.payload?.pollingDay as number)} and a seat you will have to give up if you win it.`,
+        text: `You win it, and the next morning you are a sitting MP with a second job: candidate for ${name}, with a poll in ${formatMonthYear(p.pollingDay)} and a seat you will have to give up if you win it.`,
         deltas,
       };
     }
 
     case 'mayorElection': {
-      const reElection = card.payload?.reElection === true;
+      const reElection = (card.payload as MayorElectionPayload).reElection === true;
       const m = playerMayoralty(state);
       if (!m) {
         // a save naming an office the data no longer has: the candidacy lapses
@@ -5056,17 +5052,13 @@ export function resolveForcedChoice(
       if (choiceIndex === 0) gain('constituencyApproval', 1, 'Approval');
       const count = mayoralResult(state, rng, m, { incumbent: reElection, bonus: choiceIndex === 0 ? 0.01 : 0 });
       state.history.push({ kind: 'event', date: state.day, headline: countHeadline(state, m, count) });
-      const pct = (x: number) => `${Math.round(x * 100)}%`;
-      const margin = count.finalRound
-        ? `${pct(count.finalRound.shares[0])} to ${pct(count.finalRound.shares[1])} after second preferences`
-        : `${pct(count.firstRound[count.winner] ?? 0)} of the vote`;
+      const margin = countMargin(count);
       if (reElection) {
         const mayor = state.player.mayor;
         if (mayor && count.won) {
-          mayor.terms += 1;
-          mayor.mayoralty = m.id;
+          mayor.electionsWon += 1;
+          mayor.mayoralty = m.id; // the successor office, if the original was abolished mid-term
           mayor.nextElection = nextMayoralElection(m, state.day);
-          state.player.flags._mayoralWins = Number(state.player.flags._mayoralWins ?? 0) + 1;
           gain('profile', 4, 'Profile');
           gain('constituencyApproval', 3, 'Approval');
           return {
@@ -5084,7 +5076,7 @@ export function resolveForcedChoice(
       }
       const sat = state.player.hasSeat;
       if (count.won) {
-        becomeMayor(state, rng, m.id);
+        becomeMayor(state, rng, m);
         gain('profile', 8, 'Profile');
         gain('competence', 2, 'Competence');
         return {
@@ -5117,11 +5109,9 @@ export function resolveForcedChoice(
         };
       }
       mayor.standingForSeat = true;
-      state.player.seatId = pickSeatFor(state, rng, state.player.partyId, null, {
-        region: state.player.region, byPartyStrength: true, candidateOnly: true,
-      });
+      markSeatCandidacy(state, rng);
       // the campaign is now a real one
-      state.forcedQueue = state.forcedQueue.filter((e) => !(e.kind === 'campaign' && e.payload?.bystander === true));
+      state.forcedQueue = state.forcedQueue.filter((e) => e.kind !== 'mayorBystander');
       state.forcedQueue.unshift(
         { kind: 'campaign', payload: { step: 1 } },
         { kind: 'campaign', payload: { step: 2 } },
@@ -5155,7 +5145,7 @@ export function resolveForcedChoice(
     }
 
     case 'exitOffer': {
-      const role = card.payload?.role as 'peerage' | 'international' | 'executive' | 'university';
+      const role = card.payload?.role as ExitRole;
       if (choiceIndex === 0) {
         // accept: flag the pending exit so the store can fire the confirm modal.
         // The game does NOT end here — only a confirmed exit does (retireToRole).
@@ -5175,13 +5165,7 @@ export function resolveForcedChoice(
         return { text: confirmText[role], deltas };
       }
       // decline: return to play. No _pendingExit set; the offer may return next parliament.
-      const declineText: Record<typeof role, string> = {
-        peerage: 'You thank them, and decline. The red benches can wait; there is work here yet, and you are not done with the green ones.',
-        international: 'You turn it down. The world stage is a fine thing, but your stage is here — for a while longer, at least.',
-        executive: 'You pass on the boardroom and the noughts. The contacts book will keep, and so, for now, will your seat.',
-        university: 'You decline the robes, with real regret. Not yet. There is unfinished business on the green benches, and you mean to finish it.',
-      };
-      return { text: state.player.mayor ? mayorExitProse(role).decline : declineText[role], deltas };
+      return { text: exitProse(role, !!state.player.mayor).decline, deltas };
     }
 
     case 'resignPrompt': {
@@ -6599,22 +6583,6 @@ export function resolveForcedChoice(
     }
 
     case 'campaign': {
-      if (card.payload?.bystander === true) {
-        // the general election, watched from City Hall
-        if (choiceIndex === 0) {
-          gain('partyStanding', 5, 'Standing');
-          gain('profile', 2, 'Profile');
-          return { text: 'You are on every regional stage the party can book, the mayor as its local face. The candidates are grateful; the ones who lose are grateful too, which is rarer.', deltas };
-        }
-        if (choiceIndex === 1) {
-          gain('constituencyApproval', 4, 'Approval');
-          gain('integrity', 1, 'Integrity');
-          return { text: 'You open things and shake hands and decline to say who you are voting for, which everybody knows. The city rather likes a mayor who is not on the bus.', deltas };
-        }
-        gain('profile', 2, 'Profile');
-        gain('partyStanding', -2, 'Standing');
-        return { text: 'A few lunches, a few names, a sense of which associations might be looking for a candidate next time. Nothing is said. Several people notice that nothing was said.', deltas };
-      }
       if (card.payload?.leader === true) {
         return resolveLeaderCampaignChoice(state, rng, card, choiceIndex, deltas, push);
       }
@@ -8310,9 +8278,7 @@ function careerVerdict(
 // ---------- the metro-mayor interlude ----------
 
 /** the player wins the mayoralty: out of the Commons for the term */
-export function becomeMayor(state: GameState, rng: Rng, mayoraltyId: string): void {
-  const m = mayoraltyById(mayoraltyId);
-  if (!m) return;
+export function becomeMayor(state: GameState, rng: Rng, m: Mayoralty): void {
   if (state.player.officeId) stripOffice(state, rng, 'resigned');
   clearCommitteeChair(state, 'resigned');
   releaseSeatCandidacy(state);
@@ -8321,8 +8287,7 @@ export function becomeMayor(state: GameState, rng: Rng, mayoraltyId: string): vo
   // a live scandal belongs to the House you have left
   delete state.player.flags.scandal;
   delete state.player.flags.scandal_stage;
-  state.player.mayor = { mayoralty: m.id, since: state.day, nextElection: nextMayoralElection(m, state.day), terms: 1 };
-  state.player.flags._mayoralWins = Number(state.player.flags._mayoralWins ?? 0) + 1;
+  state.player.mayor = { mayoralty: m.id, since: state.day, nextElection: nextMayoralElection(m, state.day), electionsWon: 1 };
   state.player.flags._lastMayorDraftDay = state.day;
   state.history.push({ kind: 'mayoralty', date: state.day, action: 'start', mayoralty: m.id, label: m.name });
   state.history.push({
@@ -8337,11 +8302,12 @@ export function becomeMayor(state: GameState, rng: Rng, mayoraltyId: string): vo
 export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lost'): void {
   const mayor = state.player.mayor;
   if (!mayor) return;
-  const m = mayoraltyOn(mayor.mayoralty, state.day) ?? mayoraltyById(mayor.mayoralty);
-  const label = m?.name ?? 'the mayoralty';
+  const label = mayoraltyName(playerMayoralty(state));
   const senior = servedFullTerm(state);
   delete state.player.mayor;
-  state.history.push({ kind: 'mayoralty', date: state.day, action: 'end', mayoralty: mayor.mayoralty, label });
+  state.history.push({
+    kind: 'mayoralty', date: state.day, action: 'end', mayoralty: mayor.mayoralty, label, electionsWon: mayor.electionsWon,
+  });
   // not asked to run again for a good while
   state.player.flags._lastMayorDraftDay = state.day;
   // cabinet rank after a full term, a minister's below it: the first offer comes
@@ -8362,10 +8328,26 @@ export function leaveMayoralty(state: GameState, rng: Rng, how: 'returned' | 'lo
     });
     return;
   }
+  markSeatCandidacy(state, rng);
+}
+
+/** a selected candidate who has become party leader in the meantime withdraws */
+export function withdrawMayorCandidacy(state: GameState): void {
+  const name = mayoraltyName(playerMayoralty(state));
+  delete state.player.mayorCandidacy;
+  state.player.flags._lastMayorDraftDay = state.day;
+  state.history.push({
+    kind: 'event', date: state.day,
+    headline: `${state.player.name} withdraws as a candidate for ${name} to lead the party`,
+  });
+}
+
+/** adopt the player as a Commons candidate in their region, on a seat the party
+ *  holds where it can, without flipping it: the count decides */
+function markSeatCandidacy(state: GameState, rng: Rng): void {
   state.player.seatId = pickSeatFor(state, rng, state.player.partyId, null, {
     region: state.player.region, byPartyStrength: true, candidateOnly: true,
   });
-  state.player.hasSeat = false;
 }
 
 /** a mayor who stood for the Commons and lost gives the candidacy back */
@@ -8542,7 +8524,8 @@ export function buildLegacy(state: GameState): LegacySummary {
     ...(everMayor ? {
       wasMayor: true,
       yearsAsMayor: Math.floor(mayorDays / 365),
-      mayoralElectionsWon: Number(state.player.flags._mayoralWins ?? 0),
+      // a closed spell carries its count; the open one is the mayor's own
+      mayoralElectionsWon: spells.reduce((n, sp) => n + (sp.electionsWon ?? state.player.mayor?.electionsWon ?? 0), 0),
     } : {}),
   };
 }

@@ -5,8 +5,9 @@ import { useGameStore } from '../store/gameStore';
 import { useUiStore } from '../store/uiStore';
 import { Avatar } from '../avatar/Avatar';
 import { PARTIES, counterpartParty, partyNameIn, playablePartiesFor } from '../data/parties';
-import { mayoraltyById } from '../data/mayoralties';
-import { mayorSpans } from '../engine/mayor';
+import { mayoraltyName } from '../data/mayoralties';
+import { mayorSpans, playerMayoralty } from '../engine/mayor';
+import { pairSpans } from '../engine/historySpans';
 import { REGIONS } from '../data/regions';
 import { CHAMBERS, chamberAt, houseHeading } from '../data/chambers';
 import { canJump, homeNation, jumpPartyOptions, jumpTargets, JUMP_MIN_PROFILE } from '../engine/arena';
@@ -77,21 +78,7 @@ export interface DeputySpan { title: 'dpm' | 'firstSec' | 'dfm'; label?: string;
  *  coalition leader's department brief), paired from the deputyOverlay start/end history
  *  entries (an open span runs to "now") */
 export function buildDeputySpans(history: GameState['history']): DeputySpan[] {
-  const spans: DeputySpan[] = [];
-  let open: DeputySpan | null = null;
-  for (const entry of history) {
-    if (entry.kind !== 'deputyOverlay') continue;
-    if (entry.action === 'start') {
-      if (open) spans.push(open);
-      open = { title: entry.title ?? 'dpm', label: entry.label, start: entry.date, end: null };
-    } else if (entry.action === 'end' && open) {
-      open.end = entry.date;
-      spans.push(open);
-      open = null;
-    }
-  }
-  if (open) spans.push(open);
-  return spans;
+  return pairSpans(history, 'deputyOverlay', (e) => ({ title: e.title ?? 'dpm', label: e.label }));
 }
 
 export interface CommitteeSpan { dept: UkDepartmentId; start: number; end: number | null; }
@@ -99,21 +86,7 @@ export interface CommitteeSpan { dept: UkDepartmentId; start: number; end: numbe
 /** the concurrent select-committee chairmanship spans (a backbench overlay),
  *  paired from the committeeTenure start/end history entries */
 export function buildCommitteeSpans(history: GameState['history']): CommitteeSpan[] {
-  const spans: CommitteeSpan[] = [];
-  let open: CommitteeSpan | null = null;
-  for (const entry of history) {
-    if (entry.kind !== 'committeeTenure') continue;
-    if (entry.action === 'start') {
-      if (open) spans.push(open);
-      open = { dept: entry.dept, start: entry.date, end: null };
-    } else if (entry.action === 'end' && open) {
-      open.end = entry.date;
-      spans.push(open);
-      open = null;
-    }
-  }
-  if (open) spans.push(open);
-  return spans;
+  return pairSpans(history, 'committeeTenure', (e) => ({ dept: e.dept }));
 }
 
 export interface TimelineRow { title: string; start: number; end: number | null; }
@@ -230,7 +203,7 @@ export function ProfileScreen({ game }: { game: GameState }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <h3 style={{ fontSize: 'var(--fs-sm)', marginBottom: 6 }}>
             {player.hasSeat ? `${chamber.member} for` : 'Candidate for'} {seat.name}
-            {player.mayorCandidacy ? ` · candidate for ${mayoraltyById(player.mayorCandidacy.mayoralty)?.name ?? 'mayor'}` : ''}
+            {player.mayorCandidacy ? ` · candidate for ${mayoraltyName(playerMayoralty(game))}` : ''}
           </h3>
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
             {REGIONS[seat.region].name}

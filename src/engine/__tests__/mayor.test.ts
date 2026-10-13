@@ -5,14 +5,12 @@ import {
 } from '../../data/mayoralties';
 import { ALL_CARDS, MAYOR_CARDS } from '../../content/cards';
 import { createNewGame } from '../newGame';
-import { INTERLUDES, RETURN_OFFER_MIN_DAYS, nextStep } from '../scheduler';
+import { INTERLUDES, nextStep } from '../scheduler';
 import { initCalendar } from '../calendar';
 import { acknowledgeElectionCore, continueCore, resolveChoiceCore } from '../turn';
 import { cardEligible, resolveTokens } from '../cardEngine';
 import { pickSeatFor } from '../arena';
-import {
-  MAYOR_DRAFT_CHANCE, mayorDraftTarget, mayoralResult, regionalStrength,
-} from '../mayor';
+import { RETURN_OFFER_MIN_DAYS, mayorDraftTarget, mayoralResult, regionalStrength } from '../mayor';
 import {
   becomeMayor, buildLegacy, materializeForced, playerStatusTitle,
 } from '../career';
@@ -38,7 +36,7 @@ function game(opts: { seed: number; region?: RegionId; partyId?: PartyId; era?: 
 /** play turns, answering every card with its first choice unless told otherwise */
 function play(
   g: GameState, rng: Rng, turns: number,
-  onCard?: (g: GameState, kind: string) => number | void,
+  onCard: (g: GameState, kind: string) => number = () => 0,
   until?: (g: GameState) => boolean
 ): string[] {
   const kinds: string[] = [];
@@ -50,19 +48,17 @@ function play(
     const card = g.currentCard;
     if (!card) break;
     kinds.push(card.kind);
-    const choice = onCard?.(g, card.kind);
-    resolveChoiceCore(g, rng, typeof choice === 'number' ? choice : 0);
+    resolveChoiceCore(g, rng, onCard(g, card.kind));
     if (g.pendingElectionId) { acknowledgeElectionCore(g, rng); continue; }
     continueCore(g, rng);
   }
   return kinds;
 }
 
-function asMayor(seed: number, mayoralty = 'london', opts: { since?: number } = {}): { g: GameState; rng: Rng } {
+function asMayor(seed: number, mayoralty = 'london'): { g: GameState; rng: Rng } {
   const g = game({ seed });
   const rng = new Rng(seed);
-  becomeMayor(g, rng, mayoralty);
-  if (opts.since !== undefined) g.player.mayor!.since = opts.since;
+  becomeMayor(g, rng, mayoraltyById(mayoralty)!);
   return { g, rng };
 }
 
@@ -110,19 +106,20 @@ describe('the draft', () => {
   });
 
   it('asks a well-known London MP in a good share of careers, and never with the interludes off', () => {
-    // about eight eligible ticks in the window at MAYOR_DRAFT_CHANCE each at full
-    // regional strength: 1 - (1 - 0.06)^8 ≈ 0.39 of careers, so 15.6 ± 3.1 of 40
-    expect(MAYOR_DRAFT_CHANCE).toBe(0.06);
+    // about eight eligible ticks in the window at MAYOR_DRAFT_CHANCE (0.06) each at
+    // full regional strength: 1 - (1 - 0.06)^8 ≈ 0.39 of careers, so 15.6 ± 3.1 of 40
     const run = (on: boolean) => {
       INTERLUDES.mayorDraft = on;
-      let drafted = 0;
-      for (let seed = 1; seed <= 40; seed++) {
-        const g = game({ seed, profile: 60 });
-        const kinds = play(g, new Rng(seed), 60, (_g, kind) => (kind === 'mayorDraft' ? 0 : undefined));
-        if (kinds.includes('mayorDraft')) drafted++;
+      try {
+        let drafted = 0;
+        for (let seed = 1; seed <= 40; seed++) {
+          const g = game({ seed, profile: 60 });
+          if (play(g, new Rng(seed), 60).includes('mayorDraft')) drafted++;
+        }
+        return drafted;
+      } finally {
+        INTERLUDES.mayorDraft = true;
       }
-      INTERLUDES.mayorDraft = true;
-      return drafted;
     };
     expect(run(false)).toBe(0);
     const drafted = run(true);
@@ -137,7 +134,7 @@ describe('the draft', () => {
       const g = game({ seed, profile: 70 });
       g.day = isoToDay('2020-09-01');
       const pollingDay = isoToDay('2021-05-06');
-      g.player.mayorCandidacy = { mayoralty: 'london', pollingDay, selectedDay: g.day };
+      g.player.mayorCandidacy = { mayoralty: 'london', pollingDay };
       let countDay: number | null = null;
       play(g, new Rng(seed), 40, (s, kind) => {
         if (kind === 'mayorElection') countDay = s.day;
@@ -194,9 +191,9 @@ describe('City Hall', () => {
     const g = game({ seed: 3 });
     const rng = new Rng(3);
     g.player.officeId = 'pps';
-    becomeMayor(g, rng, 'london');
+    becomeMayor(g, rng, mayoraltyById('london')!);
     expect(g.player.mayor).toEqual({
-      mayoralty: 'london', since: g.day, nextElection: nextMayoralElection(mayoraltyById('london')!, g.day), terms: 1,
+      mayoralty: 'london', since: g.day, nextElection: nextMayoralElection(mayoraltyById('london')!, g.day), electionsWon: 1,
     });
     expect(g.player.hasSeat).toBe(false);
     expect(g.player.seatId).toBe('');
@@ -234,10 +231,9 @@ describe('City Hall', () => {
       // best of a bad lot and mostly stays at City Hall
       const g = game({ seed, partyId: seed % 2 === 0 ? 'lab' : 'green' });
       const rng = new Rng(seed);
-      becomeMayor(g, rng, 'london');
-      g.player.mayor!.since = g.day - 4 * 365;
+      becomeMayor(g, rng, mayoraltyById('london')!);
+      g.player.mayor!.since = g.day - Math.max(RETURN_OFFER_MIN_DAYS, 4 * 365); // a full term served
       g.player.mayor!.nextElection = g.day + 2000;
-      expect(g.day - g.player.mayor!.since).toBeGreaterThanOrEqual(RETURN_OFFER_MIN_DAYS);
       g.nextElectionBy = g.day + 10;
       const before = { ...g.seats };
       let offered = false;
@@ -287,7 +283,7 @@ describe('City Hall', () => {
       expect(kinds).toContain('mayorElection');
       if (g.player.mayor) {
         kept++;
-        expect(g.player.mayor.terms).toBe(2);
+        expect(g.player.mayor.electionsWon).toBe(2);
         expect(g.player.mayor.nextElection).toBeGreaterThan(g.day);
       } else {
         lost++;

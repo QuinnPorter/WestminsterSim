@@ -1,5 +1,5 @@
 import {
-  DepartmentId, DevolvedArenaId, DrawnCard, GameState, PartyId, StatDelta,
+  DepartmentId, DevolvedArenaId, DrawnCard, GameState, PartyId, StatDelta, MayorState,
 } from '../types/game';
 import { ALL_CARDS, fallbackPoolFor } from '../content/cards';
 import { outcomeAsChamber, speakAsChamber } from './chamberVoice';
@@ -18,9 +18,14 @@ import {
   npcReshuffle, npcFrontbencherRetires, playerInGovernment, playerInGovernmentBloc,
   canHoldOffice, reconcilePlayerDeputy, reconcilePlayerOffice, canChairCommittee, pickCommittee,
   resolvePendingContests, cabinetAuthorityPressure, decideFormationFate,
-  noteReshuffle, reshuffleOnCooldown, frontbenchParty,
+  noteReshuffle, reshuffleOnCooldown, frontbenchParty, withdrawMayorCandidacy,
 } from './career';
-import { mayorDraftChance, mayorDraftTarget, playerMayoralty } from './mayor';
+import {
+  CANDIDATE_COUNT_LEAD, INCUMBENT_COUNT_LEAD, MAYOR_DRAFT_COOLDOWN, mayorDraftChance, mayorDraftTarget,
+  returnOfferDue,
+} from './mayor';
+import type { ExitRole } from './mayor';
+export type { ExitRole } from './mayor';
 import { MAYOR_CARDS } from '../content/cards';
 import { executiveInBeing, isJointExecutive, offerableOffice } from './executive';
 import { collapseTick } from './collapse';
@@ -425,13 +430,9 @@ const DRAFT_COOLDOWN = 365 * 8;
 /** The interludes that take a career out of the chamber. Exported so the
  *  regression tests can turn them off: a hazard that fires changes the card
  *  drawn that tick, which no side stream can hide. */
-export const INTERLUDES = { mayorDraft: true };
+export type InterludeId = 'mayorDraft';
+export const INTERLUDES: Record<InterludeId, boolean> = { mayorDraft: true };
 const MAYOR_DRAFT_SALT = 0x4d415952;
-/** a mayor is not asked back to the Commons in the first two years of the job */
-export const RETURN_OFFER_MIN_DAYS = 365 * 2;
-/** the offer card and the three campaign cards run the clock up to this many
- *  days; the general election must be counted before the mayoral one */
-const RETURN_OFFER_LEAD = 80;
 
 /** days since a stamped flag, or a large number if it has never been set */
 function sinceFlag(state: GameState, flag: string): number {
@@ -537,7 +538,6 @@ function offersSuppressed(state: GameState): boolean {
   return inSackExile(state) || recentlyPassedOver(state);
 }
 
-export type ExitRole = 'peerage' | 'international' | 'executive' | 'university';
 
 /** Has the player ever held a post in one of the given departments, across the
  *  whole career? Checks the current office plus every past roleChange in history —
@@ -630,26 +630,14 @@ function nextStepCore(state: GameState, rng: Rng): void {
   const forced = state.forcedQueue.shift();
   if (forced) {
     if (forced.kind === 'electionNight') {
-      // a fixed polling day: if the campaign ran short, the count is on the day
-      const pollingDay = forced.payload?.pollingDay as number | undefined;
-      if (pollingDay !== undefined && state.day < pollingDay) {
-        state.day = pollingDay;
-        updatePolling(state, rng, state.day);
-      }
+      jumpToPollingDay(state, rng, forced.payload?.pollingDay as number | undefined);
       const { result, playerWonSeat } = runElection(state, rng);
       applyElectionAftermath(state, rng, result, playerWonSeat);
       state.pendingElectionId = result.id;
       state.currentCard = null;
       return;
     }
-    if (forced.kind === 'mayorElection') {
-      // a mayoral poll is a fixed day too
-      const pollingDay = forced.payload?.pollingDay as number | undefined;
-      if (pollingDay !== undefined && state.day < pollingDay) {
-        state.day = pollingDay;
-        updatePolling(state, rng, state.day);
-      }
-    }
+    if (forced.kind === 'mayorElection') jumpToPollingDay(state, rng, forced.payload?.pollingDay as number | undefined);
     // stamp the month a reshuffle offer actually reaches the player, so the
     // hazard checks below can refuse a same-month duplicate (see reshuffleOfferThisMonth)
     if (forced.kind === 'reshuffleOffer') {
@@ -661,22 +649,13 @@ function nextStepCore(state: GameState, rng: Rng): void {
 
   // 1a. a mayoral candidate's polling day is fixed: the count is queued a month
   // out. A member who has become their party's leader in the meantime withdraws.
-  {
-    const candidacy = state.player.mayorCandidacy;
-    if (candidacy) {
-      if (playerIsLeader(state)) {
-        delete state.player.mayorCandidacy;
-        state.player.flags._lastMayorDraftDay = state.day;
-        state.history.push({
-          kind: 'event', date: state.day,
-          headline: `${state.player.name} withdraws as a candidate for ${playerMayoralty(state)?.name ?? 'the mayoralty'} to lead the party`,
-        });
-      } else if (state.day >= candidacy.pollingDay - 30) {
-        state.forcedQueue.push({ kind: 'mayorElection', payload: { pollingDay: candidacy.pollingDay } });
-        nextStep(state, rng);
-        return;
-      }
-    }
+  const candidacy = state.player.mayorCandidacy;
+  if (candidacy && playerIsLeader(state)) {
+    withdrawMayorCandidacy(state);
+  } else if (candidacy && state.day >= candidacy.pollingDay - CANDIDATE_COUNT_LEAD) {
+    state.forcedQueue.push({ kind: 'mayorElection', payload: { pollingDay: candidacy.pollingDay } });
+    nextStep(state, rng);
+    return;
   }
 
   // 1b. a fixed polling day pre-empts the calendar: a Budget or a conference due in
@@ -803,7 +782,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
 
     // The regional party asks a sitting MP to run for the mayoralty. The roll is
     // on a side stream, so a quiet tick leaves the Commons' draws untouched.
-    if (INTERLUDES.mayorDraft && canBeApproached && arena === 'uk' && !playerIsLeader(state)) {
+    if (INTERLUDES.mayorDraft && canBeApproached && sinceFlag(state, '_lastMayorDraftDay') > MAYOR_DRAFT_COOLDOWN) {
       const target = mayorDraftTarget(state);
       if (target && sideRng(rng, state.day, MAYOR_DRAFT_SALT).chance(mayorDraftChance(state, target))) {
         state.forcedQueue.push({
@@ -881,7 +860,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
   // seatless players just survive until the next election; a mayor has a term to run
   if (!state.player.hasSeat) {
     if (state.player.mayor) {
-      mayorTick(state, rng);
+      mayorTick(state, rng, state.player.mayor);
       return;
     }
     state.currentCard = materializeForced(state, rng, { kind: 'wilderness' });
@@ -1518,14 +1497,12 @@ function runNpcChurn(state: GameState, rng: Rng): boolean {
 /** the mayor's turn: the chosen exit, the re-election two months out, the
  *  parties changing leaders behind them, then a card from City Hall's deck
  *  (the quiet quarter runs the clock when nothing else is due) */
-function mayorTick(state: GameState, rng: Rng): void {
-  const mayor = state.player.mayor;
-  if (!mayor) return;
+function mayorTick(state: GameState, rng: Rng, mayor: MayorState): void {
   if (offerChosenExit(state, rng)) {
     nextStep(state, rng);
     return;
   }
-  if (!mayor.standingForSeat && state.day >= mayor.nextElection - 60) {
+  if (!mayor.standingForSeat && state.day >= mayor.nextElection - INCUMBENT_COUNT_LEAD) {
     state.forcedQueue.push({ kind: 'mayorElection', payload: { pollingDay: mayor.nextElection, reElection: true } });
     nextStep(state, rng);
     return;
@@ -1538,7 +1515,16 @@ function mayorTick(state: GameState, rng: Rng): void {
   state.lastCardId = card.id;
   state.cardHistory[card.id] = state.day;
   state.currentCard = makeDrawnCard(state, rng, card);
-  if (card.id === 'mayor_quiet_quarter') state.currentCard.payload = { advance: 90 };
+  // a card that declares its own cadence (the quiet quarter) runs the clock that far
+  if (card.advanceDays) state.currentCard.payload = { advance: card.advanceDays[0] };
+}
+
+/** a fixed polling day: if the campaign ran short, the count is on the day */
+function jumpToPollingDay(state: GameState, rng: Rng, pollingDay: number | undefined): void {
+  if (pollingDay !== undefined && state.day < pollingDay) {
+    state.day = pollingDay;
+    updatePolling(state, rng, state.day);
+  }
 }
 
 export function queueGeneralElection(state: GameState): void {
@@ -1547,16 +1533,10 @@ export function queueGeneralElection(state: GameState): void {
   const night = { kind: 'electionNight' as const, ...(fixed ? { payload: { pollingDay: state.nextElectionBy } } : {}) };
   const mayor = state.player.mayor;
   if (mayor) {
-    // a sitting mayor watches from City Hall unless the party offers a seat: once
-    // a parliament, not in the first two years of the job, and only when the
-    // count comes before their own re-election
-    if (mayor.returnOfferParliament !== state.parliamentStart
-      && state.day - mayor.since >= RETURN_OFFER_MIN_DAYS && state.day + RETURN_OFFER_LEAD < mayor.nextElection) {
-      mayor.returnOfferParliament = state.parliamentStart;
-      state.forcedQueue.push({ kind: 'mayorReturnOffer' });
-    }
-    // an accepted offer swaps the bystander's card for the three-step campaign
-    state.forcedQueue.push({ kind: 'campaign', payload: { step: 1, bystander: true } }, night);
+    // a sitting mayor watches from City Hall unless the party offers a seat; an
+    // accepted offer swaps the bystander's card for the three-step campaign
+    if (returnOfferDue(mayor, state.day)) state.forcedQueue.push({ kind: 'mayorReturnOffer' });
+    state.forcedQueue.push({ kind: 'mayorBystander' }, night);
     state.nextElectionBy = state.day + 50;
     return;
   }

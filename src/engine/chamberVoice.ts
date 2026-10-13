@@ -177,7 +177,7 @@ function tidy(text: string): string {
  *  through the Holyrood voice turns it into "Holyrood is asking", which is both
  *  wrong and confusing. These build their own chamber nouns explicitly. */
 const SPEAKS_FOR_ITSELF = new Set([
-  'ukRecruit', 'devolvedDraft', 'mayorDraft', 'mayorElection', 'mayorReturnOffer', 'lostMayoralty',
+  'ukRecruit', 'devolvedDraft', 'mayorDraft', 'mayorElection', 'mayorReturnOffer', 'lostMayoralty', 'mayorBystander',
 ]);
 
 export function exemptFromChamberVoice(kind: string | undefined): boolean {

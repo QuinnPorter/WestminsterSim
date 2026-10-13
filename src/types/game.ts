@@ -266,18 +266,15 @@ export interface MayorState {
   since: GameDay;
   /** the next mayoral polling day */
   nextElection: GameDay;
-  /** mayoral elections won, the first included */
-  terms: number;
+  /** mayoral elections won in this spell, the first included */
+  electionsWon: number;
   /** standing for a Commons seat at the general election now being fought */
   standingForSeat?: boolean;
-  /** the parliament (its `parliamentStart`) in which the party last offered a seat */
-  returnOfferParliament?: GameDay;
 }
 
 export interface MayorCandidacy {
   mayoralty: string;
   pollingDay: GameDay;
-  selectedDay: GameDay;
 }
 
 // ---- politics state ----
@@ -503,8 +500,9 @@ export type HistoryEntry =
    *  concurrent timeline track (paired start→end), so it shows alongside the office */
   | { kind: 'deputyOverlay'; date: GameDay; action: 'start' | 'end'; title?: 'dpm' | 'firstSec' | 'dfm'; label?: string }
   | { kind: 'committeeTenure'; date: GameDay; action: 'start' | 'end'; dept: UkDepartmentId }
-  /** a spell as a directly elected mayor: its own timeline track */
-  | { kind: 'mayoralty'; date: GameDay; action: 'start' | 'end'; mayoralty: string; label: string }
+  /** a spell as a directly elected mayor: its own timeline track. The end entry
+   *  carries the mayoral elections won in the spell. */
+  | { kind: 'mayoralty'; date: GameDay; action: 'start' | 'end'; mayoralty: string; label: string; electionsWon?: number }
   | { kind: 'leadershipContest'; date: GameDay; won: boolean; partyId: PartyId }
   /** the player left one chamber for another — the timeline's chamber divider */
   | { kind: 'arenaChange'; date: GameDay; from: ArenaId; to: ArenaId; partyId: PartyId }
@@ -593,6 +591,8 @@ export type ForcedKind =
   /** the metro-mayor interlude: the party asking an MP to run, the mayoral
    *  count, the party offering a sitting mayor a seat back, a lost mayoralty */
   | 'mayorDraft' | 'mayorElection' | 'mayorReturnOffer' | 'lostMayoralty'
+  /** a general election watched from City Hall */
+  | 'mayorBystander'
   /** a joint Executive: a head party's leader deciding whether to walk out, and
    *  the blocker's leader deciding whether to re-form it */
   | 'executiveCrisis' | 'executiveTalks'

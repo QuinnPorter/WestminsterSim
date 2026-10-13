@@ -4,7 +4,7 @@ import { departmentInfo, OFFICES } from '../data/offices';
 import { chamberAt, nationOfRegion } from '../data/chambers';
 import { partyNameIn } from '../data/parties';
 import { COMMITTEE_NAMES } from '../data/committees';
-import { playerMayoralty } from './mayor';
+import { heldMayoralty } from '../data/mayoralties';
 
 import { getRelationship, relationshipName } from './relationships';
 import {
@@ -67,7 +67,7 @@ export function resolveTokens(state: GameState, text: string): string {
   // government. Both are simulated, so they have a real leader and a real party.
   const other = otherGovernment(state);
   // the mayoralty held or sought, successor office included
-  const mayoralty = playerMayoralty(state);
+  const mayoralty = heldMayoralty(state.player, state.day);
   const map: Record<string, string> = {
     leader: relationshipName(state, 'leader'),
     pm: state.government.pmId === 'player' ? state.player.name
@@ -150,9 +150,8 @@ export function cardEligible(state: GameState, card: DecisionCard): boolean {
       state.day - state.cardHistory[card.id] < card.cooldownDays) {
     return false;
   }
-  // a sitting mayor is out of the chamber: only the cards written for City Hall
-  // fire, and they fire nowhere else
-  if (!!state.player.mayor !== (req?.mayor === true)) return false;
+  // a sitting mayor draws only City Hall's deck, and nobody else draws from it
+  if (state.player.mayor ? !req?.mayor : req?.mayor) return false;
   // an unmarked card belongs to the Commons. The corpus predates the devolved
   // chambers and is written throughout in Westminster language, so a card must
   // opt IN to a legislature rather than leak into one by omission.
