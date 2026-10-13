@@ -1,7 +1,7 @@
 import { DrawnCard, GameState } from '../types/game';
 import { DecisionCard } from '../types/content';
 import { departmentInfo, OFFICES } from '../data/offices';
-import { chamberAt } from '../data/chambers';
+import { chamberAt, nationOfRegion } from '../data/chambers';
 import { partyNameIn } from '../data/parties';
 import { COMMITTEE_NAMES } from '../data/committees';
 
@@ -100,8 +100,7 @@ export function resolveTokens(state: GameState, text: string): string {
 function otherGovernment(state: GameState): { leader: string; party: string; government: string } {
   const arena = state.arena ?? 'uk';
   if (arena === 'uk') {
-    const nation = state.player.region === 'scotland' || state.player.region === 'wales'
-      ? state.player.region : null;
+    const nation = nationOfRegion(state.player.region);
     const snap = nation ? state.dormant?.[nation] : undefined;
     const chamber = chamberAt(nation ?? 'scotland', state.day);
     if (snap) {

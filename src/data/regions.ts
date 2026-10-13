@@ -24,5 +24,7 @@ export const REGIONS: Record<RegionId, RegionInfo> = {
 
 export const REGION_IDS = Object.keys(REGIONS) as RegionId[];
 
-/** regions a player can pick at creation (NI excluded — its party system is separate) */
-export const PLAYER_REGIONS: RegionId[] = REGION_IDS.filter((r) => r !== 'ni');
+/** regions a player can pick at creation. Northern Ireland is one of them: its
+ *  party system is separate, so the party picker only offers its own parties
+ *  there, and its seats are swung by their own ballot. */
+export const PLAYER_REGIONS: RegionId[] = [...REGION_IDS];

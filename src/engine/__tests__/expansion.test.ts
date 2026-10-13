@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, CreationInput } from '../newGame';
+import { createNewGame, CreationInput, SAVE_VERSION } from '../newGame';
 import {
   recordPmChange, reconstructPmHistory, buildLegacy, materializeForced, resolveForcedChoice,
   nextOfficeFor, callForLeaderResignationCore, seatPlayerJuniorPartner, setDeputyPmCore,
@@ -32,7 +32,7 @@ function makeGame(seed = 7, causes: CreationInput['causes'] = ['publicServices']
 describe('expansion — data model', () => {
   it('seeds pmHistory, causes and favours on a new game', () => {
     const g = makeGame();
-    expect(g.version).toBe(10);
+    expect(g.version).toBe(SAVE_VERSION);
     expect(g.pmHistory).toHaveLength(1);
     expect(g.pmHistory[0].endDay).toBeNull();
     expect(g.pmHistory[0].characterId).toBe(g.government.pmId);

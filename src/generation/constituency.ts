@@ -9,7 +9,9 @@ import { LIST_RATIO, LegislatureSnapshot } from '../data/devolved';
 import {
   HOLYROOD_CONSTITUENCIES, SENEDD_2026_FROM_REGION, SENEDD_CONSTITUENCIES,
 } from '../data/devolvedSeats';
+import { NI_CONSTITUENCIES, NI_WESTMINSTER, niConstituencyName } from '../data/niWestminster';
 import { Rng } from '../engine/rng';
+import { isoToDay } from '../engine/clock';
 import { dHondt, listSeatsOf } from '../engine/listSeats';
 
 /** The parties on a ballot in this seat. `ballot`, when given, is the list of
@@ -258,6 +260,9 @@ export function generateSeatMap(
     }
   }
 
+  // the Commons' Northern Ireland seats are real places with a real vote
+  if (arena === 'uk') dressNiSeats(seatMap, era);
+
   // A regional party only stands where it actually fights elections: the SNP in
   // Scotland, Plaid Cymru in Wales, the NI parties in Northern Ireland. If the
   // player picked an incompatible home region (e.g. an SNP candidate notionally
@@ -279,6 +284,48 @@ export function generateSeatMap(
     rng, seatMap.filter((s) => s.region === effectiveRegion && s.winner !== 'spk'), playerParty
   );
   return { seatMap, playerSeatId, playerRegion: effectiveRegion };
+}
+
+/** the party a Westminster seat is recorded under: a devolved-only party that
+ *  won one (the TUV in North Antrim) is carried as an independent, because it is
+ *  not on the Commons ballot */
+export function westminsterWinner(p: PartyId): PartyId {
+  return PARTIES[p]?.devolvedOnly ? 'ind' : p;
+}
+
+/**
+ * Dress the generated Northern Ireland seats as the eighteen real constituencies:
+ * each takes the name of a real seat its party actually won that year, and the
+ * seats' shares are rescaled so the vote they imply matches the published
+ * NI-wide result, with every winner still ahead.
+ *
+ * Deterministic and key-preserving by construction: it takes no Rng, and the
+ * calibration only ever rewrites values of share keys a seat already has. The
+ * election engine draws one random number per share key per seat, so adding a
+ * key here would move the Commons random stream for every career.
+ */
+export function dressNiSeats(seatMap: SyntheticSeat[], era: Era): void {
+  const data = NI_WESTMINSTER[era];
+  const niSeats = seatMap.filter((s) => s.region === 'ni');
+  // only the real House has the real seats
+  if (niSeats.length !== NI_CONSTITUENCIES.length) return;
+  const day = isoToDay(data.election);
+
+  // names: every real constituency to an unused seat its winner holds
+  const taken = new Set<string>();
+  for (const c of NI_CONSTITUENCIES) {
+    const want = westminsterWinner(data.winners[c.id]);
+    const seat = niSeats.find((s) => !taken.has(s.id) && s.winner === want);
+    if (!seat) continue;
+    taken.add(seat.id);
+    seat.name = niConstituencyName(c, day);
+  }
+
+  // climate: rescale each seat's existing keys so the vote the eighteen seats
+  // imply matches the published NI-wide result, every winner still ahead
+  const keys = new Set<PartyId>();
+  for (const seat of niSeats) for (const p of Object.keys(seat.shares) as PartyId[]) keys.add(p);
+  calibrateToVoteShares(niSeats, data.shares, [...keys], { existingKeysOnly: true });
 }
 
 /** pick the player's seat from `candidates`: one their party holds, else the most
@@ -313,10 +360,16 @@ function carveOutPlayerSeat(rng: Rng, candidates: SyntheticSeat[], playerParty: 
 export function calibrateToVoteShares(
   seatMap: SyntheticSeat[],
   target: Partial<Record<PartyId, number>>,
-  parties: PartyId[]
+  parties: PartyId[],
+  /** `existingKeysOnly`: never add a share key a seat lacks. The election
+   *  engine draws one random number per key per seat, so a key added here
+   *  would move the chamber's random stream. */
+  opts: { existingKeysOnly?: boolean } = {}
 ): void {
   if (seatMap.length === 0) return;
   const total = parties.reduce((a, p) => a + (target[p] ?? 0), 0) || 1;
+  const keysOf = (seat: SyntheticSeat): PartyId[] =>
+    opts.existingKeysOnly ? parties.filter((p) => seat.shares[p] !== undefined) : parties;
 
   for (let pass = 0; pass < 4; pass++) {
     const implied: Partial<Record<PartyId, number>> = {};
@@ -324,7 +377,7 @@ export function calibrateToVoteShares(
       for (const p of parties) implied[p] = (implied[p] ?? 0) + (seat.shares[p] ?? 0);
     }
     for (const seat of seatMap) {
-      for (const p of parties) {
+      for (const p of keysOf(seat)) {
         const want = (target[p] ?? 0) / total;
         const have = (implied[p] ?? 0) / seatMap.length;
         if (have <= 0 || want <= 0) continue;

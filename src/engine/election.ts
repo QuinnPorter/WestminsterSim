@@ -1,15 +1,15 @@
 import {
   CandidateResult, ConstituencyResult, ElectionOutcome, ElectionResult, GameState, PartyId,
-  SyntheticSeat,
+  RegionId, RegionalBallot, SyntheticSeat,
 } from '../types/game';
-import { PARTIES, isMajorIn } from '../data/parties';
+import { PARTIES, isMajorIn, outsidePartyPolitics } from '../data/parties';
 import { REGIONS } from '../data/regions';
 import { seatSystemAt, SeatSystem } from '../data/chambers';
 import { generateName } from '../generation/characters';
-import { countSeats, rebuildForListPr } from '../generation/constituency';
-import { arenaBaseline, arenaPolledParties } from './polling';
+import { countSeats, normalisedShares, rebuildForListPr } from '../generation/constituency';
+import { arenaBaseline, arenaPolledParties, ballotParties } from './polling';
 import { Rng } from './rng';
-import { seatsForMajority, totalSeats } from './seats';
+import { seatsForMajorityIn, totalSeats } from './seats';
 import {
   allocateRegionList, constituencyWinsByRegion, dHondt, listSeatsOf, nthSeatIndex,
   playerListRank, regionListShares, swungListShares,
@@ -109,6 +109,21 @@ export function electionNationalShares(
   return out;
 }
 
+/** a separately polled ballot's election-day shares: its polling plus campaign
+ *  noise drawn from ITS OWN stream, renormalised over its parties. The ballot's
+ *  stream advances; the chamber's does not. */
+export function regionalElectionShares(ballot: RegionalBallot): Partial<Record<PartyId, number>> {
+  const rng = new Rng(ballot.rngState);
+  const parties = ballotParties(ballot);
+  const out: Partial<Record<PartyId, number>> = {};
+  for (const p of parties) {
+    const polled = ballot.shares[p] ?? ballot.anchor[p] ?? 0.01;
+    out[p] = Math.max(0.003, polled + rng.normal(0, campaignNoiseFor(polled)));
+  }
+  ballot.rngState = rng.state;
+  return normalisedShares(out, parties);
+}
+
 interface SeatOutcome {
   shares: Partial<Record<PartyId, number>>;
   winner: PartyId;
@@ -134,6 +149,10 @@ function partyCoverage(state: GameState): Partial<Record<PartyId, number>> {
   return out;
 }
 
+/** a separately polled ballot's swing for the seats it covers (Northern
+ *  Ireland's at Westminster): each polled party's move from the ballot's anchor */
+type RegionalSwing = Partial<Record<PartyId, number>>;
+
 function computeSeat(
   seat: SyntheticSeat,
   national: Partial<Record<PartyId, number>>,
@@ -145,7 +164,10 @@ function computeSeat(
   polled: PartyId[],
   /** 'uk' | devolved — decides which parties count as major and whether the
    *  region's swing sensitivity applies (a devolved poll IS the nation's mood) */
-  arena: GameState['arena']
+  arena: GameState['arena'],
+  /** the ballot this seat is actually fought on, when the headline poll does
+   *  not cover it (a Northern Ireland seat at Westminster) */
+  regional?: RegionalSwing
 ): SeatOutcome {
   // the Speaker is conventionally unopposed
   if (seat.winner === 'spk' && !playerBoost) {
@@ -153,6 +175,14 @@ function computeSeat(
   }
 
   const sens = arena === 'uk' ? REGIONS[seat.region].swingSensitivity : 1;
+  // a separately polled ballot is normalised over its own parties, while the
+  // seat's shares also carry independents and others: a move on the ballot's
+  // scale lands on the seat scaled by the slice of the seat's vote the ballot
+  // covers. No coverage division and no regional sensitivity: the ballot is
+  // already its region's own mood.
+  const regionalScale = regional
+    ? (Object.keys(regional) as PartyId[]).reduce((a, q) => a + ((seat.base ?? seat.shares)[q] ?? 0), 0)
+    : 1;
   const shares: Partial<Record<PartyId, number>> = {};
   // swing always from the IMMUTABLE build-time baseline (never the last result), so
   // the map can't compound/polarise election-on-election (old saves: fall back to shares)
@@ -186,6 +216,8 @@ function computeSeat(
         }
       }
       v += swing;
+    } else if (regional?.[p] !== undefined) {
+      v += (regional[p] ?? 0) * regionalScale;
     } else if (p === 'ind') {
       v -= 0.02; // independents' personal vote fades
     }
@@ -352,8 +384,7 @@ export interface RunElectionOutput {
 
 /** can this party form the government of the chamber */
 function canGovern(p: PartyId, seats: Partial<Record<PartyId, number>>, arena: GameState['arena']): boolean {
-  if (p === 'spk' || p === 'ind' || p === 'sf') return false;
-  if (!PARTIES[p]) return false;
+  if (outsidePartyPolitics(p, arena)) return false;
   if (arena !== 'uk') return true;
   return !!PARTIES[p].major || (seats[p] ?? 0) > 80;
 }
@@ -398,6 +429,19 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
   const national = electionNationalShares(state, rng);
   const coverage = partyCoverage(state);
   const playerParty = state.player.partyId;
+  // Northern Ireland's seats are fought on their own ballot, which carries its
+  // own random stream: the GB count draws exactly what it drew before the
+  // ballot existed
+  const niBallot = state.polling.ni;
+  const swings: Partial<Record<RegionId, RegionalSwing>> = {};
+  let niShares: Partial<Record<PartyId, number>> | undefined;
+  if (niBallot) {
+    niShares = regionalElectionShares(niBallot);
+    niBallot.lastResult = { ...niShares };
+    const delta: RegionalSwing = {};
+    for (const p of ballotParties(niBallot)) delta[p] = (niShares[p] ?? 0) - (niBallot.anchor[p] ?? 0);
+    swings.ni = delta;
+  }
 
   // the national vote-leader gets a small per-seat winner's bonus so a clear lead
   // converts into a single-party majority more often (see computeSeat)
@@ -461,7 +505,7 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
       isPlayerSeat
         ? { party: playerParty, pts: personalVote + incumbency + defectionPenalty }
         : null,
-      leaderBonus, polled, arena
+      leaderBonus, polled, arena, swings[seat.region]
     );
 
     if (isPlayerSeat) {
@@ -537,7 +581,7 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
   // parliament (close enough that a partner can form a working arrangement),
   // or a bare minority further out. Both sub-majority outcomes are unstable.
   // The band scales with the House: 16 seats of 650 is 3 of 129.
-  const majorityLine = seatsForMajority(seats);
+  const majorityLine = seatsForMajorityIn(seats, arena);
   const hungBand = Math.max(3, Math.round(16 * totalSeats(seats) / 650));
   const outcome: ElectionOutcome =
     govSeats >= majorityLine ? 'majority'
@@ -553,6 +597,7 @@ export function runElection(state: GameState, rng: Rng): RunElectionOutput {
     seats,
     ...(system.kind === 'fptp' ? {} : { listSeats }),
     voteShares: displayVoteShares(state, national),
+    ...(niShares ? { regionalShares: { ni: niShares } } : {}),
     playerResult,
     outcome,
     governingParty,

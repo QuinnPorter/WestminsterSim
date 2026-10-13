@@ -1,6 +1,7 @@
 import { GameState, PartyId, StatDelta } from '../types/game';
 import { EffectSpec } from '../types/content';
-import { POLLED_PARTIES } from '../data/parties';
+import { arenaPolledParties, ballotParties } from './polling';
+import { normalisedShares } from '../generation/constituency';
 import { adjustRelationship, getRelationship, KIND_LABELS } from './relationships';
 import { clamp } from './rng';
 
@@ -38,17 +39,30 @@ export function gainStat(state: GameState, key: StatKey, delta: number): number 
   return Math.round((next - current) * 10) / 10;
 }
 
+/** Move a party's polling by `deltaPts` points and renormalise within the
+ *  ballot that party belongs to: a Northern Ireland party moves the NI ballot
+ *  and leaves the GB poll untouched; everyone else moves the chamber's own
+ *  ballot. A party on neither is ignored. */
 export function applyPollingShock(
   state: GameState,
   party: PartyId,
   deltaPts: number
 ): void {
+  const ni = state.polling.ni;
+  if (ni && ni.anchor[party] !== undefined) {
+    shockBallot(ni.shares, ballotParties(ni), party, deltaPts);
+    return;
+  }
   const shares = state.polling.shares;
   if (shares[party] === undefined) return;
+  shockBallot(shares, arenaPolledParties(state), party, deltaPts);
+}
+
+function shockBallot(
+  shares: Partial<Record<PartyId, number>>, parties: PartyId[], party: PartyId, deltaPts: number
+): void {
   shares[party] = Math.max(0.005, (shares[party] ?? 0) + deltaPts / 100);
-  let total = 0;
-  for (const p of POLLED_PARTIES) total += shares[p] ?? 0;
-  for (const p of POLLED_PARTIES) shares[p] = (shares[p] ?? 0) / total;
+  Object.assign(shares, normalisedShares(shares, parties));
 }
 
 /** Apply an effect spec to the state. Returns user-facing stat deltas. */

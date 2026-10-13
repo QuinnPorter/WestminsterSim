@@ -46,25 +46,36 @@ export const PARTIES: Record<PartyId, Party> = {
     id: 'pc', name: 'Plaid Cymru', shortName: 'PC', colour: '#005B54',
     ideology: -50, contestsRegions: ['wales'],
   },
+  // Northern Ireland's parties. The left-right `ideology` axis means little
+  // here: the axis that sorts these parties is the constitutional one, carried
+  // by `designation`.
   dup: {
     id: 'dup', name: 'Democratic Unionist Party', shortName: 'DUP', colour: '#D46A4C',
-    ideology: 60, contestsRegions: NI,
+    ideology: 60, contestsRegions: NI, designation: 'unionist',
   },
   sf: {
     id: 'sf', name: 'Sinn Féin', shortName: 'SF', colour: '#326760',
-    ideology: -55, contestsRegions: NI, abstentionist: true,
+    ideology: -55, contestsRegions: NI, abstentionist: true, designation: 'nationalist',
   },
   sdlp: {
     id: 'sdlp', name: 'Social Democratic and Labour Party', shortName: 'SDLP', colour: '#2AA82C',
-    ideology: -40, contestsRegions: NI,
+    ideology: -40, contestsRegions: NI, designation: 'nationalist',
   },
   alliance: {
     id: 'alliance', name: 'Alliance Party', shortName: 'All', colour: '#F6CB2F',
-    textColour: '#A8850A', ideology: -10, contestsRegions: NI,
+    textColour: '#A8850A', ideology: -10, contestsRegions: NI, designation: 'other',
   },
   uup: {
     id: 'uup', name: 'Ulster Unionist Party', shortName: 'UUP', colour: '#48A5EE',
-    ideology: 45, contestsRegions: NI,
+    ideology: 45, contestsRegions: NI, designation: 'unionist',
+  },
+  // Traditional Unionist Voice. Jim Allister took North Antrim in 2024, but the
+  // Commons model carries that seat as an independent until the Assembly is
+  // built: adding a sixth contestant to every Northern Ireland seat would move
+  // the Commons random stream. So the TUV is a Stormont party for now.
+  tuv: {
+    id: 'tuv', name: 'Traditional Unionist Voice', shortName: 'TUV', colour: '#0C3A6D',
+    ideology: 78, contestsRegions: NI, designation: 'unionist', devolvedOnly: 'ni',
   },
   // devolved-only parties. Neither stands for Westminster: the Scottish Greens
   // are a separate party from the Green Party of England and Wales, and Alba's
@@ -87,15 +98,33 @@ export const PARTIES: Record<PartyId, Party> = {
   },
 };
 
-/** parties the player can choose at character creation */
+/** GB parties the player can choose at character creation */
 export const PLAYABLE_PARTIES: PartyId[] = [
   'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc',
 ];
 
-/** GB parties included in national polling (full superset across all eras) */
-export const POLLED_PARTIES: PartyId[] = [
-  'con', 'lab', 'ld', 'snp', 'green', 'reform', 'pc', 'ukip', 'brexit',
-];
+/** Sinn Féin abstain from the Commons; nobody abstains from a devolved chamber */
+export function abstainsIn(p: PartyId, arena: ArenaId | undefined): boolean {
+  return !!PARTIES[p]?.abstentionist && (arena ?? 'uk') === 'uk';
+}
+
+/** parties that sit outside the chamber's party contest: the Speaker,
+ *  independents, abstentionists, and (at Westminster) devolved-only parties
+ *  that never stand for the Commons. None can govern, lead the opposition,
+ *  partner a coalition or hold a leadership contest there. */
+export function outsidePartyPolitics(p: PartyId, arena: ArenaId | undefined): boolean {
+  if (p === 'spk' || p === 'ind' || !PARTIES[p]) return true;
+  if (abstainsIn(p, arena)) return true;
+  return (arena ?? 'uk') === 'uk' && !!PARTIES[p].devolvedOnly;
+}
+
+/** the Northern Ireland parties a Westminster career can be lived in: those
+ *  that stand there and sit there. Sinn Féin's MPs never take their seats, so a
+ *  Sinn Féin career is lived in the Assembly, not the Commons; the TUV is not
+ *  on the Commons ballot in this model. */
+export const PLAYABLE_NI: PartyId[] = (Object.keys(PARTIES) as PartyId[]).filter(
+  (p) => PARTIES[p].contestsRegions.includes('ni') && !outsidePartyPolitics(p, 'uk')
+);
 
 /** the polled GB parties for a given era — the right-populist slot is
  *  era-specific: UKIP (2015/2017), Brexit Party (2019), Reform UK (2024), so
@@ -114,13 +143,20 @@ export function populistPartyForEra(era: Era): PartyId {
   return 'reform'; // 2024
 }
 
-/** the parties the player can choose at character creation, with the populist
- *  slot swapped to the era-correct party (UKIP / Brexit Party / Reform UK) */
+/** the GB parties the player can choose at character creation, with the
+ *  populist slot swapped to the era-correct party (UKIP / Brexit Party / Reform UK) */
 export function playablePartiesForEra(era: Era): PartyId[] {
   const populist = populistPartyForEra(era);
   return PLAYABLE_PARTIES.map((p) =>
     p === 'reform' || p === 'brexit' || p === 'ukip' ? populist : p
   );
+}
+
+/** every party a Westminster career can begin in: the era's GB parties and the
+ *  Northern Ireland parties. With a `region`, only those that contest it. */
+export function playablePartiesFor(era: Era, region?: RegionId): PartyId[] {
+  const all = [...playablePartiesForEra(era), ...PLAYABLE_NI];
+  return region ? all.filter((p) => PARTIES[p].contestsRegions.includes(region)) : all;
 }
 
 export function partyColour(id: PartyId): string {
@@ -194,6 +230,8 @@ export function polledPartiesForArena(arena: ArenaId, era: Era, day?: number): P
  *  Alba has no Westminster home at all. */
 export function counterpartParty(from: PartyId, to: ArenaId): PartyId | null {
   if (from === 'spk' || from === 'ind') return null;
+  // an abstentionist party has no career to offer at Westminster
+  if (abstainsIn(from, to)) return null;
   if (to === 'scotland') {
     if (from === 'green') return 'sgp';
     if (from === 'pc') return null;

@@ -78,7 +78,7 @@ describe('wave 10 — coalition compatibility & partner choice', () => {
     const seats: Partial<Record<PartyId, number>> = { lab: 300, reform: 60, ld: 40, snp: 20, green: 5 };
     const result = { seats } as unknown as ElectionResult;
     for (let i = 0; i < 40; i++) {
-      const p = pickCoalitionPartner(result, new Rng(500 + i), 'lab');
+      const p = pickCoalitionPartner(result, new Rng(500 + i), 'lab', 'uk');
       if (p !== null) expect(p).not.toBe('reform'); // banned with Labour
     }
   });

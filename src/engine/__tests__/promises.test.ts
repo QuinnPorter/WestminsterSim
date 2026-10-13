@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createNewGame, CreationInput } from '../newGame';
+import { createNewGame, CreationInput, SAVE_VERSION } from '../newGame';
 import {
   materializeForced, resolveForcedChoice, leadershipRecordScore,
 } from '../career';
@@ -32,7 +32,7 @@ describe('promise ledger migration', () => {
     delete (game.player as { promises?: unknown }).promises;
     const migrated = migrateGameState(game);
     expect(migrated.player.promises).toEqual([]);
-    expect(migrated.version).toBe(10);
+    expect(migrated.version).toBe(SAVE_VERSION);
   });
 });
 

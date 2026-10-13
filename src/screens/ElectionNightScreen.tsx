@@ -3,6 +3,7 @@ import { ElectionResult, GameState, PartyId } from '../types/game';
 import { useGameStore } from '../store/gameStore';
 import { PARTIES, partyTextColour } from '../data/parties';
 import { ResultBar } from '../components/ResultBar';
+import { onNiBallot } from '../engine/polling';
 import { formatFull } from '../engine/clock';
 import { totalSeats } from '../engine/seats';
 import { chamberAt } from '../data/chambers';
@@ -133,6 +134,11 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
     (e) => e.kind === 'coalitionTalks' || e.kind === 'coalitionOffer'
   );
   const partner = gov.coalitionPartner ?? gov.confidencePartner;
+  // a Northern Ireland MP's own ballot, which the GB vote-share table leaves out
+  const niShares = result.regionalShares?.ni;
+  const niTable = niShares && onNiBallot(game)
+    ? (Object.entries(niShares) as [PartyId, number][]).sort((a, b) => b[1] - a[1])
+    : null;
   let verdict: string;
   if (result.outcome === 'majority') {
     verdict = 'wins a majority';
@@ -154,6 +160,12 @@ function NationalPicture({ game, result }: { game: GameState; result: ElectionRe
           Of which from the regional lists:{' '}
           {sorted.filter(([p]) => (result.listSeats?.[p] ?? 0) > 0)
             .map(([p]) => `${PARTIES[p].shortName} ${result.listSeats?.[p]}`).join(' · ')}
+        </p>
+      )}
+      {niTable && (
+        <p className="en-sub" style={{ marginTop: 6 }}>
+          Northern Ireland:{' '}
+          {niTable.map(([p, v]) => `${PARTIES[p].shortName} ${(v * 100).toFixed(1)}%`).join(' · ')}
         </p>
       )}
       <p className="en-outcome" style={{ color: partyTextColour(result.governingParty) }}>

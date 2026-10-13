@@ -3,7 +3,7 @@ import {
 } from '../types/game';
 import { ALL_CARDS, fallbackPoolFor } from '../content/cards';
 import { outcomeAsChamber, speakAsChamber } from './chamberVoice';
-import { chamberOf } from '../data/chambers';
+import { chamberOf, nationOfRegion } from '../data/chambers';
 import { legislatureAt } from '../data/devolved';
 import { homeNation } from './arena';
 import { SCANDAL_ARC_BEATS } from '../content/cards/crisis';
@@ -26,7 +26,7 @@ import { gainStat } from './effects';
 import { partyPolling, pollingLead, lastElectionShares, updatePolling } from './polling';
 import { isoToDay, yearOf, monthOf } from './clock';
 import { Rng, clamp } from './rng';
-import { seatsForMajority } from './seats';
+import { seatsForMajorityIn } from './seats';
 
 /** a leader crowned without a real contest (a coronation or a squeezed-out challenger)
  *  carries a soft, never-tested mandate: their authority frays faster until they have
@@ -458,8 +458,7 @@ export interface DraftTarget {
 export function draftTarget(state: GameState): DraftTarget | null {
   const settled = homeNation(state);
   const region = state.player.region;
-  const arena: DevolvedArenaId | null = settled
-    ?? (region === 'scotland' || region === 'wales' ? region : null);
+  const arena: DevolvedArenaId | null = settled ?? nationOfRegion(region);
   if (!arena) return null;
 
   const dormant = state.dormant?.[arena];
@@ -965,7 +964,7 @@ function nextStepCore(state: GameState, rng: Rng): void {
     const coupCool = (state.player.flags._coupCooldownUntil as number) ?? 0;
     if (arr !== 'majority' && yearsSinceFormation > 0.6 && state.day >= coupCool) {
       const govParty = state.government.governingParty;
-      const majorityLine = seatsForMajority(state.seats);
+      const majorityLine = seatsForMajorityIn(state.seats, state.arena);
       const govSeats = state.seats[govParty] ?? 0;
       // a coalition partner sits in government; a confidence partner backs supply
       // votes — both count toward surviving a confidence motion

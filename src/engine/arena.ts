@@ -5,10 +5,11 @@ import {
 } from '../types/game';
 import {
   CHAMBERS, chamberOf, DEVOLVED_ARENAS, isDevolved, nextFixedElectionDay, seatSystemAt,
+  nationOfRegion,
 } from '../data/chambers';
 import { cabinetOfficesFor, OFFICES } from '../data/offices';
 import {
-  PARTIES, counterpartParty, isMajorIn, partyNameIn, playablePartiesForEra, polledPartiesForEra,
+  PARTIES, counterpartParty, isMajorIn, outsidePartyPolitics, partyNameIn, playablePartiesFor, polledPartiesForEra,
 } from '../data/parties';
 import { legislatureAt } from '../data/devolved';
 import { PARLIAMENTS } from '../data/parliaments';
@@ -18,9 +19,9 @@ import {
 import { generateCharacter } from '../generation/characters';
 import { Rng, clamp } from './rng';
 import { isoToDay } from './clock';
-import { updatePolling } from './polling';
+import { partyPollingShare, pollSnapshot, updatePolling } from './polling';
 import { resignationPressure, runElection } from './election';
-import { votingSeats, workingMajority } from './seats';
+import { totalSeats, workingMajorityIn } from './seats';
 import { playerListRank } from './listSeats';
 
 // ---------------------------------------------------------------------------
@@ -168,7 +169,7 @@ export function buildDevolvedArena(
     loId: oppLeader.id,
     cabinet,
     shadowCabinet,
-    majority: workingMajority(seats, gov),
+    majority: workingMajorityIn(seats, gov, arena),
     pmSinceDay: electionDay <= startDay ? electionDay : startDay,
     arrangement: snap.arrangement,
     ...(snap.coalitionPartner ? { coalitionPartner: snap.coalitionPartner } : {}),
@@ -224,10 +225,10 @@ function arenaParties(state: GameState): PartyId[] {
 
 /** the party that should lead the opposition given a seat result */
 function pickOpposition(
-  seats: Partial<Record<PartyId, number>>, governing: PartyId
+  seats: Partial<Record<PartyId, number>>, governing: PartyId, arena: ArenaId
 ): PartyId {
   const ranked = (Object.entries(seats) as [PartyId, number][])
-    .filter(([p]) => p !== governing && p !== 'spk' && p !== 'ind' && p !== 'sf')
+    .filter(([p]) => p !== governing && !outsidePartyPolitics(p, arena))
     .sort((a, b) => b[1] - a[1]);
   return ranked[0]?.[0] ?? governing;
 }
@@ -242,7 +243,7 @@ function devolvedPartner(
   state: GameState, rng: Rng, governing: PartyId
 ): { party: PartyId; kind: 'coalition' | 'supplyConfidence' } | null {
   const seats = state.seats;
-  const short = Math.max(0, -workingMajority(seats, governing));
+  const short = Math.max(0, -workingMajorityIn(seats, governing, state.arena));
   if (short === 0) return null;
   const gov = PARTIES[governing];
   const candidates = (Object.keys(seats) as PartyId[])
@@ -274,7 +275,7 @@ function installNpcGovernment(
 ): void {
   const arena = state.arena ?? 'uk';
   const chamber = chamberOf(arena);
-  const opposition = pickOpposition(state.seats, governing);
+  const opposition = pickOpposition(state.seats, governing, arena);
   const gv = state.government;
   const prevGoverning = gv.governingParty;
 
@@ -327,7 +328,7 @@ function installNpcGovernment(
 
   const pmId = leaderOf(governing);
   const loId = leaderOf(opposition);
-  const majority = workingMajority(state.seats, governing);
+  const majority = workingMajorityIn(state.seats, governing, state.arena);
 
   if (gv.pmId !== pmId) {
     const open = state.pmHistory.find((t) => t.endDay === null);
@@ -378,7 +379,7 @@ function installNpcGovernment(
     }
   }
   gv.termsInPower = governing === prevGoverning ? (gv.termsInPower ?? 1) + 1 : 1;
-  gv.loInheritedPolls = (state.polling.shares[opposition] ?? 0) * 100;
+  gv.loInheritedPolls = partyPollingShare(state, opposition) * 100;
 }
 
 /** Hand every frontbench post to somebody from the party that now holds it,
@@ -482,7 +483,7 @@ export function catchUpArena(state: GameState, rng: Rng, toDay: number): void {
       state.nextElectionBy = chamber.fixedTerm
         ? nextFixedElectionDay(pollDay)
         : pollDay + chamber.termDays;
-      state.pollHistory = [{ day: pollDay, shares: { ...state.polling.shares } }];
+      state.pollHistory = [pollSnapshot(state, pollDay)];
       state.history.push({
         kind: 'event', date: pollDay,
         headline: `${partyNameIn(result.governingParty, arena)} ${
@@ -581,26 +582,20 @@ export function homeNation(state: GameState): DevolvedArenaId | null {
  *  that the one their constituency sits in. A member for a Glasgow seat standing
  *  for Holyrood is a career move; the same member standing in Cardiff is not. */
 export function jumpTargets(state: GameState): ArenaId[] {
-  const own = homeNation(state) ?? regionArena(state.player.region);
+  const own = homeNation(state) ?? nationOfRegion(state.player.region);
   const all: ArenaId[] = own ? ['uk', own] : ['uk'];
   return all.filter((a) => a !== (state.arena ?? 'uk'));
 }
 
-/** the devolved chamber of a region, if one is built */
-function regionArena(region: RegionId): DevolvedArenaId | null {
-  return DEVOLVED_ARENAS.includes(region as DevolvedArenaId)
-    ? (region as DevolvedArenaId)
-    : null;
-}
-
 /** The parties the player may join in `target`, their own first. For the
- *  Commons that is the era's playable parties that contest their nation; for a
+ *  Commons that is every playable party that contests their nation; for a
  *  devolved chamber it is the parliament's ballot. */
 export function jumpPartyOptions(state: GameState, target: ArenaId): PartyId[] {
   const natural = counterpartParty(state.player.partyId, target);
-  const nation = homeNation(state) ?? regionArena(state.player.region) ?? 'scotland';
+  // a devolved nation's id doubles as its Westminster region
+  const nation: RegionId = homeNation(state) ?? state.player.region;
   const all = target === 'uk'
-    ? playablePartiesForEra(state.startEra).filter((p) => PARTIES[p].contestsRegions.includes(nation))
+    ? playablePartiesFor(state.startEra, nation)
     : ballotOf(state, target as DevolvedArenaId);
   return [...all].sort((a, b) => (b === natural ? 1 : 0) - (a === natural ? 1 : 0));
 }
@@ -855,7 +850,7 @@ function pickSeatFor(
   // seat; where it is weak it is whatever is going.
   if (opts.byPartyStrength && held.length > 0) {
     const ranked = [...held].sort((a, b) => margin(a) - margin(b));
-    const strength = clamp((state.polling.shares[party] ?? 0.2) / 0.45, 0, 1);
+    const strength = clamp((partyPollingShare(state, party) || 0.2) / 0.45, 0, 1);
     const idx = Math.min(ranked.length - 1, Math.floor(strength * (ranked.length - 1)));
     const jitter = rng.int(-1, 1);
     return finish(ranked[clamp(idx + jitter, 0, ranked.length - 1)]);
@@ -1021,7 +1016,7 @@ export function installPlayerAsLeader(state: GameState, rng: Rng): void {
   vacatePlayerBench(state, rng);
   state.player.officeId = 'leader';
   state.player.officeSinceDay = state.day;
-  state.player.flags._leaderTookOverPolls = (state.polling.shares[party] ?? 0) * 100;
+  state.player.flags._leaderTookOverPolls = partyPollingShare(state, party) * 100;
   const peak = Number(state.player.flags._peakTier ?? 0);
   if (peak < 5) state.player.flags._peakTier = 5;
 
@@ -1083,7 +1078,7 @@ export function allPlayerHeadTenures(state: GameState) {
 
 /** the live chamber's size, for the lines that used to say 650 */
 export function houseSize(state: GameState): number {
-  return votingSeats(state.seats) + (state.seats.spk ?? 0) + (state.seats.sf ?? 0);
+  return totalSeats(state.seats);
 }
 
 export { isMajorIn };

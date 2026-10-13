@@ -1,7 +1,75 @@
-import { GameState, PartyId } from '../types/game';
+import { Era, GameDay, GameState, PartyId, PollSnapshot, RegionalBallot } from '../types/game';
 import { PARLIAMENTS } from '../data/parliaments';
 import { isMajorIn, polledPartiesForArena } from '../data/parties';
+import { NI_POLLED, NI_WESTMINSTER } from '../data/niWestminster';
+import { normalisedShares } from '../generation/constituency';
 import { Rng } from './rng';
+
+// ---------------------------------------------------------------------------
+// the Northern Ireland ballot
+// ---------------------------------------------------------------------------
+
+/** the salt the NI ballot's stream is derived from, so it never shares a draw
+ *  with the chamber's stream */
+const NI_STREAM_SALT = 0x4e49; // 'NI'
+
+/** the NI ballot's structural shares for an era: the real NI-wide vote,
+ *  normalised over the parties the ballot polls */
+export function niAnchorFor(era: Era): Partial<Record<PartyId, number>> {
+  return normalisedShares(NI_WESTMINSTER[era].shares, NI_POLLED);
+}
+
+/** a fresh NI ballot sitting at its era's anchor, with its own stream seeded
+ *  from `seed` without drawing from anything. Every Commons is created with one
+ *  (`createNewGame`) or given one on load (the v11 migration); a devolved
+ *  chamber's polling never carries one. */
+export function seedNiBallot(era: Era, seed: number): RegionalBallot {
+  const anchor = niAnchorFor(era);
+  return { shares: { ...anchor }, anchor, rngState: (seed ^ NI_STREAM_SALT) >>> 0 };
+}
+
+/** the parties a ballot polls, in polling order */
+export function ballotParties(ballot: RegionalBallot): PartyId[] {
+  return Object.keys(ballot.anchor) as PartyId[];
+}
+
+/** a party's current polling, 0..1, on whichever ballot polls it */
+export function partyPollingShare(state: GameState, party: PartyId): number {
+  const gb = state.polling.shares[party];
+  if (gb !== undefined) return gb;
+  const ni = state.polling.ni;
+  if (ni && ni.anchor[party] !== undefined) return ni.shares[party] ?? ni.anchor[party] ?? 0;
+  return 0;
+}
+
+/** does the player read Northern Ireland's polls rather than the GB tracker: a
+ *  member for a Northern Ireland seat at Westminster, whatever their party */
+export function onNiBallot(state: GameState): boolean {
+  return state.player.region === 'ni' && !!state.polling.ni;
+}
+
+/** the ballot the player's seat is fought on: Northern Ireland's for a member
+ *  for a Northern Ireland seat, the chamber's headline poll for everyone else.
+ *  `shareIn` reads it back out of a poll snapshot. */
+export function playerBallot(state: GameState): {
+  parties: PartyId[];
+  shareIn: (snapshot: PollSnapshot, party: PartyId) => number | undefined;
+} {
+  const ni = onNiBallot(state) ? state.polling.ni : undefined;
+  return ni
+    ? { parties: ballotParties(ni), shareIn: (s, p) => s.ni?.[p] }
+    : { parties: arenaPolledParties(state), shareIn: (s, p) => s.shares[p] };
+}
+
+/** a snapshot of the chamber's polling for the tracker graph, with the NI
+ *  ballot alongside when the chamber has one */
+export function pollSnapshot(state: GameState, day: GameDay = state.day): PollSnapshot {
+  return {
+    day,
+    shares: { ...state.polling.shares },
+    ...(state.polling.ni ? { ni: { ...state.polling.ni.shares } } : {}),
+  };
+}
 
 /** vote shares at the last election (or game start) — the swing anchor */
 export function lastElectionShares(state: GameState): Partial<Record<PartyId, number>> {
@@ -86,18 +154,25 @@ export function samplePolling(state: GameState): void {
   const hist = state.pollHistory;
   const last = hist[hist.length - 1];
   if (last && state.day - last.day < POLL_SAMPLE_GAP) return;
-  hist.push({ day: state.day, shares: { ...state.polling.shares } });
+  hist.push(pollSnapshot(state));
   if (hist.length > MAX_POLL_SNAPSHOTS) hist.splice(0, hist.length - MAX_POLL_SNAPSHOTS);
 }
 
-/** advance the polling random walk over elapsed days */
-export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
-  const shares = state.polling.shares;
-  const funds = fundamentals(state);
-  const polled = arenaPolledParties(state);
-  const gov = state.government.governingParty;
-  let day = state.polling.lastUpdated;
-
+/** one ballot's weekly random walk from `fromDay` to `toDay`: noise scaled to
+ *  each party's size, mean reversion toward its fundamentals, and the drag on
+ *  the governing party once its honeymoon is over. Draws two numbers per party
+ *  per week from `rng`, in party order. */
+function stepBallot(
+  shares: Partial<Record<PartyId, number>>,
+  polled: PartyId[],
+  funds: Partial<Record<PartyId, number>>,
+  gov: PartyId | null,
+  parliamentStart: GameDay,
+  rng: Rng,
+  fromDay: GameDay,
+  toDay: GameDay
+): void {
+  let day = fromDay;
   while (day + WEEK <= toDay) {
     day += WEEK;
     for (const p of polled) {
@@ -105,7 +180,7 @@ export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
       let next = current
         + rng.normal(0, weeklyNoiseFor(current))
         + MEAN_REVERSION * ((funds[p] ?? 0.01) - current);
-      if (p === gov && day - state.parliamentStart > HONEYMOON_DAYS) {
+      if (p === gov && day - parliamentStart > HONEYMOON_DAYS) {
         next -= GOVERNING_DRAG;
       }
       shares[p] = Math.max(0.004, next);
@@ -115,15 +190,34 @@ export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
     for (const p of polled) total += shares[p] ?? 0;
     for (const p of polled) shares[p] = (shares[p] ?? 0) / total;
   }
+}
+
+/** advance the polling random walk over elapsed days */
+export function updatePolling(state: GameState, rng: Rng, toDay: number): void {
+  const from = state.polling.lastUpdated;
+  stepBallot(
+    state.polling.shares, arenaPolledParties(state), fundamentals(state),
+    state.government.governingParty, state.parliamentStart, rng, from, toDay
+  );
+  // the Northern Ireland ballot walks alongside, on its own stream. Every NI
+  // party reverts toward its last result (none is a "minor" party there), and
+  // no NI party governs at Westminster, so there is no drag.
+  const ni = state.polling.ni;
+  if (ni) {
+    const niRng = new Rng(ni.rngState);
+    stepBallot(ni.shares, ballotParties(ni), ni.lastResult ?? ni.anchor, null, state.parliamentStart, niRng, from, toDay);
+    ni.rngState = niRng.state;
+  }
   state.polling.lastUpdated = toDay;
 }
 
 export function pollingLead(state: GameState): number {
-  const gov = state.polling.shares[state.government.governingParty] ?? 0;
-  const opp = state.polling.shares[state.government.oppositionParty] ?? 0;
+  const gov = partyPollingShare(state, state.government.governingParty);
+  const opp = partyPollingShare(state, state.government.oppositionParty);
   return (gov - opp) * 100;
 }
 
+/** a party's polling in points, on whichever ballot polls it */
 export function partyPolling(state: GameState, party: PartyId): number {
-  return (state.polling.shares[party] ?? 0) * 100;
+  return partyPollingShare(state, party) * 100;
 }

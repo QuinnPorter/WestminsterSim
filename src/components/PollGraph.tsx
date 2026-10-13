@@ -1,6 +1,6 @@
 import { GameState, PartyId } from '../types/game';
 import { PARTIES, partyTextColour } from '../data/parties';
-import { arenaPolledParties } from '../engine/polling';
+import { onNiBallot, playerBallot } from '../engine/polling';
 import { formatMonthYear } from '../engine/clock';
 
 /** a small multi-line poll tracker for the current parliament */
@@ -8,7 +8,11 @@ export function PollGraph({ game, width = 320, height = 140 }: {
   game: GameState; width?: number; height?: number;
 }) {
   const hist = game.pollHistory;
-  if (!hist || hist.length < 2) {
+  const ni = onNiBallot(game);
+  const ballot = playerBallot(game);
+  const shareOf = (s: (typeof hist)[number], p: PartyId): number => ballot.shareIn(s, p) ?? 0;
+  const points = ni ? hist.filter((s) => s.ni) : hist;
+  if (!points || points.length < 2) {
     return (
       <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
         Not enough polling yet this parliament — check back in a few months.
@@ -16,13 +20,11 @@ export function PollGraph({ game, width = 320, height = 140 }: {
     );
   }
 
-  // which parties to plot: this era's polled parties that poll meaningfully at any point
-  const parties = arenaPolledParties(game).filter((p) =>
-    hist.some((s) => (s.shares[p] ?? 0) > 0.03)
-  );
+  // which parties to plot: the ballot's parties that poll meaningfully at any point
+  const parties = ballot.parties.filter((p) => points.some((s) => shareOf(s, p) > 0.03));
 
   const padL = 26, padR = 6, padT = 8, padB = 18;
-  const x0 = hist[0].day;
+  const x0 = points[0].day;
   const x1 = game.day;
   const span = Math.max(1, x1 - x0);
   const yMax = 0.55; // 55% ceiling
@@ -30,13 +32,13 @@ export function PollGraph({ game, width = 320, height = 140 }: {
   const py = (share: number) => padT + (1 - share / yMax) * (height - padT - padB);
 
   const linesFor = (p: PartyId): string =>
-    hist.map((s, i) => `${i === 0 ? 'M' : 'L'}${px(s.day).toFixed(1)},${py(s.shares[p] ?? 0).toFixed(1)}`).join(' ');
+    points.map((s, i) => `${i === 0 ? 'M' : 'L'}${px(s.day).toFixed(1)},${py(shareOf(s, p)).toFixed(1)}`).join(' ');
 
   const gridYs = [0.1, 0.2, 0.3, 0.4, 0.5];
 
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" role="img" aria-label="Polling since the last election">
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" role="img" aria-label={ni ? 'Northern Ireland polling since the last election' : 'Polling since the last election'}>
         {gridYs.map((g) => (
           <g key={g}>
             <line x1={padL} y1={py(g)} x2={width - padR} y2={py(g)} stroke="var(--line)" strokeWidth="1" />
@@ -70,6 +72,11 @@ export function PollGraph({ game, width = 320, height = 140 }: {
           </span>
         ))}
       </div>
+      {ni && (
+        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 4 }}>
+          Northern Ireland only — the GB parties do not stand here.
+        </p>
+      )}
     </div>
   );
 }

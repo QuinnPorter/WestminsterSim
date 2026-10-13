@@ -6,8 +6,13 @@
  *  from the Green Party of England and Wales) and Alba. `spk` and `ind` are shared. */
 export type PartyId =
   | 'con' | 'lab' | 'ld' | 'snp' | 'green' | 'reform' | 'pc' | 'ukip' | 'brexit'
-  | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'spk' | 'ind'
+  | 'dup' | 'sf' | 'sdlp' | 'alliance' | 'uup' | 'tuv' | 'spk' | 'ind'
   | 'sgp' | 'alba';
+
+/** which community a Northern Ireland party's members designate as in the
+ *  Assembly. Decides the First and deputy First Minister posts and the
+ *  cross-community votes; GB parties have no designation. */
+export type Designation = 'unionist' | 'nationalist' | 'other';
 
 export type RegionId =
   | 'scotland' | 'wales' | 'ni' | 'london' | 'southEast' | 'southWest'
@@ -62,13 +67,19 @@ export interface Party {
   /** -100 left .. +100 right */
   ideology: number;
   contestsRegions: RegionId[];
-  /** Sinn Féin: excluded from majority maths */
+  /** Sinn Féin: its MPs do not take their seats, so it is excluded from the
+   *  Commons majority maths, cannot govern or lead the opposition there, and
+   *  is not a player party at Westminster. Read through `abstainsIn`, which is
+   *  false in a devolved chamber. */
   abstentionist?: boolean;
   /** can this party plausibly govern / lead the opposition */
   major?: boolean;
-  /** the party exists only in this devolved chamber (Scottish Greens, Alba) and
-   *  never stands for Westminster, whatever its `contestsRegions` says */
-  devolvedOnly?: DevolvedArenaId;
+  /** the party exists only in this devolved chamber (Scottish Greens, Alba, the
+   *  TUV) and never stands for Westminster, whatever its `contestsRegions`
+   *  says. Widened to admit Northern Ireland ahead of the Assembly itself. */
+  devolvedOnly?: DevolvedArenaId | 'ni';
+  /** Northern Ireland parties only: the community their members designate as */
+  designation?: Designation;
 }
 
 export interface SyntheticSeat {
@@ -242,15 +253,34 @@ export interface Player {
 
 // ---- politics state ----
 
+/** A ballot polled on its own, inside a chamber whose headline poll does not
+ *  cover it: Northern Ireland's at Westminster. Its shares are normalised over
+ *  `parties` alone, it swings its own seats from its own `anchor`, and it
+ *  walks on its own random stream so the GB stream is untouched by it. */
+export interface RegionalBallot {
+  shares: Partial<Record<PartyId, number>>;
+  /** the structural shares the seats' baselines correspond to; its keys are
+   *  the parties the ballot polls, in polling order */
+  anchor: Partial<Record<PartyId, number>>;
+  /** the ballot's own PRNG state */
+  rngState: number;
+  /** the ballot's shares at its last election, which its polling reverts toward */
+  lastResult?: Partial<Record<PartyId, number>>;
+}
+
 export interface PollingState {
   /** GB-wide shares, 0..1, sum ≈ 1 (NI parties excluded) */
   shares: Partial<Record<PartyId, number>>;
   lastUpdated: GameDay;
+  /** the Northern Ireland ballot, present in the Commons */
+  ni?: RegionalBallot;
 }
 
 export interface PollSnapshot {
   day: GameDay;
   shares: Partial<Record<PartyId, number>>;
+  /** the Northern Ireland ballot's shares on that day */
+  ni?: Partial<Record<PartyId, number>>;
 }
 
 export interface CabinetPost {
@@ -330,7 +360,12 @@ export interface ElectionResult {
   seats: Partial<Record<PartyId, number>>;
   /** AMS: how many of each party's seats came from the regional lists */
   listSeats?: Partial<Record<PartyId, number>>;
+  /** the chamber's headline vote: GB-wide at Westminster, with the Northern
+   *  Ireland parties kept out so this stays the swing anchor for the GB poll */
   voteShares: Partial<Record<PartyId, number>>;
+  /** a separately polled ballot's result, by region: Northern Ireland's vote at
+   *  a Westminster election, normalised over the parties its ballot polls */
+  regionalShares?: Partial<Record<RegionId, Partial<Record<PartyId, number>>>>;
   playerResult: ConstituencyResult | null;
   outcome: ElectionOutcome;
   governingParty: PartyId;
